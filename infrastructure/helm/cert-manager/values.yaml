@@ -1,0 +1,33 @@
+# cert-manager — scaled-down profiel voor k3d
+#
+# Levert TLS certificates voor alle UWV-platform services. Self-signed CA
+# voor dev. Productie zou Let's Encrypt of een interne PKI gebruiken.
+#
+# Chart: jetstack/cert-manager
+# Version pin: zie scripts/bootstrap.sh
+
+crds:
+  enabled: true
+  keep: false
+
+replicaCount: 1
+webhook:
+  replicaCount: 1
+cainjector:
+  replicaCount: 1
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 128Mi
+
+prometheus:
+  enabled: true
+  servicemonitor:
+    enabled: false  # ServiceMonitor CRD komt mee met kube-prometheus-stack — aan zetten in fase 1 na Prometheus install
+
+# Disable startupapicheck post-install hook in scaled-down (sneller, minder pod-churn).
+startupapicheck:
+  enabled: false

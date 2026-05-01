@@ -1,0 +1,50 @@
+# Vector — log aggregation in scaled-down k3d.
+#
+# Vector wordt in fase 8 ingezet (volgens master prompt §5). Hier alleen de
+# values-template; bootstrap.sh installeert Vector niet in fase 1.
+#
+# Vector schrijft logs naar de gedeelde OpenSearch (uit fase 8) zodat
+# OpenMetadata-search en logs in één cluster zitten.
+#
+# Chart: timberio/vector (of vector / vector via OCI)
+
+# Agent-mode: één Vector pod per K8s-node verzamelt container-logs.
+role: Agent
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+customConfig:
+  data_dir: /vector-data-dir
+
+  sources:
+    k8s_logs:
+      type: kubernetes_logs
+      extra_label_selector: "app.kubernetes.io/managed-by!=Helm,!stackable.tech/vector-disabled"
+
+  transforms:
+    add_uwv_metadata:
+      type: remap
+      inputs: [k8s_logs]
+      source: |
+        .uwv_platform = "uwv-data-platform"
+        .uwv_zone = "dev-k3d"
+
+  sinks:
+    opensearch:
+      type: elasticsearch
+      inputs: [add_uwv_metadata]
+      endpoints:
+        - "http://opensearch-uwv.uwv-meta.svc.cluster.local:9200"
+      bulk:
+        index: "uwv-logs-%Y.%m.%d"
+      mode: bulk
+      api_version: v8
+      compression: gzip
+      healthcheck:
+        enabled: false   # OpenSearch is single-node, kan kort starten

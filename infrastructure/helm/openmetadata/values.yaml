@@ -1,0 +1,87 @@
+# OpenMetadata — catalog / governance / lineage / DQ.
+#
+# Wordt in fase 8 geïnstalleerd. Hier alleen de values-template.
+# Hergebruikt de gedeelde Postgres (uwv-data) en deelt het OpenSearch-
+# cluster met Vector (uwv-meta).
+#
+# Chart: open-metadata/openmetadata
+# Zie ook: infrastructure/helm/openmetadata/dependencies.md (TODO fase 8)
+
+global:
+  # Externe Postgres (gedeeld)
+  database:
+    enabled: true
+    host: postgres-postgresql.uwv-data.svc.cluster.local
+    port: 5432
+    driverClass: org.postgresql.Driver
+    dbScheme: postgresql
+    databaseName: openmetadata
+    auth:
+      username: uwvplatform
+      password:
+        secretRef: openmetadata-postgres
+        secretKey: password
+
+  # Externe OpenSearch (gedeeld met Vector)
+  elasticsearch:
+    enabled: true
+    host: opensearch-uwv.uwv-meta.svc.cluster.local
+    port: 9200
+    scheme: http
+    searchType: opensearch
+
+  # OIDC via Keycloak
+  authentication:
+    provider: oidc
+    publicKeys:
+      - http://openmetadata.uwv-platform.local/api/v1/system/config/jwks
+      - http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/certs
+    authority: http://keycloak.uwv-auth.svc.cluster.local/realms/uwv
+    clientId: openmetadata
+    callbackUrl: http://openmetadata.uwv-platform.local/callback
+
+  authorizer:
+    className: org.openmetadata.service.security.DefaultAuthorizer
+    initialAdmins:
+      - data.steward
+      - platform.admin
+    principalDomain: uwv-platform.local
+
+# Resources (scaled-down)
+openmetadata:
+  config:
+    upgradeMigrationConfigs:
+      debug: false
+  serviceType: ClusterIP
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 1Gi
+  limits:
+    cpu: 1
+    memory: 2Gi
+
+replicaCount: 1
+
+# Ingress
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+  hosts:
+    - host: openmetadata.uwv-platform.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls:
+    - hosts:
+        - openmetadata.uwv-platform.local
+      secretName: openmetadata-tls
+
+# Persistentie van logs/configs
+persistence:
+  enabled: true
+  storageClass: local-path
+  size: 5Gi

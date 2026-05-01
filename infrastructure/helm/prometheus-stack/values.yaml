@@ -1,0 +1,93 @@
+# kube-prometheus-stack — scaled-down voor k3d
+#
+# Levert: Prometheus, Alertmanager (uit), Grafana, kube-state-metrics,
+# node-exporter, Prometheus Operator (incl. ServiceMonitor + PodMonitor CRDs).
+# Andere charts (cert-manager, ingress-nginx, OpenMetadata) registreren
+# ServiceMonitors zodra deze stack draait.
+#
+# Chart: prometheus-community/kube-prometheus-stack
+
+defaultRules:
+  create: true
+
+# Alertmanager uit in dev (geen routes geconfigureerd)
+alertmanager:
+  enabled: false
+
+# Prometheus zelf
+prometheus:
+  prometheusSpec:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        memory: 2Gi
+    retention: 7d
+    retentionSize: 5GB
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 10Gi
+    # Service- en PodMonitors uit alle namespaces oppakken
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+
+# Grafana
+grafana:
+  enabled: true
+  adminPassword: "uwv-dev-only-CHANGE-ME-2026"
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: uwv-platform-issuer
+    hosts:
+      - grafana.uwv-platform.local
+    tls:
+      - hosts: [grafana.uwv-platform.local]
+        secretName: grafana-tls
+
+# Operator
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+# Onnodige onderdelen uit voor scaled-down
+kubeApiServer:
+  enabled: true
+kubelet:
+  enabled: true
+kubeControllerManager:
+  enabled: false  # in k3d niet als aparte pod
+coreDns:
+  enabled: true
+kubeEtcd:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeStateMetrics:
+  enabled: true
+nodeExporter:
+  enabled: true

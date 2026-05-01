@@ -1,0 +1,76 @@
+# Keycloak — OIDC IdP voor het UWV-platform.
+#
+# Mock UWV-realm wordt geïmporteerd via realm-uwv.json (ConfigMap).
+# Productie: separate instance, MFA verplicht, externe IdP-federatie (DigiD/eHerkenning).
+#
+# Chart: bitnami/keycloak
+
+# Auth (DEV ONLY)
+auth:
+  adminUser: kcadmin
+  adminPassword: "uwv-dev-only-CHANGE-ME-2026"
+
+# Externe Postgres (gedeeld) — niet de embedded H2 of bundled PG.
+postgresql:
+  enabled: false
+externalDatabase:
+  host: postgres-postgresql.uwv-data.svc.cluster.local
+  port: 5432
+  user: uwvplatform
+  password: "uwv-dev-only-CHANGE-ME-2026"
+  database: keycloak
+
+# Productie-mode (vereist EXTERNAL DB)
+production: true
+
+# TLS staat aan via ingress (cert-manager); intern http.
+tls:
+  enabled: false
+
+# Resources
+replicaCount: 1
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+# Realm-import bij startup
+extraStartupArgs: "--import-realm"
+
+extraVolumes:
+  - name: uwv-realm
+    configMap:
+      name: keycloak-uwv-realm
+
+extraVolumeMounts:
+  - name: uwv-realm
+    mountPath: /opt/bitnami/keycloak/data/import
+    readOnly: true
+
+# Hostname / proxy voor ingress-nginx vóór Keycloak
+proxy: edge
+hostname: keycloak.uwv-platform.local
+
+# Ingress
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
+  hostname: keycloak.uwv-platform.local
+  tls: true
+  selfSigned: false  # cert-manager doet de cert
+
+# Service exposure
+service:
+  type: ClusterIP
+  ports:
+    http: 80
+
+# Geen Bitnami metrics-endpoint nodig in dev
+metrics:
+  enabled: false

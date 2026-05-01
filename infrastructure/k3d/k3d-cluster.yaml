@@ -1,0 +1,82 @@
+# UWV Reference Platform — k3d cluster config
+#
+# Scaled-down profiel, geschikt voor ontwikkel-laptop. Niet voor productie.
+# Dit cluster moet op Docker Desktop draaien met minimaal 8 GB RAM en 4 CPU's
+# beschikbaar voor containers.
+#
+# Belangrijke keuzes:
+# - Traefik uit: we gebruiken Stackable's listener-operator + ingress-nginx
+#   (in fase 1) zodat exposure-pad consistent is met productie.
+# - servicelb uit: niet nodig in deze topologie.
+# - 1 server + 2 agents: lichte setup; pods schalen via scaled-down replica counts.
+# - LoadBalancer ports 8080/8443 op host → ingress-nginx in cluster.
+#
+# Aanmaken:
+#   k3d cluster create --config infrastructure/k3d/k3d-cluster.yaml
+
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+
+metadata:
+  name: uwv-platform
+
+servers: 1
+agents: 2
+
+# Image: pin op een specifieke k3s-versie. Update bewust.
+image: rancher/k3s:v1.31.5-k3s1
+
+ports:
+  - port: 8080:80
+    nodeFilters:
+      - loadbalancer
+  - port: 8443:443
+    nodeFilters:
+      - loadbalancer
+
+# Volumes: gedeelde host-cache voor image-pulls (sneller na eerste run).
+volumes:
+  - volume: uwv-platform-data:/var/lib/rancher/k3s/storage
+    nodeFilters:
+      - all
+
+options:
+  k3d:
+    wait: true
+    timeout: "180s"
+    disableLoadbalancer: false
+    disableImageVolume: false
+
+  k3s:
+    extraArgs:
+      # Schakel Traefik uit: ingress-nginx wordt apart geïnstalleerd in fase 1.
+      - arg: "--disable=traefik"
+        nodeFilters:
+          - server:*
+      # ServiceLB uit: we gebruiken k3d's eigen loadbalancer.
+      - arg: "--disable=servicelb"
+        nodeFilters:
+          - server:*
+      # Disable metrics-server: Prometheus stack neemt het over.
+      - arg: "--disable=metrics-server"
+        nodeFilters:
+          - server:*
+
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: true
+
+# Registries: publiek pullen, geen mirror geconfigureerd (zie platform-config.yaml: image_pull=public).
+# Air-gapped scenario voegt hier later een mirrors-block toe.
+registries:
+  config: |
+    mirrors:
+      "docker.stackable.tech":
+        endpoint:
+          - "https://docker.stackable.tech"
+      "quay.io":
+        endpoint:
+          - "https://quay.io"
+      "docker.io":
+        endpoint:
+          - "https://registry-1.docker.io"

@@ -1,0 +1,37 @@
+# UWV Reference Platform — stackablectl stack-bestand.
+#
+# Stelt een herbruikbare "stack"-bundel samen die alle Stackable-CRD-resources
+# combineert. Wordt vanuit scripts/deploy-platform.sh aangeroepen voor een
+# volledige all-at-once deploy. Voor incrementele rollout gebruiken we
+# kustomize per platform/<onderdeel>.
+#
+# Tip: stackablectl stack list / install / describe accepteert dit bestand.
+
+stacks:
+  uwv-platform:
+    description: |
+      UWV referentie-implementatie van het data- en analyticsplatform.
+      Bevat: ZooKeeper, Hive Metastore, Kafka, NiFi, Spark, Trino, OPA,
+      Airflow, Superset. OpenMetadata wordt apart via Helm geïnstalleerd
+      (zie infrastructure/helm/openmetadata/values.yaml).
+    stackableRelease: uwv-platform-26.3
+    labels:
+      - uwv
+      - lakehouse
+      - delta
+      - reference
+    manifests:
+      - plainYaml: platform/00-namespaces/
+      - plainYaml: platform/01-secrets/
+      - plainYaml: platform/02-authentication/
+      - plainYaml: platform/03-storage/
+      - plainYaml: platform/04-zookeeper/
+      - plainYaml: platform/05-hive-metastore/
+      - plainYaml: platform/06-kafka/
+      - plainYaml: platform/07-nifi/
+      - plainYaml: platform/08-spark/
+      - plainYaml: platform/09-trino/
+      - plainYaml: platform/10-opa/
+      - plainYaml: platform/11-airflow/
+      - plainYaml: platform/12-superset/
+      - plainYaml: platform/13-openmetadata-config/

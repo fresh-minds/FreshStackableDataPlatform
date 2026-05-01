@@ -1,0 +1,70 @@
+# PostgreSQL — single-instance, gedeeld voor HMS / Airflow / Superset / OpenMetadata.
+#
+# Eén PostgreSQL-pod hoste meerdere databases (één per consumer). Init-script
+# in templates/init-uwv-databases.sql maakt ze aan bij eerste boot.
+#
+# Productie: aparte instances met eigen retentie, replicatie, backup-strategie.
+#
+# Chart: bitnami/postgresql
+
+architecture: standalone
+
+auth:
+  postgresPassword: "uwv-dev-only-CHANGE-ME-2026"
+  username: "uwvplatform"
+  password: "uwv-dev-only-CHANGE-ME-2026"
+  database: "platform"
+
+primary:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  persistence:
+    enabled: true
+    storageClass: "local-path"
+    size: 8Gi
+
+  # Init-script maakt extra databases en gebruikers aan voor de consumers.
+  initdb:
+    scripts:
+      00-uwv-databases.sql: |
+        -- Aanmaken van databases voor elk platform-onderdeel.
+        -- Wachtwoorden: zelfde als POSTGRES_PASSWORD (dev only).
+        CREATE DATABASE hivemetastore OWNER uwvplatform;
+        CREATE DATABASE airflow OWNER uwvplatform;
+        CREATE DATABASE superset OWNER uwvplatform;
+        CREATE DATABASE openmetadata OWNER uwvplatform;
+        CREATE DATABASE keycloak OWNER uwvplatform;
+
+        -- Schema-grants per service. Voor referentie alle volledig.
+        GRANT ALL ON DATABASE hivemetastore TO uwvplatform;
+        GRANT ALL ON DATABASE airflow TO uwvplatform;
+        GRANT ALL ON DATABASE superset TO uwvplatform;
+        GRANT ALL ON DATABASE openmetadata TO uwvplatform;
+        GRANT ALL ON DATABASE keycloak TO uwvplatform;
+
+  # Pas op met postgresql.conf in scaled-down: lage shared_buffers.
+  pgHbaConfiguration: |
+    host all all 0.0.0.0/0 md5
+    host all all ::/0 md5
+    local all all trust
+  extendedConfiguration: |
+    max_connections = 100
+    shared_buffers = 128MB
+    effective_cache_size = 512MB
+    log_statement = 'none'
+    log_connections = off
+
+# Service exposure (binnen-cluster only)
+service:
+  type: ClusterIP
+  ports:
+    postgresql: 5432
+
+metrics:
+  enabled: false

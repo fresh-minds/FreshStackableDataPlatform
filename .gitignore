@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/.user.yml
+dbt/profiles.yml
+
+# Helm
+charts/*.tgz
+infrastructure/helm/**/charts/
+
+# Kubernetes / kustomize build outputs
+**/build/
+*.kustomize.out.yaml
+
+# Local secrets (never commit)
+*.secret.yaml
+*-secret.yaml
+secrets/local/
+.env
+.env.local
+*.pem
+*.key
+!opa-policies-src/data/*.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs and tmp
+*.log
+tmp/
+.cache/
+
+# Generated synthetic data (regenerate via Makefile)
+data-generation/output/

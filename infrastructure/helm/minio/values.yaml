@@ -1,0 +1,94 @@
+# MinIO — single-node, single-drive (k3d / scaled-down)
+#
+# In productie: distributed mode (4+ nodes met EC). Voor referentie volstaat
+# een enkele Pod. Buckets worden door bootstrap.sh aangemaakt via mc-job.
+#
+# Chart: minio/minio
+
+mode: standalone
+
+# Storage
+persistence:
+  enabled: true
+  storageClass: "local-path"   # k3d default
+  size: 30Gi
+  accessMode: ReadWriteOnce
+
+# Auth (DEV ONLY — vervangen in productie via Secret)
+# Voor reproduceerbaarheid in dev hardcoded; bootstrap waarschuwt expliciet.
+rootUser: "uwvadmin"
+rootPassword: "uwv-dev-only-CHANGE-ME-2026"
+
+# Resources
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+# Buckets aanmaken via een post-install Job (werkt op standalone mode)
+buckets:
+  - name: uwv-bronze
+    policy: none
+    purge: false
+  - name: uwv-silver
+    policy: none
+    purge: false
+  - name: uwv-gold
+    policy: none
+    purge: false
+  - name: uwv-sensitive
+    policy: none
+    purge: false
+  - name: uwv-staging
+    policy: none
+    purge: false
+  - name: uwv-checkpoints
+    policy: none
+    purge: false
+  - name: uwv-meta
+    policy: none
+    purge: false
+
+# Service exposure
+service:
+  type: ClusterIP
+  port: 9000
+
+consoleService:
+  type: ClusterIP
+  port: 9001
+
+# Ingress voor MinIO Console (UI)
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+  hosts:
+    - minio.uwv-platform.local
+  tls:
+    - hosts: [minio.uwv-platform.local]
+      secretName: minio-tls
+
+consoleIngress:
+  enabled: true
+  ingressClassName: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+  hosts:
+    - minio-console.uwv-platform.local
+  tls:
+    - hosts: [minio-console.uwv-platform.local]
+      secretName: minio-console-tls
+
+# Server-side encryption (KES) — productie-only; uit voor referentie
+tls:
+  enabled: false
+
+# Disable Bitnami-style metrics (chart heeft eigen metrics endpoint)
+metrics:
+  serviceMonitor:
+    enabled: false

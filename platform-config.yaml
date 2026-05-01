@@ -1,0 +1,51 @@
+# UWV Reference Data Platform — centrale configuratie
+#
+# Eén bron van waarheid voor implementatie-keuzes die door meerdere componenten
+# worden gelezen (Trino-catalogs, dbt-macros, Spark-env, NiFi-templates, Airflow-DAGs).
+#
+# Wijzig hier — niet hardcoden in componenten. Zie docs/adr/0002-iceberg-vs-delta.md
+# en docs/adr/0006-delta-chosen-for-this-implementation.md voor de afweging
+# achter `table_format`.
+
+platform:
+  name: uwv-data-platform
+  version: 0.1.0
+
+  # Open table format. Toegestaan: "delta" | "iceberg".
+  # Default per ADR-0002 is iceberg; deze referentie-implementatie kiest delta
+  # — zie ADR-0006 voor motivatie en mitigaties.
+  table_format: delta
+
+  # Catalog backend voor Hive-compatibele metastore. Voorlopig vast op hive_metastore;
+  # toekomstige optie "rest" (Polaris/Nessie/Tabular) blijft open.
+  catalog_backend: hive_metastore
+
+  # Object store. Voor on-cluster k3d/k3s draaien we MinIO single-node.
+  object_store: minio
+
+  # Regio-tag voor metadata/policy doeleinden (geen cloud-regio).
+  region: eu-nl-1
+
+  # Schaalprofiel: "scaled-down" | "production"
+  # scaled-down: 1 replica per service, lage resource requests, geschikt voor k3d.
+  scale_profile: scaled-down
+
+  # Image-pull strategie: "public" | "mirrored"
+  # public: pullen vanaf docker.stackable.tech, quay.io, docker.io tijdens deploy.
+  # mirrored: alleen vanaf interne registry (air-gapped).
+  image_pull: public
+
+# DNS-suffix voor Listener-operator. Verwacht in /etc/hosts:
+#   127.0.0.1 trino.uwv-platform.local keycloak.uwv-platform.local ...
+dns:
+  suffix: uwv-platform.local
+
+# Persistentie-pads in MinIO buckets.
+buckets:
+  bronze: uwv-bronze
+  silver: uwv-silver
+  gold: uwv-gold
+  sensitive: uwv-sensitive
+  staging: uwv-staging
+  checkpoints: uwv-checkpoints
+  meta: uwv-meta

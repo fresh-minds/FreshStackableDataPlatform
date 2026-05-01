@@ -1,0 +1,46 @@
+# Self-signed ClusterIssuer + interne CA voor het UWV-platform.
+#
+# Pad: cert-manager genereert eerst een self-signed cert (issuer #1), gebruikt
+# die om een CA-certificaat te tekenen, en de echte CA-issuer (#2) tekent
+# alle service-certs. Dit voorkomt "elke service zijn eigen self-signed cert".
+#
+# Toepassen na cert-manager Helm install:
+#   kubectl apply -f infrastructure/helm/cert-manager/cluster-issuer.yaml
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-bootstrap
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: uwv-platform-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: UWV Reference Platform Self-Signed CA
+  secretName: uwv-platform-ca
+  duration: 87600h  # 10 jaar (dev only)
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  subject:
+    organizations:
+      - UWV Reference Platform
+      - Dev / Self-Signed
+  issuerRef:
+    name: selfsigned-bootstrap
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: uwv-platform-issuer
+spec:
+  ca:
+    secretName: uwv-platform-ca

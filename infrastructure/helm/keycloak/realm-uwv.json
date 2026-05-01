@@ -1,0 +1,310 @@
+{
+  "_comment": "DEV-ONLY UWV-realm voor de referentie-implementatie. Alle wachtwoorden en client-secrets zijn placeholders. Voor productie: rotateer alles, koppel federatie (DigiD/eHerkenning), zet MFA verplicht.",
+  "realm": "uwv",
+  "displayName": "UWV Reference Platform",
+  "displayNameHtml": "<b>UWV</b> Reference Platform",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
+  "defaultRole": {
+    "name": "default-roles-uwv",
+    "description": "${role_default-roles}",
+    "composite": true,
+    "clientRole": false,
+    "containerId": "uwv"
+  },
+  "roles": {
+    "realm": [
+      {
+        "name": "wia_beoordelaar",
+        "description": "WIA-beoordelaar — toegang tot WIA-claim-velden in eigen regio."
+      },
+      {
+        "name": "ww_handhaver",
+        "description": "WW-handhaver — toegang tot WW-risk-data en handhavings-relevante kolommen."
+      },
+      {
+        "name": "wajong_arbeidsdeskundige",
+        "description": "Wajong-arbeidsdeskundige — toegang tot Wajong-dossier (incl. Sensitive Vault) met 4-eyes."
+      },
+      {
+        "name": "crm_medewerker",
+        "description": "CRM-medewerker — gemaskeerde BSN, geen medische data."
+      },
+      {
+        "name": "fez_analist",
+        "description": "FEZ-analist — financieel-aggregaten, geen PII."
+      },
+      {
+        "name": "data_steward",
+        "description": "Data steward — datakwaliteit, profiler, lineage."
+      },
+      {
+        "name": "data_engineer",
+        "description": "Data engineer — pipeline-eigenaar, JIT-toegang tot bronze."
+      },
+      {
+        "name": "platform_admin",
+        "description": "Platform admin — break-glass, niet voor day-to-day."
+      },
+      {
+        "name": "researcher",
+        "description": "Researcher — alleen sandbox-zone (UC-09), geen productie-PII."
+      },
+      {
+        "name": "smz_planner",
+        "description": "SMZ planner — capaciteitsplanning UC-08."
+      },
+      {
+        "name": "proactief_dienstverlener",
+        "description": "Proactieve dienstverlener — UC-04 TW-eligibility-werklijst."
+      }
+    ]
+  },
+  "users": [
+    {
+      "username": "wia.beoordelaar",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "WIA",
+      "lastName": "Beoordelaar",
+      "email": "wia.beoordelaar@uwv-platform.local",
+      "credentials": [
+        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Wia2026", "temporary": false}
+      ],
+      "realmRoles": ["wia_beoordelaar"]
+    },
+    {
+      "username": "ww.handhaver",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "WW",
+      "lastName": "Handhaver",
+      "email": "ww.handhaver@uwv-platform.local",
+      "credentials": [
+        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Ww2026", "temporary": false}
+      ],
+      "realmRoles": ["ww_handhaver"]
+    },
+    {
+      "username": "wajong.arbeidsdeskundige",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Wajong",
+      "lastName": "Arbeidsdeskundige",
+      "email": "wajong.arbeidsdeskundige@uwv-platform.local",
+      "credentials": [
+        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Wajong2026", "temporary": false}
+      ],
+      "realmRoles": ["wajong_arbeidsdeskundige"]
+    },
+    {
+      "username": "crm.medewerker",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "CRM",
+      "lastName": "Medewerker",
+      "email": "crm.medewerker@uwv-platform.local",
+      "credentials": [
+        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Crm2026", "temporary": false}
+      ],
+      "realmRoles": ["crm_medewerker"]
+    },
+    {
+      "username": "fez.analist",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "FEZ",
+      "lastName": "Analist",
+      "email": "fez.analist@uwv-platform.local",
+      "credentials": [
+        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Fez2026", "temporary": false}
+      ],
+      "realmRoles": ["fez_analist"]
+    },
+    {
+      "username": "data.steward",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Data",
+      "lastName": "Steward",
+      "email": "data.steward@uwv-platform.local",
+      "credentials": [
+        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Steward2026", "temporary": false}
+      ],
+      "realmRoles": ["data_steward"]
+    },
+    {
+      "username": "data.engineer",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Data",
+      "lastName": "Engineer",
+      "email": "data.engineer@uwv-platform.local",
+      "credentials": [
+        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Engineer2026", "temporary": false}
+      ],
+      "realmRoles": ["data_engineer"]
+    },
+    {
+      "username": "platform.admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Platform",
+      "lastName": "Admin",
+      "email": "platform.admin@uwv-platform.local",
+      "credentials": [
+        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Admin2026", "temporary": false}
+      ],
+      "realmRoles": ["platform_admin"]
+    },
+    {
+      "username": "researcher",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "UC09",
+      "lastName": "Researcher",
+      "email": "researcher@uwv-platform.local",
+      "credentials": [
+        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Researcher2026", "temporary": false}
+      ],
+      "realmRoles": ["researcher"]
+    },
+    {
+      "username": "smz.planner",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "SMZ",
+      "lastName": "Planner",
+      "email": "smz.planner@uwv-platform.local",
+      "credentials": [
+        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Smz2026", "temporary": false}
+      ],
+      "realmRoles": ["smz_planner"]
+    },
+    {
+      "username": "proactief.dienstverlener",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Proactief",
+      "lastName": "Dienstverlener",
+      "email": "proactief.dienstverlener@uwv-platform.local",
+      "credentials": [
+        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Pdv2026", "temporary": false}
+      ],
+      "realmRoles": ["proactief_dienstverlener"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "trino",
+      "name": "Trino (UWV)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-trino-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "redirectUris": [
+        "https://trino.uwv-platform.local:8443/*",
+        "https://trino.uwv-platform.local/*"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {
+        "post.logout.redirect.uris": "+"
+      },
+      "defaultClientScopes": ["web-origins", "profile", "roles", "email"],
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "superset",
+      "name": "Apache Superset",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-superset-secret",
+      "standardFlowEnabled": true,
+      "redirectUris": ["https://superset.uwv-platform.local:8443/*", "https://superset.uwv-platform.local/*"],
+      "webOrigins": ["+"],
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "airflow",
+      "name": "Apache Airflow",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-airflow-secret",
+      "standardFlowEnabled": true,
+      "redirectUris": ["https://airflow.uwv-platform.local:8443/*", "https://airflow.uwv-platform.local/*"],
+      "webOrigins": ["+"],
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "nifi",
+      "name": "Apache NiFi",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-nifi-secret",
+      "standardFlowEnabled": true,
+      "redirectUris": ["https://nifi.uwv-platform.local:8443/*", "https://nifi.uwv-platform.local/*"],
+      "webOrigins": ["+"],
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "openmetadata",
+      "name": "OpenMetadata",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-openmetadata-secret",
+      "standardFlowEnabled": true,
+      "redirectUris": ["http://openmetadata.uwv-platform.local/*", "https://openmetadata.uwv-platform.local/*"],
+      "webOrigins": ["+"],
+      "fullScopeAllowed": true
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "roles",
+      "description": "OpenID Connect scope for adding realm roles to the access token",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ]
+}
