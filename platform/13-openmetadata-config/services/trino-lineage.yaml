@@ -1,0 +1,20 @@
+# Trino lineage workflow — leest query-history en bouwt kolom-niveau lineage.
+---
+source:
+  type: trino-lineage
+  serviceName: uwv-trino
+  sourceConfig:
+    config:
+      type: DatabaseLineage
+      queryLogDuration: 7    # dagen terug
+      resultLimit: 5000
+sink:
+  type: metadata-rest
+  config: {}
+workflowConfig:
+  loggerLevel: INFO
+  openMetadataServerConfig:
+    hostPort: http://openmetadata.uwv-meta.svc.cluster.local:8585/api
+    authProvider: openmetadata
+    securityConfig:
+      jwtToken: ${OM_JWT_TOKEN}

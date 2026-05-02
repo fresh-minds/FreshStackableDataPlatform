@@ -1,0 +1,91 @@
+# Declaratieve KafkaTopic-creatie (improvements #2).
+#
+# Stackable's kafka-operator heeft geen KafkaTopic CRD (Strimzi wel). We
+# gebruiken een Job die `kafka-topics.sh --create --if-not-exists` runt voor
+# elke topic. Idempotent.
+#
+# Vervangt `auto.create.topics.enable=true` voor productie. Dev houdt het
+# voorlopig nog aan voor flexibiliteit.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-topics-list
+  namespace: uwv-platform
+data:
+  topics.txt: |
+    # Format: <name>:<partitions>:<replication_factor>:<retention_ms>:<cleanup_policy>
+    # Cliënt-events
+    uwv.persona.created:3:1:604800000:delete
+    uwv.polisadm.ikv:3:1:1209600000:delete
+    uwv.ww.aanvraag:3:1:604800000:delete
+    uwv.wia.aanvraag:3:1:604800000:delete
+    uwv.wajong.dossier:3:1:1209600000:delete
+    uwv.zw.melding:3:1:604800000:delete
+    uwv.crm.contact:3:1:259200000:delete
+    uwv.fez.uitkeringslast:1:1:31536000000:delete
+    # Dead-letter queues
+    uwv.persona.created.dlq:1:1:2592000000:delete
+    uwv.polisadm.ikv.dlq:1:1:2592000000:delete
+    uwv.ww.aanvraag.dlq:1:1:2592000000:delete
+    uwv.wia.aanvraag.dlq:1:1:2592000000:delete
+    # Audit / observability
+    uwv.audit.client_360:3:1:220752000000:delete
+    uwv.trino.queries:3:1:2592000000:compact
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-topics-bootstrap
+  namespace: uwv-platform
+  labels:
+    uwv.nl/component: kafka-topics
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        uwv.nl/component: kafka-topics
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: topics
+          image: bitnami/kafka:3.7
+          command: ["bash", "-euo", "pipefail", "-c"]
+          args:
+            - |
+              BOOTSTRAP="uwv-kafka-bootstrap.uwv-platform.svc.cluster.local:9092"
+              echo "Wachten op Kafka-bootstrap..."
+              for i in $(seq 1 60); do
+                if kafka-broker-api-versions.sh --bootstrap-server "$BOOTSTRAP" >/dev/null 2>&1; then
+                  break
+                fi
+                sleep 5
+              done
+
+              echo "Topics aanmaken (idempotent)"
+              while IFS=: read -r name parts rf retention cleanup; do
+                # Skip lege regels en comments
+                [[ -z "$name" || "$name" =~ ^# ]] && continue
+
+                kafka-topics.sh --bootstrap-server "$BOOTSTRAP" \
+                  --create --if-not-exists \
+                  --topic "$name" \
+                  --partitions "$parts" \
+                  --replication-factor "$rf" \
+                  --config "retention.ms=$retention" \
+                  --config "cleanup.policy=$cleanup" \
+                  || echo "  ! topic $name failed (mogelijk al created)"
+                echo "  + $name  parts=$parts rf=$rf retention=$retention"
+              done < /config/topics.txt
+
+              echo "Lijst van topics:"
+              kafka-topics.sh --bootstrap-server "$BOOTSTRAP" --list
+          volumeMounts:
+            - name: topics-config
+              mountPath: /config
+      volumes:
+        - name: topics-config
+          configMap:
+            name: kafka-topics-list

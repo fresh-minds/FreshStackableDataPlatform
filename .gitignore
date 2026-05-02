@@ -58,3 +58,20 @@ tmp/
 
 # Generated synthetic data (regenerate via Makefile)
 data-generation/output/
+
+# Generated Trino catalog manifests (rendered uit *.yaml.tmpl)
+platform/09-trino/catalogs/rendered/
+
+# Synced spark-jobs (gekopieerd vanuit spark-jobs/ door deploy-platform.sh)
+platform/08-spark/scripts/
+
+# Terraform (Azure / AKS)
+infrastructure/azure/terraform/.terraform/
+infrastructure/azure/terraform/terraform.tfstate
+infrastructure/azure/terraform/terraform.tfstate.backup
+infrastructure/azure/terraform/terraform.tfvars
+infrastructure/azure/terraform/*.tfplan
+infrastructure/azure/terraform/crash.log
+
+# Azure SP credentials
+scripts/azure/env.sh

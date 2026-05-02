@@ -20,6 +20,21 @@
   "quickLoginCheckMilliSeconds": 1000,
   "maxDeltaTimeSeconds": 43200,
   "failureFactor": 5,
+  "_comment_password_policy": "Improvements #6 — sterk wachtwoord-beleid (R-BIO-05). Productie zou dit nog strakker zetten + 90-dagen rotatie.",
+  "passwordPolicy": "length(12) and digits(1) and lowerCase(1) and upperCase(1) and specialChars(1) and notUsername and passwordHistory(5)",
+  "_comment_session_timeouts": "Sessietimeouts (R-BIO-05). Verkort voor productie.",
+  "ssoSessionIdleTimeout": 3600,
+  "ssoSessionMaxLifespan": 28800,
+  "accessTokenLifespan": 900,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "offlineSessionIdleTimeout": 2592000,
+  "_comment_otp_policy": "TOTP-policy (R-BIO-05 + R-NIS2-06). Verplicht voor admin/data_engineer/wajong_arbeidsdeskundige via requiredActions per user (zie users-block).",
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyLookAheadWindow": 1,
+  "otpPolicyPeriod": 30,
+  "otpSupportedApplications": ["FreeOTP", "Google Authenticator"],
   "defaultRole": {
     "name": "default-roles-uwv",
     "description": "${role_default-roles}",
@@ -110,7 +125,8 @@
       "credentials": [
         {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Wajong2026", "temporary": false}
       ],
-      "realmRoles": ["wajong_arbeidsdeskundige"]
+      "realmRoles": ["wajong_arbeidsdeskundige"],
+      "requiredActions": ["CONFIGURE_TOTP"]
     },
     {
       "username": "crm.medewerker",
@@ -158,7 +174,8 @@
       "credentials": [
         {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Engineer2026", "temporary": false}
       ],
-      "realmRoles": ["data_engineer"]
+      "realmRoles": ["data_engineer"],
+      "requiredActions": ["CONFIGURE_TOTP"]
     },
     {
       "username": "platform.admin",
@@ -170,7 +187,8 @@
       "credentials": [
         {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Admin2026", "temporary": false}
       ],
-      "realmRoles": ["platform_admin"]
+      "realmRoles": ["platform_admin"],
+      "requiredActions": ["CONFIGURE_TOTP"]
     },
     {
       "username": "researcher",

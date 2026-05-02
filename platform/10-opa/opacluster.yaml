@@ -1,0 +1,32 @@
+# OpaCluster — Open Policy Agent voor Trino-authorisatie.
+#
+# OPA leest bundles uit ConfigMaps met label `opa.stackable.tech/bundle: "true"`.
+# In fase 3 ladenwe één base-bundle (allow-all met TODO). In fase 9 voegen we
+# de echte UWV-policies toe (rollen, doelbinding, row filters, column masks).
+#
+# Trino verwijst naar deze cluster via `spec.clusterConfig.authorization.opa.configMapName: uwv-opa`.
+---
+apiVersion: opa.stackable.tech/v1alpha1
+kind: OpaCluster
+metadata:
+  name: uwv-opa
+  namespace: uwv-platform
+spec:
+  image:
+    productVersion: "1.0.1"
+  clusterConfig:
+    listenerClass: cluster-internal
+  servers:
+    config:
+      logging:
+        enableVectorAgent: false
+    roleGroups:
+      default:
+        replicas: 1
+        config:
+          resources:
+            cpu:
+              min: "100m"
+              max: "500m"
+            memory:
+              limit: "256Mi"

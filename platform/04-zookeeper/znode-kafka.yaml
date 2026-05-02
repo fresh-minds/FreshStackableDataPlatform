@@ -1,0 +1,15 @@
+# ZookeeperZnode voor Kafka.
+#
+# Stackable's Kafka-operator vereist een Znode (een ZK-pad met geïsoleerde
+# config). Deze CRD maakt het Znode aan + een ConfigMap met daarin de
+# connect-string die KafkaCluster's `clusterConfig.zookeeperConfigMapName`
+# refereert.
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperZnode
+metadata:
+  name: uwv-zookeeper-znode-kafka
+  namespace: uwv-platform
+spec:
+  clusterRef:
+    name: uwv-zookeeper

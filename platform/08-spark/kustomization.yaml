@@ -1,0 +1,23 @@
+# platform/08-spark — Spark streaming + batch jobs.
+#
+# De SparkApplication referent een ConfigMap `spark-streaming-jobs` die door
+# kustomize wordt gegenereerd uit platform/08-spark/scripts/. Deze directory
+# wordt door scripts/deploy-platform.sh gevuld vanuit `spark-jobs/` (canonical
+# bron) — kustomize kan namelijk niet uit ../../<dir> laden zonder
+# load-restrictor=None.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: uwv-platform
+
+resources:
+  - apps/streaming-bronze.yaml
+
+configMapGenerator:
+  - name: spark-streaming-jobs
+    files:
+      - scripts/streaming_kafka_to_lakehouse.py
+      - scripts/lakehouse_io.py
+
+generatorOptions:
+  disableNameSuffixHash: true

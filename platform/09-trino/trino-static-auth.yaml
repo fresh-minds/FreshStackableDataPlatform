@@ -1,0 +1,28 @@
+# Static-user AuthenticationClass voor smoke-tests en break-glass.
+#
+# Naast de OIDC-flow (keycloak-uwv) ondersteunen we één static user voor
+# smoke-tests en geautomatiseerde queries. Productie zou ALLEEN OIDC hebben.
+#
+# Stackable's static-provider verwacht een Secret met username -> password.
+---
+apiVersion: authentication.stackable.tech/v1alpha1
+kind: AuthenticationClass
+metadata:
+  name: trino-static-uwv
+spec:
+  provider:
+    static:
+      userCredentialsSecret:
+        name: trino-static-users
+---
+# Dev-only static users.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: trino-static-users
+  namespace: uwv-platform
+  labels:
+    uwv.nl/dev-only: "true"
+type: Opaque
+stringData:
+  smoketest: "uwv-dev-only-CHANGE-ME-Smoke2026"

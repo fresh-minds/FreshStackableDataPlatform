@@ -1,0 +1,327 @@
+{
+  "uwv_role_mappings": {
+    "resource_purposes": {
+      "bronze.uwv.*": [
+        "primair_proces"
+      ],
+      "gold.uc01_wia_funnel.*": [
+        "sturingsinfo"
+      ],
+      "gold.uc04_tw_eligibility.*": [
+        "proactieve_dienstverlening"
+      ],
+      "gold.uc05_client_360.*": [
+        "klantcontact",
+        "behandeling"
+      ],
+      "gold.uc06_lastprognose.*": [
+        "actuarie",
+        "beleid"
+      ],
+      "gold.uc07_dq_polisadm.*": [
+        "primair_proces",
+        "kwaliteitscontrole"
+      ],
+      "gold.uc08_smz_capaciteit.*": [
+        "planning"
+      ],
+      "sensitive.wajong.*": [
+        "reintegratie",
+        "behandeling"
+      ],
+      "silver.crm.*": [
+        "klantcontact",
+        "behandeling"
+      ],
+      "silver.fez.*": [
+        "actuarie",
+        "beleid"
+      ],
+      "silver.persoon.*": [
+        "primair_proces",
+        "kwaliteitscontrole"
+      ],
+      "silver.polisadm.*": [
+        "primair_proces",
+        "kwaliteitscontrole"
+      ],
+      "silver.wajong.*": [
+        "reintegratie",
+        "behandeling"
+      ],
+      "silver.wia.*": [
+        "uitkering",
+        "behandeling",
+        "reintegratie"
+      ],
+      "silver.ww.*": [
+        "uitkering",
+        "handhaving"
+      ],
+      "silver.zw.*": [
+        "uitkering"
+      ]
+    },
+    "roles": {
+      "crm_medewerker": {
+        "break_glass": false,
+        "can_see_bankrekening": false,
+        "can_see_medical": false,
+        "can_see_pii": false,
+        "catalogs": [
+          "gold"
+        ],
+        "purposes": [
+          "klantcontact",
+          "behandeling"
+        ],
+        "regio_filter": false,
+        "schemas": [
+          "uc05_client_360"
+        ]
+      },
+      "data_engineer": {
+        "break_glass": false,
+        "can_see_bankrekening": true,
+        "can_see_medical": false,
+        "can_see_pii": true,
+        "catalogs": [
+          "bronze"
+        ],
+        "jit_required": true,
+        "purposes": [
+          "primair_proces"
+        ],
+        "regio_filter": false,
+        "schemas": null
+      },
+      "data_steward": {
+        "break_glass": false,
+        "can_see_bankrekening": false,
+        "can_see_medical": false,
+        "can_see_pii": true,
+        "catalogs": [
+          "bronze",
+          "silver",
+          "gold"
+        ],
+        "purposes": [
+          "sturingsinfo",
+          "kwaliteitscontrole"
+        ],
+        "regio_filter": false,
+        "schemas": null
+      },
+      "fez_analist": {
+        "break_glass": false,
+        "can_see_bankrekening": false,
+        "can_see_medical": false,
+        "can_see_pii": false,
+        "catalogs": [
+          "gold"
+        ],
+        "purposes": [
+          "actuarie",
+          "beleid"
+        ],
+        "regio_filter": false,
+        "schemas": [
+          "uc06_lastprognose"
+        ]
+      },
+      "platform_admin": {
+        "break_glass": true,
+        "can_see_bankrekening": true,
+        "can_see_medical": true,
+        "can_see_pii": true,
+        "catalogs": [
+          "bronze",
+          "silver",
+          "gold",
+          "sensitive",
+          "sandbox"
+        ],
+        "purposes": [
+          "*"
+        ],
+        "regio_filter": false,
+        "schemas": null
+      },
+      "proactief_dienstverlener": {
+        "break_glass": false,
+        "can_see_bankrekening": false,
+        "can_see_medical": false,
+        "can_see_pii": true,
+        "catalogs": [
+          "gold"
+        ],
+        "purposes": [
+          "proactieve_dienstverlening"
+        ],
+        "regio_filter": false,
+        "schemas": [
+          "uc04_tw_eligibility"
+        ]
+      },
+      "researcher": {
+        "break_glass": false,
+        "can_see_bankrekening": false,
+        "can_see_medical": false,
+        "can_see_pii": false,
+        "catalogs": [
+          "sandbox"
+        ],
+        "purposes": [
+          "statistisch_onderzoek"
+        ],
+        "regio_filter": false,
+        "schemas": null
+      },
+      "smoketest": {
+        "break_glass": false,
+        "can_see_bankrekening": false,
+        "can_see_medical": false,
+        "can_see_pii": true,
+        "catalogs": [
+          "bronze",
+          "silver",
+          "gold"
+        ],
+        "purposes": [
+          "*"
+        ],
+        "regio_filter": false,
+        "schemas": null
+      },
+      "smz_planner": {
+        "break_glass": false,
+        "can_see_bankrekening": false,
+        "can_see_medical": false,
+        "can_see_pii": false,
+        "catalogs": [
+          "gold",
+          "silver"
+        ],
+        "purposes": [
+          "planning"
+        ],
+        "regio_filter": false,
+        "schemas": [
+          "uc08_smz_capaciteit",
+          "smz"
+        ]
+      },
+      "wajong_arbeidsdeskundige": {
+        "break_glass": false,
+        "can_see_bankrekening": false,
+        "can_see_medical": true,
+        "can_see_pii": true,
+        "catalogs": [
+          "sensitive",
+          "silver",
+          "gold"
+        ],
+        "four_eyes_required": true,
+        "purposes": [
+          "reintegratie",
+          "behandeling"
+        ],
+        "regio_filter": false,
+        "schemas": [
+          "wajong",
+          "uc02_wajong"
+        ]
+      },
+      "wia_beoordelaar": {
+        "break_glass": false,
+        "can_see_bankrekening": false,
+        "can_see_medical": true,
+        "can_see_pii": true,
+        "catalogs": [
+          "silver",
+          "gold"
+        ],
+        "purposes": [
+          "uitkering",
+          "behandeling",
+          "reintegratie"
+        ],
+        "regio_filter": true,
+        "schemas": [
+          "wia",
+          "uc01_wia_funnel"
+        ]
+      },
+      "ww_handhaver": {
+        "break_glass": false,
+        "can_see_bankrekening": true,
+        "can_see_medical": false,
+        "can_see_pii": true,
+        "catalogs": [
+          "silver",
+          "gold"
+        ],
+        "purposes": [
+          "handhaving"
+        ],
+        "regio_filter": false,
+        "schemas": [
+          "ww",
+          "uc03_ww_risk"
+        ]
+      }
+    },
+    "sensitive_columns": {
+      "achternaam": {
+        "bankrekening": false,
+        "medical": false,
+        "pii": true
+      },
+      "bankrekening": {
+        "bankrekening": true,
+        "medical": false,
+        "pii": true
+      },
+      "bsn": {
+        "bankrekening": false,
+        "medical": false,
+        "pii": true
+      },
+      "diagnose": {
+        "bankrekening": false,
+        "medical": true,
+        "pii": false
+      },
+      "geboortedatum": {
+        "bankrekening": false,
+        "medical": false,
+        "pii": true
+      },
+      "huisnummer": {
+        "bankrekening": false,
+        "medical": false,
+        "pii": true
+      },
+      "iban": {
+        "bankrekening": true,
+        "medical": false,
+        "pii": true
+      },
+      "icd10": {
+        "bankrekening": false,
+        "medical": true,
+        "pii": false
+      },
+      "straat": {
+        "bankrekening": false,
+        "medical": false,
+        "pii": true
+      },
+      "voornaam": {
+        "bankrekening": false,
+        "medical": false,
+        "pii": true
+      }
+    }
+  }
+}

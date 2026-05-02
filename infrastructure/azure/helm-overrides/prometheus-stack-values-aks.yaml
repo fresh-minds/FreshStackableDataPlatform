@@ -1,0 +1,11 @@
+# kube-prometheus-stack override for AKS.
+prometheus:
+  prometheusSpec:
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "managed-csi"
+
+grafana:
+  persistence:
+    storageClassName: "managed-csi"

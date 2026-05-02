@@ -92,3 +92,23 @@ fi
 
 echo "OK: alle vereiste tooling aanwezig."
 [[ $warn -gt 0 ]] && echo "  ($warn optionele tools ontbreken — niet blokkerend)"
+
+echo
+echo "== AKS / Azure tooling (alleen nodig voor 'make aks-*') =="
+azure_tools=(az terraform jq)
+for bin in "${azure_tools[@]}"; do
+  check "$bin" no
+done
+if [[ -f "$ROOT/scripts/azure/env.sh" ]]; then
+  printf "  [OK]   %-12s -> %s\n" "env.sh" "$ROOT/scripts/azure/env.sh"
+else
+  printf "  [warn] %-12s (kopieer scripts/azure/env.sh.example en vul de SP-secret in)\n" "env.sh"
+fi
+if command -v az >/dev/null 2>&1; then
+  acct="$(az account show --query name -o tsv 2>/dev/null || true)"
+  if [[ -n "$acct" ]]; then
+    printf "  [OK]   az login        -> %s\n" "$acct"
+  else
+    printf "  [warn] az login        (nog niet ingelogd: az login)\n"
+  fi
+fi

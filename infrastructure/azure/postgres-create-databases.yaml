@@ -1,0 +1,46 @@
+# Post-install Job that creates the per-consumer databases on the shared
+# postgres instance. Replaces the in-line initdb.scripts block in the k3d
+# values, which doesn't survive Bitnami's init flow on AKS.
+#
+# Idempotent: every CREATE / GRANT is wrapped in a "do nothing if exists" check.
+# Apply after `helm upgrade --install postgres ...` reports Ready.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-create-databases
+  namespace: uwv-data
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: psql
+          image: docker.io/bitnamilegacy/postgresql:17.0.0-debian-12-r9
+          env:
+            - name: PGHOST
+              value: postgres-postgresql.uwv-data.svc.cluster.local
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              value: postgres
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-postgresql
+                  key: postgres-password
+          command:
+            - /bin/bash
+            - -ec
+            - |
+              for db in hivemetastore airflow superset openmetadata keycloak; do
+                if psql -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" | grep -q 1; then
+                  echo "database $db already exists"
+                else
+                  echo "creating database $db"
+                  psql -c "CREATE DATABASE $db OWNER uwvplatform"
+                fi
+                psql -c "GRANT ALL ON DATABASE $db TO uwvplatform"
+              done
+              echo "all databases ready"

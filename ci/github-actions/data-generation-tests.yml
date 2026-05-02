@@ -1,0 +1,35 @@
+# CI: pytest op data-generation. Met name BSN-checksum + persona generator.
+name: data-generation-tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'data-generation/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'data-generation/**'
+
+jobs:
+  pytest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: data-generation
+        run: pip install --quiet -e '.[dev]'
+
+      - name: Run pytest
+        working-directory: data-generation
+        run: |
+          PYTHONPATH=. pytest -v --tb=short
+
+      - name: Run lint
+        working-directory: data-generation
+        run: ruff check generators/ load_to_kafka.py

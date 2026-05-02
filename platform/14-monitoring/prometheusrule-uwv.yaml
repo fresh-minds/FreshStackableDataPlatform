@@ -1,0 +1,141 @@
+# PrometheusRule — UWV-platform alerts (improvements #1).
+#
+# Vereist kube-prometheus-stack (provides PrometheusRule CRD).
+# Severity-mapping:
+#   critical → page (Alertmanager → PagerDuty)
+#   warning  → notify (Alertmanager → Slack #uwv-data-platform)
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: uwv-platform-alerts
+  namespace: uwv-monitoring
+  labels:
+    prometheus: kube-prometheus
+    role: alert-rules
+    uwv.nl/policy-tier: production
+spec:
+  groups:
+    - name: uwv-trino
+      interval: 1m
+      rules:
+        - alert: TrinoQueryLatencyP99High
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le) (rate(trino_query_execution_seconds_bucket[5m]))
+            ) > 5
+          for: 10m
+          labels:
+            severity: warning
+            component: trino
+          annotations:
+            summary: "Trino p99 query-latency > 5s"
+            description: "Trino's p99 query-latency is {{ $value | printf \"%.2f\" }}s — boven SLO van 5s. Check workers + OPA-decisions."
+            runbook_url: "/docs/runbook.md#41-trino-weigert-query-met-access-denied"
+
+        - alert: TrinoNoActiveQueries
+          expr: trino_query_active{cluster="uwv-trino"} < 1
+          for: 30m
+          labels:
+            severity: warning
+            component: trino
+          annotations:
+            summary: "Trino heeft 30 min geen active query — broker mogelijk down?"
+
+    - name: uwv-opa
+      interval: 30s
+      rules:
+        - alert: OpaDecisionDenyRateHigh
+          expr: |
+            sum(rate(opa_http_request_duration_seconds_count{code="200",path=~"/v1/data/trino/.*"}[5m]))
+            > 0
+            and
+            (
+              sum(rate(opa_decision_logs_dropped_total[5m]))
+              /
+              clamp_min(sum(rate(opa_decision_logs_total[5m])), 1)
+            ) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+            component: opa
+          annotations:
+            summary: "OPA decision deny-rate > 5%"
+            description: "OPA weigert > 5% van Trino-queries. Kan duiden op (a) verkeerde rol-mapping na deploy, of (b) compromise. Check decision-log in OpenSearch."
+            runbook_url: "/docs/runbook.md#41-trino-weigert-query-met-access-denied"
+
+        - alert: OpaDown
+          expr: up{job=~".*opa.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: opa
+          annotations:
+            summary: "OPA-pod down — Trino weigert ALLE queries (default-deny)"
+
+    - name: uwv-spark-streaming
+      interval: 1m
+      rules:
+        - alert: SparkStreamingLagHigh
+          expr: |
+            kafka_consumergroup_lag_sum{
+              consumergroup=~".*streaming-bronze.*"
+            } > 10000
+          for: 10m
+          labels:
+            severity: warning
+            component: spark
+          annotations:
+            summary: "Spark streaming-bronze >10k berichten achter op Kafka"
+            description: "Streaming-pijp loopt achter; bronze-tabel mist data. Check Spark-driver + executor-logs."
+            runbook_url: "/docs/runbook.md#43-streaming-job-blijft-hangen"
+
+    - name: uwv-postgres
+      interval: 1m
+      rules:
+        - alert: PostgresDiskUsageHigh
+          expr: |
+            (kubelet_volume_stats_used_bytes{persistentvolumeclaim=~"data-postgres-postgresql-.*"}
+             / kubelet_volume_stats_capacity_bytes) > 0.80
+          for: 5m
+          labels:
+            severity: warning
+            component: postgres
+          annotations:
+            summary: "Postgres-PVC > 80% vol"
+            description: "Disk-usage {{ $value | humanizePercentage }} — verhoog PVC-size of cleanup oude logs."
+
+        - alert: PostgresDown
+          expr: up{job="postgres-postgresql"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: postgres
+          annotations:
+            summary: "Postgres down — alle services die 'm gebruiken vallen om (HMS, Airflow, Superset, OM, Keycloak)"
+
+    - name: uwv-platform
+      interval: 1m
+      rules:
+        - alert: KubePodNotReadyHigh
+          expr: |
+            sum by (namespace) (
+              kube_pod_status_phase{phase=~"Pending|Failed|Unknown",
+                                    namespace=~"uwv-.*"}
+            ) > 2
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "≥3 pods NotReady in {{ $labels.namespace }}"
+
+        - alert: NamespaceQuotaUsageHigh
+          expr: |
+            kube_resourcequota{type="used", resource="requests.cpu", namespace=~"uwv-.*"}
+            / kube_resourcequota{type="hard", resource="requests.cpu", namespace=~"uwv-.*"}
+            > 0.85
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Namespace {{ $labels.namespace }} CPU-quota > 85%"

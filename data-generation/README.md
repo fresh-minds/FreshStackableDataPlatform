@@ -1,0 +1,52 @@
+# data-generation
+
+Python-package met synthetische data-generators voor het UWV-referentie-platform.
+
+> **STRIKT SYNTHETISCH.** Geen echte BSN's, geen echte adresgegevens, geen
+> echte cliënt-data. Test-BSN-bereik (`9XXXXXXXX`) per BRP-conventie.
+> Elke geserialiseerde dataset bevat het header-comment
+> `SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE`.
+
+## Generators
+
+| Module | Inhoud |
+|---|---|
+| `generators.persona` | Persoon (BSN+11-proef, naam, geboortedatum, adres, geslacht). |
+| `generators.polisadministratie` | IKV's per persoon, dienstverbanden, lonen (placeholder, fase 5). |
+| `generators.ww` | WW-aanvragen (placeholder, fase 5). |
+| `generators.wia` | WIA-aanvragen + beoordelingen (placeholder, fase 5). |
+| `generators.wajong` | Wajong-dossiers (placeholder, fase 5). |
+| `generators.zw` | Ziektewet-meldingen (placeholder, fase 5). |
+| `generators.crm` | Klantcontact (placeholder, fase 5). |
+| `generators.fez` | Uitkeringslast-aggregaten (placeholder, fase 6). |
+
+Alle generators delen `generators._common` voor faker, header-stempels, en
+deterministische seeding.
+
+## Loaders
+
+| Script | Doel |
+|---|---|
+| `load_to_kafka.py` | Publiceert generator-output naar Kafka topics `uwv.<domain>.<event>`. |
+| `load_to_minio_staging.py` | Schrijft batch-output naar `s3://uwv-staging/` als CSV (placeholder). |
+
+## Lokaal draaien
+
+```bash
+cd data-generation
+uv sync
+uv run python -m generators.persona --count 100
+```
+
+## Tests
+
+```bash
+uv run pytest                    # of: uv run pytest -v
+uv run ruff check generators/    # lint
+```
+
+## In-cluster (via seed-job)
+
+`scripts/seed.sh` past `data-generation/k8s/seed-job.yaml` toe op het cluster.
+De Job mount de generator-code via twee ConfigMaps en draait `load_to_kafka.py`
+tegen de in-cluster Kafka-bootstrap.

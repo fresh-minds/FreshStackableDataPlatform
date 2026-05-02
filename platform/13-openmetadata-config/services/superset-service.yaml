@@ -1,0 +1,29 @@
+# Superset dashboard-ingestion. Levert dashboards + charts + lineage naar
+# Trino-tabellen.
+---
+source:
+  type: superset
+  serviceName: uwv-superset
+  serviceConnection:
+    config:
+      type: Superset
+      hostPort: http://uwv-superset-node.uwv-platform.svc.cluster.local:8088
+      connection:
+        provider: db
+        username: uwvplatform
+        password: ${SUPERSET_ADMIN_PW}
+  sourceConfig:
+    config:
+      type: DashboardMetadata
+      dashboardFilterPattern:
+        includes: [".*"]
+sink:
+  type: metadata-rest
+  config: {}
+workflowConfig:
+  loggerLevel: INFO
+  openMetadataServerConfig:
+    hostPort: http://openmetadata.uwv-meta.svc.cluster.local:8585/api
+    authProvider: openmetadata
+    securityConfig:
+      jwtToken: ${OM_JWT_TOKEN}

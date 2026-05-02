@@ -1,0 +1,54 @@
+# OpenMetadata Trino service-connection + ingestion-workflow.
+#
+# Wordt door de init-Job toegepast via `metadata ingest -c trino-service.yaml`.
+# Schema-filter dekt alle UWV-catalogs (bronze/silver/gold/sensitive).
+#
+# JWT-token komt uit Secret openmetadata-admin (env-substitutie in Job).
+---
+source:
+  type: trino
+  serviceName: uwv-trino
+  serviceConnection:
+    config:
+      type: Trino
+      hostPort: uwv-trino-coordinator.uwv-platform.svc.cluster.local:8443
+      username: smoketest
+      authType:
+        password: ${TRINO_PASSWORD}
+      catalog: bronze
+      protocol: https
+      verify: false
+  sourceConfig:
+    config:
+      type: DatabaseMetadata
+      schemaFilterPattern:
+        includes:
+          - uwv
+          - persoon
+          - polisadm
+          - ww
+          - wia
+          - wajong
+          - zw
+          - crm
+          - fez
+          - intermediate
+          - uc01_wia_funnel
+          - uc04_tw_eligibility
+          - uc05_client_360
+          - uc06_lastprognose
+          - uc07_dq_polisadm
+          - seed
+      includeTables: true
+      includeViews: true
+      markDeletedTables: true
+sink:
+  type: metadata-rest
+  config: {}
+workflowConfig:
+  loggerLevel: INFO
+  openMetadataServerConfig:
+    hostPort: http://openmetadata.uwv-meta.svc.cluster.local:8585/api
+    authProvider: openmetadata
+    securityConfig:
+      jwtToken: ${OM_JWT_TOKEN}

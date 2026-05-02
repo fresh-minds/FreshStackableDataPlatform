@@ -1,0 +1,105 @@
+# PodDisruptionBudgets (improvements #3) — voorkomt dat node-drain meerdere
+# replicas tegelijk omlegt. Voor een single-replica scaled-down setup is dit
+# weinig zinvol; we zetten desondanks PDB's zodat productie-overlay alleen
+# de replicas hoeft op te schalen.
+#
+# Convention: minAvailable: 1 voor alle workloads die data hebben (Kafka, ZK,
+# Hive Metastore); maxUnavailable: 1 voor stateless (Trino-coordinator).
+---
+# Trino coordinator
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: uwv-trino-coordinator-pdb
+  namespace: uwv-platform
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trino
+      app.kubernetes.io/component: coordinator
+---
+# Trino workers
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: uwv-trino-worker-pdb
+  namespace: uwv-platform
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trino
+      app.kubernetes.io/component: worker
+---
+# Kafka brokers
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: uwv-kafka-pdb
+  namespace: uwv-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka
+---
+# ZooKeeper servers
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: uwv-zookeeper-pdb
+  namespace: uwv-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zookeeper
+---
+# Hive Metastore
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: uwv-hive-pdb
+  namespace: uwv-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hive
+---
+# OPA
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: uwv-opa-pdb
+  namespace: uwv-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opa
+---
+# Postgres (gedeeld)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: postgres-pdb
+  namespace: uwv-data
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgresql
+---
+# OpenSearch
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: opensearch-pdb
+  namespace: uwv-meta
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opensearch

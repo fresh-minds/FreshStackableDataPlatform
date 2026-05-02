@@ -1,0 +1,25 @@
+# Kafka topics-ingestion. Topics worden zichtbaar als "messaging-service".
+---
+source:
+  type: kafka
+  serviceName: uwv-kafka
+  serviceConnection:
+    config:
+      type: Kafka
+      bootstrapServers: uwv-kafka-bootstrap.uwv-platform.svc.cluster.local:9092
+  sourceConfig:
+    config:
+      type: MessagingMetadata
+      topicFilterPattern:
+        includes:
+          - "uwv\\..*"
+sink:
+  type: metadata-rest
+  config: {}
+workflowConfig:
+  loggerLevel: INFO
+  openMetadataServerConfig:
+    hostPort: http://openmetadata.uwv-meta.svc.cluster.local:8585/api
+    authProvider: openmetadata
+    securityConfig:
+      jwtToken: ${OM_JWT_TOKEN}

@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: uwv-platform
+resources:
+  - opacluster.yaml
+
+# Genereer een ConfigMap met het Rego-bundle.
+# Stackable's OPA-operator pikt 'm op via label `opa.stackable.tech/bundle: "true"`.
+#
+# Bron: opa-policies-src/. Gesynced naar platform/10-opa/policies/ door
+# scripts/build-opa-bundle.sh (run vóór kubectl apply).
+configMapGenerator:
+  - name: opa-trino-bundle
+    files:
+      - policies/trino-base.rego
+      - policies/trino-uwv-roles.rego
+      - policies/trino-doelbinding.rego
+      - policies/trino-row-filters.rego
+      - policies/trino-column-masks.rego
+      - policies/data.json
+    options:
+      labels:
+        opa.stackable.tech/bundle: "true"
+        uwv.nl/policy-tier: "production"
+
+generatorOptions:
+  disableNameSuffixHash: true

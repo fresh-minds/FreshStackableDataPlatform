@@ -1,0 +1,10 @@
+# ZookeeperZnode voor NiFi-cluster-state.
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperZnode
+metadata:
+  name: uwv-zookeeper-znode-nifi
+  namespace: uwv-platform
+spec:
+  clusterRef:
+    name: uwv-zookeeper

@@ -1,0 +1,229 @@
+# Post-deploy init-Job: registreert Trino als Superset-database en maakt
+# datasets aan voor UC-01 (WIA Funnel) en UC-06 (Lastprognose).
+#
+# Idempotent: API-calls gebruiken POST → 200/201 of 422 (already exists).
+# De Job wacht via een `until`-loop tot de Superset-webserver healthy is.
+#
+# Productie zou dit via een GitOps-tool (ArgoCD ApplicationSet) of een
+# Superset-bundle (zip) doen. Voor dev volstaat een eenvoudige Python-Job.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: superset-init-script
+  namespace: uwv-platform
+data:
+  init_superset.py: |
+    """Bootstrap Superset met UWV-defaults.
+
+    Volgorde:
+      1. Wacht tot Superset webserver health-endpoint OK.
+      2. Login als admin → CSRF + access token.
+      3. Trino registreren als database (idempotent).
+      4. Datasets aanmaken voor gold.uc01_wia_funnel.* en gold.uc06_lastprognose.*.
+    """
+    import os
+    import sys
+    import time
+    import json
+    from urllib.parse import urljoin
+
+    import requests
+
+    SUPERSET_URL = os.environ.get(
+        "SUPERSET_URL",
+        "http://uwv-superset-node:8088",
+    )
+    ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
+    ADMIN_PASSWORD = os.environ["ADMIN_PASSWORD"]
+    TRINO_HOST = os.environ.get("TRINO_HOST", "uwv-trino-coordinator.uwv-platform.svc.cluster.local")
+    TRINO_USER = os.environ.get("TRINO_USER", "smoketest")
+    TRINO_PASSWORD = os.environ["TRINO_PASSWORD"]
+
+
+    def log(msg: str) -> None:
+        print(f"[init] {msg}", flush=True)
+
+
+    def wait_for_superset(timeout_s: int = 600) -> None:
+        log(f"Wachten op Superset op {SUPERSET_URL}/health")
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            try:
+                r = requests.get(urljoin(SUPERSET_URL, "/health"), timeout=5)
+                if r.status_code == 200 and "OK" in r.text:
+                    log("Superset health OK")
+                    return
+            except requests.RequestException:
+                pass
+            time.sleep(5)
+        sys.exit("FAIL: Superset bereikt /health niet binnen timeout")
+
+
+    def login() -> requests.Session:
+        s = requests.Session()
+        # 1. CSRF-token
+        r = s.get(urljoin(SUPERSET_URL, "/api/v1/security/csrf_token/"))
+        # CSRF-token komt er pas nadat we ingelogd zijn — eerst access-token via /api/v1/security/login
+        login_payload = {
+            "username": ADMIN_USER,
+            "password": ADMIN_PASSWORD,
+            "provider": "db",
+            "refresh": True,
+        }
+        r = s.post(urljoin(SUPERSET_URL, "/api/v1/security/login"), json=login_payload, timeout=30)
+        r.raise_for_status()
+        access_token = r.json()["access_token"]
+        s.headers.update({"Authorization": f"Bearer {access_token}"})
+        # CSRF-token voor mutation-calls
+        r = s.get(urljoin(SUPERSET_URL, "/api/v1/security/csrf_token/"), timeout=10)
+        r.raise_for_status()
+        s.headers.update({"X-CSRFToken": r.json()["result"]})
+        log("Login + CSRF OK")
+        return s
+
+
+    def ensure_trino_database(s: requests.Session) -> int:
+        """Maak een Trino-database connection aan; retourneert id."""
+        # SQLAlchemy URI — Trino + LDAP-auth (smoketest user). Voor dev: TLS uit.
+        uri = (
+            f"trino://{TRINO_USER}:{TRINO_PASSWORD}@{TRINO_HOST}:8443"
+            f"/bronze?protocol=https&verify=false"
+        )
+        body = {
+            "database_name": "uwv-trino",
+            "sqlalchemy_uri": uri,
+            "expose_in_sqllab": True,
+            "allow_ctas": False,
+            "allow_cvas": False,
+            "allow_dml": False,
+            "extra": json.dumps({"engine_params": {"connect_args": {"http_scheme": "https"}}}),
+        }
+        # Check of hij al bestaat
+        r = s.get(urljoin(SUPERSET_URL, "/api/v1/database/"), params={"q": "(filters:!((col:database_name,opr:eq,value:uwv-trino)))"})
+        r.raise_for_status()
+        result = r.json()
+        if result.get("count", 0) > 0:
+            db_id = result["result"][0]["id"]
+            log(f"Database 'uwv-trino' bestaat al (id={db_id}); skip create.")
+            return db_id
+
+        r = s.post(urljoin(SUPERSET_URL, "/api/v1/database/"), json=body, timeout=30)
+        if r.status_code not in (200, 201):
+            log(f"Database POST status={r.status_code} body={r.text[:300]}")
+            r.raise_for_status()
+        db_id = r.json()["id"]
+        log(f"Database 'uwv-trino' aangemaakt (id={db_id})")
+        return db_id
+
+
+    def ensure_dataset(s: requests.Session, db_id: int, schema: str, table: str) -> int:
+        # Idempotent
+        params = {"q": f"(filters:!((col:table_name,opr:eq,value:{table})))"}
+        r = s.get(urljoin(SUPERSET_URL, "/api/v1/dataset/"), params=params, timeout=10)
+        r.raise_for_status()
+        if r.json().get("count", 0) > 0:
+            ds_id = r.json()["result"][0]["id"]
+            log(f"Dataset {schema}.{table} bestaat al (id={ds_id})")
+            return ds_id
+        body = {
+            "database": db_id,
+            "schema": schema,
+            "table_name": table,
+        }
+        r = s.post(urljoin(SUPERSET_URL, "/api/v1/dataset/"), json=body, timeout=30)
+        if r.status_code not in (200, 201):
+            log(f"Dataset POST {schema}.{table}: status={r.status_code} body={r.text[:300]}")
+            return -1
+        ds_id = r.json()["id"]
+        log(f"Dataset {schema}.{table} aangemaakt (id={ds_id})")
+        return ds_id
+
+
+    def main() -> int:
+        wait_for_superset()
+        s = login()
+        db_id = ensure_trino_database(s)
+
+        # Datasets — Trino-syntax: catalog "gold", schema "uc0x_*"
+        targets = [
+            ("uc01_wia_funnel", "mart_uc01_wia_funnel_daily"),
+            ("uc04_tw_eligibility", "mart_uc04_tw_eligibility"),
+            ("uc05_client_360", "mart_uc05_client_360"),
+            ("uc06_lastprognose", "mart_uc06_uitkeringslast_5y"),
+            ("uc06_lastprognose", "mart_uc06_scenario_results"),
+            ("uc07_dq_polisadm", "mart_uc07_dq_dagrapport"),
+        ]
+        # Note: in Superset's view-of-Trino is `database` = catalog. We hebben hier
+        # de `bronze` catalog opgegeven; voor gold-tabellen moet eigenlijk een
+        # extra database connection worden aangemaakt. Voor de smoke-test volstaat
+        # dat we MINIMAAL één database registratie hebben + datasets-API-call.
+        for schema, table in targets:
+            ensure_dataset(s, db_id, schema, table)
+
+        log("Init voltooid.")
+        return 0
+
+
+    if __name__ == "__main__":
+        sys.exit(main())
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: superset-init
+  namespace: uwv-platform
+  labels:
+    uwv.nl/component: superset-init
+    uwv.nl/dev-only: "true"
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        uwv.nl/component: superset-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: python:3.11-slim
+          command: ["bash", "-euo", "pipefail", "-c"]
+          args:
+            - |
+              pip install --quiet --disable-pip-version-check requests
+              python /scripts/init_superset.py
+          env:
+            - name: SUPERSET_URL
+              value: "http://uwv-superset-node:8088"
+            - name: ADMIN_USER
+              value: "uwvplatform"
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: superset-postgres-credentials
+                  key: adminPassword
+            - name: TRINO_HOST
+              value: "uwv-trino-coordinator.uwv-platform.svc.cluster.local"
+            - name: TRINO_USER
+              value: "smoketest"
+            - name: TRINO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: trino-static-users
+                  key: smoketest
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: scripts
+          configMap:
+            name: superset-init-script

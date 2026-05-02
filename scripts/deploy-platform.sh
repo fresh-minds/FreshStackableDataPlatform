@@ -11,6 +11,17 @@ cd "$ROOT"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 
+# Trino catalog templates renderen voor we 09-trino aanraken.
+log "Rendering Trino catalogs (TABLE_FORMAT=${TABLE_FORMAT:-from-config})"
+python3 "$ROOT/scripts/render-trino-catalogs.py"
+
+# Spark-jobs sync — kustomize kan niet uit ../../<dir> laden zonder
+# load-restrictor=None, dus we kopieren naar platform/08-spark/scripts/.
+log "Syncing spark-jobs/ -> platform/08-spark/scripts/"
+mkdir -p "$ROOT/platform/08-spark/scripts"
+cp "$ROOT/spark-jobs/streaming_kafka_to_lakehouse.py" "$ROOT/platform/08-spark/scripts/"
+cp "$ROOT/spark-jobs/lib/lakehouse_io.py"             "$ROOT/platform/08-spark/scripts/"
+
 # Volgorde van applicatie. Per directory een README.md (TODO fase 2+).
 LAYERS=(
   "platform/00-namespaces"
@@ -27,6 +38,7 @@ LAYERS=(
   "platform/11-airflow"
   "platform/12-superset"
   "platform/13-openmetadata-config"
+  "platform/14-monitoring"
 )
 
 for layer in "${LAYERS[@]}"; do

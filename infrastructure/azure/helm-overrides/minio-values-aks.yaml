@@ -1,0 +1,7 @@
+# MinIO override for AKS — replaces the k3d-only `local-path` storage class
+# with AKS's default Premium SSD CSI class. Merged on top of
+# infrastructure/helm/minio/values.yaml via a second --values flag.
+
+persistence:
+  storageClass: "managed-csi-premium"
+  size: 100Gi

@@ -1,0 +1,43 @@
+# CI: dbt parse + compile — valideert YAML/Jinja zonder warehouse.
+name: dbt-parse
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dbt/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'dbt/**'
+
+jobs:
+  dbt-parse:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt-trino
+        run: pip install --quiet 'dbt-core>=1.10' 'dbt-trino>=1.9'
+
+      - name: dbt deps
+        working-directory: dbt
+        run: |
+          cp profiles.yml.template profiles.yml
+          DBT_PROFILES_DIR=. dbt deps
+
+      - name: dbt parse
+        working-directory: dbt
+        run: |
+          DBT_PROFILES_DIR=. \
+          TRINO_PASSWORD=ci-dummy \
+          dbt parse
+
+      - name: dbt meta-block-completeness check (improvements #11)
+        run: |
+          pip install --quiet pyyaml
+          python ci/scripts/check-dbt-meta.py

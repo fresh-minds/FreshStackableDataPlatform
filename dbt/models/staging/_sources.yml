@@ -1,0 +1,34 @@
+version: 2
+
+# Bronze sources — geschreven door spark-jobs/streaming_kafka_to_lakehouse.py.
+# Eén tabel per Kafka-topic; payload is raw JSON envelope.
+
+sources:
+  - name: bronze
+    database: bronze
+    schema: uwv
+    description: |
+      Raw Kafka envelopes. Per `uwv.<domain>.<entity>` Kafka-topic één Delta-tabel.
+      Schema: `payload (string), topic, kafka_partition, kafka_offset, kafka_ts, ingestion_ts, event_date`.
+    loader: spark-streaming
+    meta:
+      bio_classificatie: vertrouwelijk
+      bewaartermijn_jaren: 7
+
+    tables:
+      - name: persona_created
+        description: "Synthetische personas (BSN, naam, geboortedatum, adres)."
+      - name: polisadm_ikv
+        description: "Inkomstenverhoudingen — kerneenheid polisadministratie."
+      - name: ww_aanvraag
+        description: "WW-aanvragen incl. reden einde dienstverband."
+      - name: wia_aanvraag
+        description: "WIA-aanvragen + arbeidsongeschiktheidspercentage."
+      - name: wajong_dossier
+        description: "Wajong-dossiers (UC-02 placeholder; minimaal veld-niveau)."
+      - name: zw_melding
+        description: "Ziektewet-meldingen."
+      - name: crm_contact
+        description: "Klantcontact-events (kanaal, onderwerp)."
+      - name: fez_uitkeringslast
+        description: "Geaggregeerde uitkeringslast per wet × maand × regio."

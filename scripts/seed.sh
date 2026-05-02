@@ -1,23 +1,55 @@
 #!/usr/bin/env bash
-# Seed — genereer en laad synthetische data (10k cliënten).
+# Seed — genereer en laad synthetische data via een Kubernetes Job.
 #
-# STUB voor fase 1. Wordt in fase 4 ingevuld zodra data-generation/ generators
-# bestaan en NiFi/Kafka draaien.
-
+# Stappen:
+#   1. ConfigMaps maken uit data-generation/generators/ en data-generation/*.py
+#   2. Job submitten (data-generation/k8s/seed-job.yaml)
+#   3. Wachten tot Job complete
+#   4. Logs printen voor inspectie
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+NS="${NS:-uwv-platform}"
+COUNT="${COUNT:-10000}"
 
-CLIENT_COUNT="${CLIENT_COUNT:-10000}"
-log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m!!\033[0m %s\n' "$*"; }
+fail() { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
 
-if [[ ! -f "$ROOT/data-generation/pyproject.toml" ]]; then
-  log "data-generation/ is nog niet ingericht (fase 4)."
-  log "Skip seed."
-  exit 0
+if [[ ! -d "$ROOT/data-generation/generators" ]]; then
+  fail "data-generation/generators/ niet gevonden"
 fi
 
-log "TODO fase 4: data-generation pipeline starten met CLIENT_COUNT=${CLIENT_COUNT}"
-echo "  cd data-generation && uv run python -m generators.persona --count ${CLIENT_COUNT}"
-echo "  ..."
+command -v kubectl >/dev/null || fail "kubectl niet gevonden"
+
+log "ConfigMap data-generation-generators (uit data-generation/generators/)"
+kubectl -n "$NS" create configmap data-generation-generators \
+  --from-file="$ROOT/data-generation/generators/" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+log "ConfigMap data-generation-scripts (load_to_kafka.py + load_to_minio_staging.py)"
+kubectl -n "$NS" create configmap data-generation-scripts \
+  --from-file=load_to_kafka.py="$ROOT/data-generation/load_to_kafka.py" \
+  --from-file=load_to_minio_staging.py="$ROOT/data-generation/load_to_minio_staging.py" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+log "Verwijder eventueel bestaande seed-Job"
+kubectl -n "$NS" delete job seed-data-generation --ignore-not-found
+
+log "Apply seed Job (count=${COUNT})"
+# COUNT en SEED zijn in de Job-yaml hardcoded op 10000/2026. Voor variatie:
+# kustomize patch of een alternative manifest.
+kubectl apply -f "$ROOT/data-generation/k8s/seed-job.yaml"
+
+log "Wacht op Job completion (max 10 min)"
+if ! kubectl -n "$NS" wait --for=condition=complete --timeout=10m \
+       job/seed-data-generation; then
+  warn "Job is niet binnen 10 min Complete; print logs:"
+  kubectl -n "$NS" logs job/seed-data-generation --tail=200 || true
+  fail "seed-Job niet succesvol"
+fi
+
+log "Job-logs:"
+kubectl -n "$NS" logs job/seed-data-generation --tail=50
+
+log "Klaar. Spark-streaming-job pikt nu de Kafka-events op (kan 1-2 min duren voor batch verschijnt)."

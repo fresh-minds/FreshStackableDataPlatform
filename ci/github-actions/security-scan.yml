@@ -1,0 +1,60 @@
+# CI: Trivy vulnerability + SBOM scan (R-BIO-15, R-NIS2-03).
+# Scant manifests + container-images die in release.yaml + helm-values staan.
+name: security-scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'  # weekly Mon 06:00 UTC
+
+jobs:
+  trivy-config:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy config-scan (kustomize/helm)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'config'
+          format: 'table'
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+
+  trivy-fs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy filesystem-scan (Python deps)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-fs.sarif'
+          severity: 'HIGH,CRITICAL'
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs.sarif
+
+  cosign-verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Verify Stackable images (sample)
+        run: |
+          # Stackable signs all production images. Verify a sample.
+          cosign verify \
+            --certificate-identity-regexp 'https://github.com/stackabletech/.*' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            docker.stackable.tech/stackable/trino:470-stackable26.3.0 \
+          || echo "(cosign-verify: out-of-band; geen blocking — referentie-only)"

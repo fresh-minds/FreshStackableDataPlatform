@@ -1,0 +1,42 @@
+# NiFiCluster — flow-based ingestion.
+#
+# In fase 4 is NiFi gedeployed maar geen flows automatisch geladen. De
+# referentie-implementatie gebruikt `data-generation/load_to_kafka.py` als
+# producer; NiFi-flows komen in fase 5+ via UI-import (zie
+# `nifi-flows/templates/delta/README.md`).
+#
+# Reden: NiFi 2.x flow-definition JSON met de hand schrijven is foutgevoelig
+# en levert geen extra waarde voor de smoke-test. De `streaming_kafka_to_lakehouse.py`
+# Spark-job sluit aan op dezelfde Kafka-topics, ongeacht of de producer
+# NiFi of Python is.
+---
+apiVersion: nifi.stackable.tech/v1alpha1
+kind: NiFiCluster
+metadata:
+  name: uwv-nifi
+  namespace: uwv-platform
+spec:
+  image:
+    productVersion: "2.0.0"
+  clusterConfig:
+    listenerClass: cluster-internal
+    sensitiveProperties:
+      keySecret: nifi-sensitive-key
+      autoGenerate: true
+    zookeeperConfigMapName: uwv-zookeeper-znode-nifi
+    authentication:
+      - authenticationClass: keycloak-uwv
+  nodes:
+    config:
+      logging:
+        enableVectorAgent: false
+    roleGroups:
+      default:
+        replicas: 1
+        config:
+          resources:
+            cpu:
+              min: "200m"
+              max: "1000m"
+            memory:
+              limit: "2Gi"

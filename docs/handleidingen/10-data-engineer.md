@@ -1,0 +1,219 @@
+# Handleiding — Data-engineer
+
+> Rol-key: `data_engineer` · Domein: Data-pipelines & ingestion · Risiconiveau toegang: hoog (PII in bronze, JIT)
+
+Deze handleiding is voor **data-engineers** die pipelines bouwen en
+beheren. Je hebt **JIT-toegang** (just-in-time) tot `bronze.*` voor
+debug-doeleinden — niet voor permanent gebruik. Je bouwt NiFi-flows,
+Spark-jobs, dbt-modellen en Airflow-DAGs.
+
+---
+
+## 1. Wat doet jouw rol?
+
+Je bouwt en onderhoudt de datastromen van bron tot mart. Je gebruikt het
+platform om:
+
+- Brondata via NiFi naar Kafka te krijgen
+- Spark Structured Streaming jobs te draaien (Kafka → Delta op MinIO)
+- dbt-modellen te bouwen (`silver.*` → `gold.*`)
+- Airflow-DAGs voor batch en onderhoud te schedulen
+- DQ-tests in te bouwen
+- Bronze-data te debuggen wanneer nodig
+
+---
+
+## 2. Inloggen, MFA & applicaties
+
+| Applicatie | Wat doe je daar? | URL |
+|---|---|---|
+| **Apache NiFi** | Flow-design, ingestion-routes | https://nifi.uwv-platform.local |
+| **Apache Airflow** | DAGs maken, runs monitoren | https://airflow.uwv-platform.local |
+| **Trino (DBeaver)** | Debug + dbt-runs vanaf je laptop | https://trino.uwv-platform.local |
+| **dbt CLI** | Lokaal of in CI | terminal |
+| **kubectl + k9s** | Spark-jobs, pod-status, Hive Metastore | terminal |
+| **Apache Superset** | Eigen build-dashboards reviewen | https://superset.uwv-platform.local |
+| **OpenMetadata** | Service-config, lineage publishing | https://openmetadata.uwv-platform.local |
+| **MinIO Console** | Bucket-debugging | https://minio.uwv-platform.local |
+
+---
+
+## 3. Welke data zie je wel en niet?
+
+### 3.1 Catalogs
+
+| Catalog | Toegang | Hoe? |
+|---|---|---|
+| `bronze` | **JIT** — moet aanvragen | Via Trino, alleen na ticket-id in PR/PR-comment |
+| `silver`, `gold` | **Indirect** — via dbt-runs en CI | Niet direct queryen voor business-doel |
+| `sensitive`, `sandbox` | **Nee** | Alleen domein-rollen / researcher |
+
+### 3.2 JIT-procedure
+
+1. Ticket aanmaken in tracker (Linear/Jira) met **doel** en **scope**.
+2. Platform-admin keurt goed; rol wordt 4 uur geactiveerd voor jouw account.
+3. Jouw queries worden gelogd. Na 4 uur deactiveert toegang automatisch.
+4. Voeg ticket-id toe als comment bij elke query (`-- TICKET-1234`).
+
+### 3.3 Welke kolommen?
+
+In `bronze.uwv.*`: alles ruw — inclusief BSN, naam, IBAN. Wees uiterst
+zuinig: **kijk niet meer dan nodig**.
+
+---
+
+## 4. Dagelijkse workflows met voorbeelden
+
+### 4.1 Workflow A — Nieuwe bron toevoegen
+
+**Scenario.** Beleid vraagt om data van een nieuw bronsysteem `xyz`.
+
+1. **Ontwerp**: schrijf een mini-spec in `docs/use-cases/uc-xyz.md` (entiteiten, classificatie, doelbinding, bewaartermijn).
+2. **NiFi-flow**: kopieer template `nifi-flows/templates/delta/source-xyz/` aan, pas processors aan.
+3. **Kafka-topic**: definieer `uwv.xyz.event` in `platform/06-kafka/topics.yaml`.
+4. **Spark-job**: voeg `streaming-bronze-xyz.yaml` toe; gebruik helper `lakehouse_io.write_delta()`.
+5. **Schema in HMS**: `CREATE TABLE bronze.uwv.xyz_events (...) USING DELTA LOCATION 's3a://uwv-bronze/xyz/'`.
+6. **dbt-stg**: `dbt/models/staging/stg_xyz.sql` met basisvalidatie.
+7. **OPA-update**: voeg purpose toe in `data/uwv_role_mappings.json::resource_purposes`.
+8. **OpenMetadata**: voeg service-config toe (auto-discovery).
+9. **CI**: `make opa-test`, `dbt parse`, smoke tests.
+10. **PR review** door data-steward + platform-admin.
+
+### 4.2 Workflow B — dbt-model maken
+
+```sql
+-- dbt/models/marts/uc_xyz/mart_xyz_daily.sql
+{{ config(
+    materialized = 'table',
+    table_format = table_format_properties()['table_format']
+) }}
+
+WITH src AS (
+    SELECT * FROM {{ ref('stg_xyz') }}
+)
+SELECT
+    date_trunc('day', event_ts) AS dag,
+    COUNT(*)                    AS aantal,
+    AVG(value)                  AS gem_value
+FROM src
+GROUP BY 1
+```
+
+Met `schema.yml`:
+
+```yaml
+version: 2
+models:
+  - name: mart_xyz_daily
+    meta:
+      eigenaar: data.steward@uwv-platform.local
+      domain: xyz
+      legal_basis: art_6_1e
+      doelbinding: [sturingsinfo]
+      bewaartermijn_jaren: 7
+      pii_kolommen: []
+    columns:
+      - name: dag
+        tests: [not_null]
+      - name: aantal
+        tests: [not_null]
+```
+
+Run: `dbt run --select mart_xyz_daily && dbt test --select mart_xyz_daily`.
+
+### 4.3 Workflow C — Streaming-job debuggen
+
+**Scenario.** Spark-job hangt in `streaming-bronze-wia`.
+
+1. `kubectl get sparkapp -n uwv-platform`
+2. `kubectl logs -n uwv-platform <driver-pod>`
+3. Spark UI port-forwarden:
+   ```
+   kubectl port-forward -n uwv-platform svc/spark-streaming-ui 4040:4040
+   ```
+   Open http://localhost:4040
+4. Checkpoint-bucket inspecteren via MinIO Console: `s3://uwv-checkpoints/<job>/`
+5. Zie [`docs/runbook.md` § 4.3](../runbook.md) voor scenario-stappen.
+
+### 4.4 Workflow D — Pipeline-falen patchen
+
+```bash
+# Lokaal testen
+make doctor                       # cluster-health
+dbt parse --target dev
+dbt build --select +mart_failed   # bouw upstream tot en met deze
+
+# Naar cluster
+kubectl apply -f platform/08-spark/apps/streaming-bronze-fixed.yaml
+```
+
+### 4.5 Workflow E — Onderhoud-DAG (compaction/vacuum)
+
+Airflow-DAG `lakehouse_maintenance` draait dagelijks. Format-aware:
+
+- Delta: `OPTIMIZE` + `VACUUM`
+- Iceberg: `expire_snapshots` + `rewrite_data_files`
+
+Bij falen: bekijk de Airflow-task-log; meestal is het MinIO disk-druk of
+Hive-metastore lock.
+
+### 4.6 Workflow F — JIT-aanvraag voor bronze
+
+Stel: een dbt-test faalt met `IBAN format invalid`. Je wilt zien hoe de
+ruwe IBAN binnenkomt vanuit bronze.
+
+1. Open ticket: "TICKET-1234: debug iban-validatie WIA-aanvraag, bronze toegang 4u"
+2. Platform-admin keurt goed
+3. Query met ticket-id:
+   ```sql
+   -- TICKET-1234
+   SELECT iban, COUNT(*)
+   FROM   bronze.uwv.wia_aanvraag_raw
+   WHERE  ingest_dag = CURRENT_DATE
+   GROUP  BY iban
+   LIMIT  20;
+   ```
+4. Los root-cause op, deploy fix, sluit ticket. Toegang verloopt automatisch.
+
+---
+
+## 5. Code- en deploy-discipline
+
+- **Geen `latest`-tags.** Pin altijd image-versies; release-pinning in `infrastructure/stackablectl/release.yaml`.
+- **Geen plaintext secrets.** Gebruik Stackable secret-operator + Vault (productie).
+- **Eén ADR per architectuurkeuze.** Zie `docs/adr/` voor format.
+- **Format-agnostisch.** Geen hardcoded `delta` of `iceberg` buiten de switch-points (zie [docs/architecture.md § 4](../architecture.md)).
+- **CI moet groen.** PR's met rode CI worden niet gereviewd.
+
+---
+
+## 6. Hulp, fouten & escalatie
+
+| Probleem | Contact |
+|---|---|
+| Cluster down | Platform-admin (telefonisch) |
+| OPA-policy verandering | Pair met platform-admin + data-steward |
+| Schema-mismatch in bronze | Bron-eigenaar (UWV-zijde) |
+| Productie-incident | Volg [`docs/runbook.md` § 4](../runbook.md) |
+
+| Foutmelding | Actie |
+|---|---|
+| `Hive metastore connection refused` | `kubectl get hivecluster -A`; restart als nodig |
+| `dbt test failed: bsn_valid` | Synthetische generator faalt? Of echte ingestion-fout? |
+| `OPA bundle out of date` | `scripts/build-opa-bundle.sh && kubectl apply -f platform/10-opa/` |
+
+---
+
+## 7. Wat je nooit doet
+
+- Permanente toegang tot `bronze.*` activeren — JIT, altijd JIT.
+- Productie-data downloaden naar je laptop voor lokaal werk.
+- Een Spark-job zonder unit-tests in productie deployen.
+- Wijzigingen in `platform-config.yaml::table_format` zonder ADR.
+- Direct `kubectl edit` op productie-CRDs — alles via PR + GitOps.
+
+---
+
+**Vorige:** [09-data-steward.md](09-data-steward.md) ·
+**Volgende:** [11-platform-admin.md](11-platform-admin.md) ·
+**Index:** [README.md](README.md)

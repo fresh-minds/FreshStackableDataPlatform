@@ -1,0 +1,18 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+# Secret (sp_client_secret) is NOT in this file — pass it via TF_VAR_sp_client_secret env var
+# (set by `source scripts/azure/env.sh`).
+
+subscription_id     = "4910a5a6-aec6-405d-9294-c7f2845512a4"
+tenant_id           = "fedcef2f-0c85-40dd-8f55-e23143dcb367"
+resource_group_name = "dev-stackable-rg"
+location            = "westeurope"
+
+cluster_name = "uwv-platform-aks"
+dns_prefix   = "uwv-platform"
+
+node_count           = 3
+node_vm_size         = "Standard_D8s_v5"
+node_os_disk_size_gb = 128
+
+# Service principal used as AKS cluster identity.
+sp_client_id = "7e14e768-6dac-44f4-886f-ba2990447f1f"

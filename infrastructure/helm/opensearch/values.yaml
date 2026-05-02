@@ -1,0 +1,65 @@
+# OpenSearch — gedeeld single-node cluster voor zowel Vector logs als
+# OpenMetadata-search (per gebruikerskeuze, vraag 10 in master agent prompt).
+#
+# Index-prefix-conventie:
+#   uwv-logs-YYYY.MM.DD       (Vector)
+#   open_metadata*            (OpenMetadata-search-engine)
+#
+# Chart: opensearch-project/opensearch
+# Productie: ≥ 3 master-eligible nodes met data-tier-rollen + dedicated security.
+---
+clusterName: opensearch-uwv
+nodeGroup: master
+masterService: opensearch-uwv
+
+# Single-node setup
+singleNode: true
+replicas: 1
+
+roles:
+  - master
+  - ingest
+  - data
+  - remote_cluster_client
+
+# Resources (scaled-down voor k3d)
+resources:
+  requests:
+    cpu: 200m
+    memory: 1Gi
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+
+# Java heap zit nu in opensearchJavaOpts (bekende OpenSearch-config).
+opensearchJavaOpts: "-Xms512m -Xmx512m"
+
+persistence:
+  enabled: true
+  storageClass: local-path
+  size: 10Gi
+
+# Security uit voor dev — Vector + OM kunnen dan zonder TLS/auth schrijven/lezen.
+# Productie: enable security plugin + use root CA voor mTLS.
+securityConfig:
+  enabled: false
+
+extraEnvs:
+  - name: discovery.type
+    value: single-node
+  - name: DISABLE_SECURITY_PLUGIN
+    value: "true"
+  - name: bootstrap.memory_lock
+    value: "false"
+
+# Service exposure (in-cluster only)
+service:
+  type: ClusterIP
+  httpPort: 9200
+  transportPort: 9300
+
+# Disable demo-config-loaders
+sysctl:
+  enabled: false
+sysctlInit:
+  enabled: false

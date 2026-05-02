@@ -1,0 +1,37 @@
+package trino
+
+# Row filters (R-BIO-11).
+#
+# Per (rol × schema) een filter-expressie die Trino aan elke SELECT toevoegt.
+# Trino verwacht: data.trino.rowFilters → [ { "expression": "..." }, ... ]
+#
+# Implementaties:
+#   - WIA-beoordelaar in `silver.wia.*` of `gold.uc01_wia_funnel.*`:
+#       regio_code = '<eigen regio uit extraCredentials.regio>'
+#   - UC-04 mart: opt_out = false  (verberg cliënten die zich hebben afgemeld)
+
+import rego.v1
+
+# WIA-regio-filter
+rowFilters := [{"expression": expr}] if {
+	some r in user_roles
+	r == "wia_beoordelaar"
+	resource_schema in {"wia", "uc01_wia_funnel"}
+	regio := lower(input.context.identity.extraCredentials.regio)
+	regio != ""
+
+	# String-injection-safe: regio mag alleen [A-Z]{3} matchen.
+	regex.match("^[a-z]{3}$", regio)
+	expr := sprintf("regio_code = '%s'", [upper(regio)])
+}
+
+# UC-04 opt-out filter — verbergt opt-out cliënten voor de werklijst.
+rowFilters := [{"expression": "opt_out = false"}] if {
+	resource_schema == "uc04_tw_eligibility"
+}
+
+# Sandbox UC-09: alleen records met pseudo-IDs (defensief; in productie
+# is `sandbox.*` al exclusief gepseudonimiseerd).
+rowFilters := [{"expression": "bsn_pseudo IS NOT NULL"}] if {
+	resource_catalog == "sandbox"
+}

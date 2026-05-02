@@ -1,0 +1,340 @@
+{
+  "uwv_role_mappings": {
+    "roles": {
+      "smoketest": {
+        "_role_purpose": "Static-auth user voor smoke-tests + dbt-runs.",
+        "catalogs": [
+          "bronze",
+          "silver",
+          "gold"
+        ],
+        "schemas": null,
+        "purposes": [
+          "*"
+        ],
+        "can_see_pii": true,
+        "can_see_medical": false,
+        "can_see_bankrekening": false,
+        "regio_filter": false,
+        "break_glass": false
+      },
+      "data_steward": {
+        "_role_purpose": "Datakwaliteit, profiler, lineage. Ziet PII voor DQ-controle, niet medisch.",
+        "catalogs": [
+          "bronze",
+          "silver",
+          "gold"
+        ],
+        "schemas": null,
+        "purposes": [
+          "sturingsinfo",
+          "kwaliteitscontrole"
+        ],
+        "can_see_pii": true,
+        "can_see_medical": false,
+        "can_see_bankrekening": false,
+        "regio_filter": false,
+        "break_glass": false
+      },
+      "data_engineer": {
+        "_role_purpose": "Pipeline-eigenaar; JIT-toegang tot bronze.",
+        "catalogs": [
+          "bronze"
+        ],
+        "schemas": null,
+        "purposes": [
+          "primair_proces"
+        ],
+        "can_see_pii": true,
+        "can_see_medical": false,
+        "can_see_bankrekening": true,
+        "regio_filter": false,
+        "break_glass": false,
+        "jit_required": true
+      },
+      "wia_beoordelaar": {
+        "_role_purpose": "WIA-beoordeling \u2014 eigen regio, mag PII en medisch zien.",
+        "catalogs": [
+          "silver",
+          "gold"
+        ],
+        "schemas": [
+          "wia",
+          "uc01_wia_funnel"
+        ],
+        "purposes": [
+          "uitkering",
+          "behandeling",
+          "reintegratie"
+        ],
+        "can_see_pii": true,
+        "can_see_medical": true,
+        "can_see_bankrekening": false,
+        "regio_filter": true,
+        "break_glass": false
+      },
+      "ww_handhaver": {
+        "_role_purpose": "WW-handhaving. Mag bankrekening zien voor onderzoek.",
+        "catalogs": [
+          "silver",
+          "gold"
+        ],
+        "schemas": [
+          "ww",
+          "uc03_ww_risk"
+        ],
+        "purposes": [
+          "handhaving"
+        ],
+        "can_see_pii": true,
+        "can_see_medical": false,
+        "can_see_bankrekening": true,
+        "regio_filter": false,
+        "break_glass": false
+      },
+      "wajong_arbeidsdeskundige": {
+        "_role_purpose": "Wajong + Sensitive Vault. 4-eyes; mag medisch zien.",
+        "catalogs": [
+          "sensitive",
+          "silver",
+          "gold"
+        ],
+        "schemas": [
+          "wajong",
+          "uc02_wajong"
+        ],
+        "purposes": [
+          "reintegratie",
+          "behandeling"
+        ],
+        "can_see_pii": true,
+        "can_see_medical": true,
+        "can_see_bankrekening": false,
+        "regio_filter": false,
+        "four_eyes_required": true,
+        "break_glass": false
+      },
+      "crm_medewerker": {
+        "_role_purpose": "CRM/klantcontact \u2014 gemaskeerde BSN, geen medisch.",
+        "catalogs": [
+          "gold"
+        ],
+        "schemas": [
+          "uc05_client_360"
+        ],
+        "purposes": [
+          "klantcontact",
+          "behandeling"
+        ],
+        "can_see_pii": false,
+        "can_see_medical": false,
+        "can_see_bankrekening": false,
+        "regio_filter": false,
+        "break_glass": false
+      },
+      "fez_analist": {
+        "_role_purpose": "FEZ \u2014 geaggregeerde data, geen PII.",
+        "catalogs": [
+          "gold"
+        ],
+        "schemas": [
+          "uc06_lastprognose"
+        ],
+        "purposes": [
+          "actuarie",
+          "beleid"
+        ],
+        "can_see_pii": false,
+        "can_see_medical": false,
+        "can_see_bankrekening": false,
+        "regio_filter": false,
+        "break_glass": false
+      },
+      "smz_planner": {
+        "_role_purpose": "SMZ-planning (UC-08); geen cli\u00ebnt-PII.",
+        "catalogs": [
+          "gold",
+          "silver"
+        ],
+        "schemas": [
+          "uc08_smz_capaciteit",
+          "smz"
+        ],
+        "purposes": [
+          "planning"
+        ],
+        "can_see_pii": false,
+        "can_see_medical": false,
+        "can_see_bankrekening": false,
+        "regio_filter": false,
+        "break_glass": false
+      },
+      "proactief_dienstverlener": {
+        "_role_purpose": "UC-04 TW-eligibility-werklijst; opt-out gefilterd.",
+        "catalogs": [
+          "gold"
+        ],
+        "schemas": [
+          "uc04_tw_eligibility"
+        ],
+        "purposes": [
+          "proactieve_dienstverlening"
+        ],
+        "can_see_pii": true,
+        "can_see_medical": false,
+        "can_see_bankrekening": false,
+        "regio_filter": false,
+        "break_glass": false
+      },
+      "researcher": {
+        "_role_purpose": "Sandbox-zone (UC-09), gepseudonimiseerde panels.",
+        "catalogs": [
+          "sandbox"
+        ],
+        "schemas": null,
+        "purposes": [
+          "statistisch_onderzoek"
+        ],
+        "can_see_pii": false,
+        "can_see_medical": false,
+        "can_see_bankrekening": false,
+        "regio_filter": false,
+        "break_glass": false
+      },
+      "platform_admin": {
+        "_role_purpose": "Break-glass admin. Audit-log per gebruik.",
+        "catalogs": [
+          "bronze",
+          "silver",
+          "gold",
+          "sensitive",
+          "sandbox"
+        ],
+        "schemas": null,
+        "purposes": [
+          "*"
+        ],
+        "can_see_pii": true,
+        "can_see_medical": true,
+        "can_see_bankrekening": true,
+        "regio_filter": false,
+        "break_glass": true
+      }
+    },
+    "resource_purposes": {
+      "gold.uc01_wia_funnel.*": [
+        "sturingsinfo"
+      ],
+      "gold.uc04_tw_eligibility.*": [
+        "proactieve_dienstverlening"
+      ],
+      "gold.uc05_client_360.*": [
+        "klantcontact",
+        "behandeling"
+      ],
+      "gold.uc06_lastprognose.*": [
+        "actuarie",
+        "beleid"
+      ],
+      "gold.uc07_dq_polisadm.*": [
+        "primair_proces",
+        "kwaliteitscontrole"
+      ],
+      "gold.uc08_smz_capaciteit.*": [
+        "planning"
+      ],
+      "silver.wia.*": [
+        "uitkering",
+        "behandeling",
+        "reintegratie"
+      ],
+      "silver.ww.*": [
+        "uitkering",
+        "handhaving"
+      ],
+      "silver.wajong.*": [
+        "reintegratie",
+        "behandeling"
+      ],
+      "silver.crm.*": [
+        "klantcontact",
+        "behandeling"
+      ],
+      "silver.fez.*": [
+        "actuarie",
+        "beleid"
+      ],
+      "silver.polisadm.*": [
+        "primair_proces",
+        "kwaliteitscontrole"
+      ],
+      "silver.persoon.*": [
+        "primair_proces",
+        "kwaliteitscontrole"
+      ],
+      "silver.zw.*": [
+        "uitkering"
+      ],
+      "bronze.uwv.*": [
+        "primair_proces"
+      ],
+      "sensitive.wajong.*": [
+        "reintegratie",
+        "behandeling"
+      ]
+    },
+    "sensitive_columns": {
+      "bsn": {
+        "pii": true,
+        "medical": false,
+        "bankrekening": false
+      },
+      "voornaam": {
+        "pii": true,
+        "medical": false,
+        "bankrekening": false
+      },
+      "achternaam": {
+        "pii": true,
+        "medical": false,
+        "bankrekening": false
+      },
+      "geboortedatum": {
+        "pii": true,
+        "medical": false,
+        "bankrekening": false
+      },
+      "straat": {
+        "pii": true,
+        "medical": false,
+        "bankrekening": false
+      },
+      "huisnummer": {
+        "pii": true,
+        "medical": false,
+        "bankrekening": false
+      },
+      "iban": {
+        "pii": true,
+        "medical": false,
+        "bankrekening": true
+      },
+      "bankrekening": {
+        "pii": true,
+        "medical": false,
+        "bankrekening": true
+      },
+      "diagnose": {
+        "pii": false,
+        "medical": true,
+        "bankrekening": false
+      },
+      "icd10": {
+        "pii": false,
+        "medical": true,
+        "bankrekening": false
+      }
+    }
+  },
+  "_comment": "UWV-rol \u2192 catalogs / schemas / purposes / capability-mapping. Brondata voor opa-policies-src/trino/*.rego. Wordt door build-opa-bundle.sh meegebakken in de OPA-bundle ConfigMap (key: data.json)."
+}

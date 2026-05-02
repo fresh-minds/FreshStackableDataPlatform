@@ -1,0 +1,37 @@
+# SupersetCluster — BI / dashboarding.
+#
+# Auth: OIDC via keycloak-uwv. UWV-rollen → Superset-rollen via syncRolesAt: Login.
+# Database backend: gedeelde Postgres `superset` DB.
+# Trino-registratie + datasets gebeuren via een post-deploy init-Job
+# (zie init-job.yaml).
+---
+apiVersion: superset.stackable.tech/v1alpha1
+kind: SupersetCluster
+metadata:
+  name: uwv-superset
+  namespace: uwv-platform
+spec:
+  image:
+    productVersion: "4.1.1"
+  clusterConfig:
+    listenerClass: cluster-internal
+    loadExamplesOnInit: false
+    credentialsSecret: superset-postgres-credentials
+    authentication:
+      - authenticationClass: keycloak-uwv
+        userRegistration: true
+        userRegistrationRole: Public
+        syncRolesAt: Login
+  nodes:
+    config:
+      logging:
+        enableVectorAgent: false
+      resources:
+        cpu:
+          min: "100m"
+          max: "1000m"
+        memory:
+          limit: "1Gi"
+    roleGroups:
+      default:
+        replicas: 1

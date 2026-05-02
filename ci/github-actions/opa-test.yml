@@ -1,0 +1,39 @@
+# CI: opa test — voert alle Rego-tests uit (23 tests in fase 9).
+# Faalt bij ANY test-failure of fmt-diff.
+name: opa-test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'opa-policies-src/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'opa-policies-src/**'
+
+jobs:
+  opa-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OPA
+        run: |
+          curl -fsSL -o /usr/local/bin/opa \
+            https://openpolicyagent.org/downloads/v0.69.0/opa_linux_amd64_static
+          chmod +x /usr/local/bin/opa
+          opa version
+
+      - name: opa fmt --diff
+        run: opa fmt --diff opa-policies-src/trino/
+
+      - name: opa test (verbose)
+        run: |
+          opa test \
+            opa-policies-src/trino/ \
+            opa-policies-src/data/uwv_role_mappings.json \
+            -v --fail-on-coverage 0
+
+      - name: Build bundle (sanity)
+        run: bash scripts/build-opa-bundle.sh

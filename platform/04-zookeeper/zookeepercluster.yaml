@@ -1,0 +1,33 @@
+# ZookeeperCluster — coördinatie-laag voor Kafka.
+#
+# Scaled-down profiel: 1 server (geen quorum-tolerantie). Productie: 3 of 5.
+# Stackable-operator beheert StatefulSet, PVCs, en TLS-bootstrap.
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperCluster
+metadata:
+  name: uwv-zookeeper
+  namespace: uwv-platform
+spec:
+  image:
+    productVersion: "3.9.3"
+  clusterConfig:
+    listenerClass: cluster-internal
+    vectorAggregatorConfigMapName: ""   # Vector wordt in fase 8 aangezet
+  servers:
+    config:
+      logging:
+        enableVectorAgent: false
+    roleGroups:
+      default:
+        replicas: 1
+        config:
+          resources:
+            cpu:
+              min: "100m"
+              max: "500m"
+            memory:
+              limit: "512Mi"
+            storage:
+              data:
+                capacity: "2Gi"

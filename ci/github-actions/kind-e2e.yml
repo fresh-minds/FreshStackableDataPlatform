@@ -1,0 +1,63 @@
+# CI: full e2e op kind-cluster (NIET k3d — kind is GH Actions-friendlier).
+#
+# LET OP — duur en cost-intensief: ~30 min runtime, ~16GB RAM-intensive.
+# Alleen op merge-naar-main of via manual dispatch.
+name: kind-e2e
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04-large  # 8 CPU, 32 GB
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tooling
+        run: |
+          # k3d (we testen wel met k3d ipv kind voor parity met dev)
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+
+          # kubectl
+          curl -fsSL -o /usr/local/bin/kubectl \
+            "https://dl.k8s.io/release/v1.31.5/bin/linux/amd64/kubectl"
+          chmod +x /usr/local/bin/kubectl
+
+          # helm
+          curl -fsSL -o /tmp/helm.tar.gz https://get.helm.sh/helm-v3.16.3-linux-amd64.tar.gz
+          tar -xzf /tmp/helm.tar.gz -C /tmp
+          install /tmp/linux-amd64/helm /usr/local/bin/
+
+          # stackablectl
+          curl -fsSL -o /usr/local/bin/stackablectl \
+            "https://github.com/stackabletech/stackable-cockpit/releases/download/stackablectl-25.7.0/stackablectl-x86_64-unknown-linux-gnu"
+          chmod +x /usr/local/bin/stackablectl
+
+          # opa
+          curl -fsSL -o /usr/local/bin/opa \
+            https://openpolicyagent.org/downloads/v0.69.0/opa_linux_amd64_static
+          chmod +x /usr/local/bin/opa
+
+      - name: Add /etc/hosts
+        run: |
+          for h in trino keycloak superset airflow nifi minio minio-console openmetadata grafana; do
+            echo "127.0.0.1 ${h}.uwv-platform.local" | sudo tee -a /etc/hosts
+          done
+
+      - name: Run e2e
+        env:
+          # Skip parts as needed via env-flags — handig voor sneller debuggen
+          SKIP_CLUSTER: "false"
+          SKIP_BOOTSTRAP: "false"
+          SKIP_DEPLOY: "false"
+          SKIP_SEED: "false"
+        run: bash tests/e2e/full-flow-uc01.sh
+
+      - name: Cluster diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get pods -A
+          kubectl get events -A --sort-by='.lastTimestamp' | tail -50

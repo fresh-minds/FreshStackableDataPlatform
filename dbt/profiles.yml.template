@@ -1,0 +1,37 @@
+# dbt profiles voor het UWV-platform.
+#
+# Plaats deze file in ~/.dbt/profiles.yml of zet env DBT_PROFILES_DIR=./dbt
+# (en hernoem naar profiles.yml). Voor in-cluster Airflow-runs (fase 6) wordt
+# een eigen profiles.yml gerenderd vanuit een Kubernetes Secret.
+#
+# Auth: voor referentie gebruiken we Trino's static-user `smoketest`. Productie
+# gebruikt OIDC met ldap-of-jwt method.
+---
+uwv_trino:
+  target: dev
+  outputs:
+    dev:
+      type: trino
+      method: ldap                    # static-user via Trino's password authenticator
+      user: "{{ env_var('TRINO_USER', 'smoketest') }}"
+      password: "{{ env_var('TRINO_PASSWORD', 'uwv-dev-only-CHANGE-ME-Smoke2026') }}"
+      host: "{{ env_var('TRINO_HOST', 'trino.uwv-platform.local') }}"
+      port: "{{ env_var('TRINO_PORT', '8443') | int }}"
+      http_scheme: https
+      cert: "{{ env_var('TRINO_TLS_CERT_PATH', '/etc/ssl/uwv-platform-ca.crt') }}"
+      database: silver               # default Trino-catalog (zie dbt_project.yml voor per-laag)
+      schema: dbt_default            # default schema (overridden per model)
+      threads: 4
+      session_properties: {}
+
+    prod:
+      type: trino
+      method: oidc                   # OIDC via Keycloak (productie)
+      user: "{{ env_var('TRINO_USER') }}"
+      jwt_token: "{{ env_var('TRINO_JWT') }}"
+      host: trino.uwv-platform.local
+      port: 8443
+      http_scheme: https
+      database: silver
+      schema: dbt_prod
+      threads: 8

@@ -1,0 +1,35 @@
+# Postgres override for AKS.
+#
+# Changes vs the k3d profile:
+#  - storageClass: managed-csi (k3d's local-path doesn't exist on AKS)
+#  - subPath: postgresql-data (avoids AKS managed disk's lost+found tripping
+#             Bitnami's "is volume empty?" check on the data dir)
+#  - image.repository: bitnamilegacy/postgresql (Bitnami removed bitnami/* from
+#             Docker Hub mid-2025; legacy mirror still serves the pinned tags)
+#  - primary.initdb.scripts cleared and primary.initdb.user pinned: the in-line
+#             scripts in the base values block reliably hung the container's
+#             init phase on AKS; databases are created by a follow-up Job in
+#             scripts/azure/postgres-create-databases.yaml.
+#  - BITNAMI_DEBUG=true: surface init-script errors that otherwise fail silent.
+image:
+  repository: bitnamilegacy/postgresql
+  # debug=true sets BITNAMI_DEBUG=true so the init script surfaces what's
+  # otherwise a silent shell exit when something in the init phase fails.
+  debug: true
+
+primary:
+  persistence:
+    storageClass: "managed-csi"
+    size: 8Gi
+    subPath: "postgresql-data"
+
+  # Drop the in-line database-creation SQL from the base values; the Bitnami
+  # init flow on AKS errors at "user uwvplatform does not exist" because the
+  # init script runs before user creation completes on a fresh PVC. A separate
+  # post-install Job (postgres-create-databases.yaml) handles database creation
+  # after postgres is reachable.
+  # Helm deep-merges maps, so we must null the specific key to remove it from
+  # the base values rather than emptying the parent map.
+  initdb:
+    scripts:
+      00-uwv-databases.sql: null

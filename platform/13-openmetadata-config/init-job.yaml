@@ -1,0 +1,194 @@
+# OpenMetadata-bootstrap Job — past classifications, glossary en service-
+# definities toe via OM REST API. Idempotent.
+#
+# Het Python-script leest:
+#   /config/classifications-uwv.yaml
+#   /config/glossary-cgm.yaml
+# en POSTet de classifications + glossary terms.
+#
+# Service-configs (services/*.yaml) komen ook mee in dezelfde ConfigMap;
+# de daadwerkelijke ingestion-runs worden door Airflow-DAGs (om_ingest_*.py)
+# getriggerd, niet door deze Job.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openmetadata-init-config
+  namespace: uwv-meta
+  labels:
+    uwv.nl/component: openmetadata-init
+data:
+  init_openmetadata.py: |
+    """Bootstrap OpenMetadata met UWV-specifieke classifications + glossary.
+
+    Idempotent — bestaande items worden overgeslagen (200/409/422 → ok).
+    """
+    import os
+    import sys
+    import time
+    import yaml
+    import json
+    from urllib.parse import urljoin
+
+    import requests
+
+    OM_URL = os.environ.get("OM_URL", "http://openmetadata.uwv-meta.svc.cluster.local:8585")
+    OM_TOKEN = os.environ["OM_JWT_TOKEN"]
+    HEADERS = {"Authorization": f"Bearer {OM_TOKEN}", "Content-Type": "application/json"}
+
+    CLASSIFICATIONS_PATH = "/config/classifications-uwv.yaml"
+    GLOSSARY_PATH = "/config/glossary-cgm.yaml"
+
+
+    def log(msg: str) -> None:
+        print(f"[init] {msg}", flush=True)
+
+
+    def wait_for_om(timeout_s: int = 600) -> None:
+        log(f"Wachten op OpenMetadata health-endpoint {OM_URL}/api/v1/system/version")
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            try:
+                r = requests.get(f"{OM_URL}/api/v1/system/version", headers=HEADERS, timeout=5)
+                if r.status_code == 200:
+                    log(f"OM version: {r.json().get('version', '?')}")
+                    return
+            except requests.RequestException:
+                pass
+            time.sleep(5)
+        sys.exit("FAIL: OpenMetadata bereikt /system/version niet binnen timeout")
+
+
+    def post_or_skip(path: str, body: dict, label: str) -> None:
+        url = urljoin(OM_URL, path)
+        r = requests.post(url, headers=HEADERS, data=json.dumps(body), timeout=30)
+        if r.status_code in (200, 201):
+            log(f"  + {label}")
+            return
+        if r.status_code in (409, 422):
+            # 409 conflict = bestaat al; 422 unprocessable = vaak duplicate constraint
+            log(f"  = {label} (bestaat al)")
+            return
+        log(f"  ! {label}  status={r.status_code}  body={r.text[:200]}")
+
+
+    def apply_classifications() -> None:
+        log("Classifications toepassen")
+        with open(CLASSIFICATIONS_PATH) as f:
+            data = yaml.safe_load(f)
+        for cls in data.get("classifications", []):
+            post_or_skip(
+                "/api/v1/classifications",
+                {
+                    "name": cls["name"],
+                    "description": cls["description"],
+                    "mutuallyExclusive": cls.get("mutuallyExclusive", False),
+                },
+                f"classification {cls['name']}",
+            )
+            for tag in cls.get("tags", []):
+                post_or_skip(
+                    "/api/v1/tags",
+                    {
+                        "classification": cls["name"],
+                        "name": tag["name"],
+                        "description": tag["description"],
+                    },
+                    f"tag {cls['name']}.{tag['name']}",
+                )
+
+
+    def apply_glossary() -> None:
+        log("Glossary CGM toepassen")
+        with open(GLOSSARY_PATH) as f:
+            data = yaml.safe_load(f)
+        g = data["glossary"]
+        post_or_skip(
+            "/api/v1/glossaries",
+            {
+                "name": g["name"],
+                "displayName": g.get("displayName", g["name"]),
+                "description": g["description"],
+            },
+            f"glossary {g['name']}",
+        )
+        for term in data.get("terms", []):
+            post_or_skip(
+                "/api/v1/glossaryTerms",
+                {
+                    "glossary": g["name"],
+                    "name": term["name"],
+                    "displayName": term.get("displayName", term["name"]),
+                    "description": term["description"],
+                },
+                f"glossary-term CGM.{term['name']}",
+            )
+
+
+    def main() -> int:
+        wait_for_om()
+        apply_classifications()
+        apply_glossary()
+        log("Init voltooid.")
+        return 0
+
+
+    if __name__ == "__main__":
+        sys.exit(main())
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openmetadata-init
+  namespace: uwv-meta
+  labels:
+    uwv.nl/component: openmetadata-init
+    uwv.nl/dev-only: "true"
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        uwv.nl/component: openmetadata-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: python:3.11-slim
+          command: ["bash", "-euo", "pipefail", "-c"]
+          args:
+            - |
+              pip install --quiet --disable-pip-version-check requests pyyaml
+              python /scripts/init_openmetadata.py
+          env:
+            - name: OM_URL
+              value: "http://openmetadata.uwv-meta.svc.cluster.local:8585"
+            - name: OM_JWT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openmetadata-admin
+                  key: jwtToken
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: config
+              mountPath: /config
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: scripts
+          configMap:
+            name: openmetadata-init-config
+            items:
+              - key: init_openmetadata.py
+                path: init_openmetadata.py
+        - name: config
+          configMap:
+            name: openmetadata-uwv-config

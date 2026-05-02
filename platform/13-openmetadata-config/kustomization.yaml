@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: uwv-meta
+
+resources:
+  - init-job.yaml
+
+# Bundle classifications + glossary + service-configs in een ConfigMap die
+# de init-Job mount op /config.
+configMapGenerator:
+  - name: openmetadata-uwv-config
+    files:
+      - classifications-uwv.yaml
+      - glossary-cgm.yaml
+      - services/trino-service.yaml
+      - services/trino-lineage.yaml
+      - services/trino-profiler.yaml
+      - services/dbt-workflow.yaml
+      - services/superset-service.yaml
+      - services/airflow-service.yaml
+      - services/kafka-service.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true

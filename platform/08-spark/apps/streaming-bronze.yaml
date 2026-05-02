@@ -1,0 +1,111 @@
+# SparkApplication: streaming Kafka → Delta/Iceberg bronze.
+#
+# De PySpark-code wordt via een ConfigMap (gegenereerd door kustomize) gemount
+# op /stackable/spark/jobs. `mainApplicationFile` verwijst naar de gemounte
+# entry-point.
+#
+# TABLE_FORMAT env stuurt format-keuze. Defaults op delta (zie kustomization).
+---
+apiVersion: spark.stackable.tech/v1alpha1
+kind: SparkApplication
+metadata:
+  name: streaming-bronze
+  namespace: uwv-platform
+spec:
+  sparkImage:
+    productVersion: "3.5.5"
+  mode: cluster
+  mainApplicationFile: "local:///stackable/spark/jobs/streaming_kafka_to_lakehouse.py"
+  s3connection:
+    reference: s3-minio
+  deps:
+    requirements: []  # PyPI-packages — niet nodig (delta-spark komt via Maven)
+    packages:
+      # Spark Kafka connector
+      - org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.5
+      # Delta Lake voor Spark 3.5
+      - io.delta:delta-spark_2.12:3.2.1
+      # AWS S3A — meestal in Stackable image; expliciet voor zekerheid
+      - org.apache.hadoop:hadoop-aws:3.3.6
+  sparkConf:
+    spark.sql.streaming.checkpointLocation.deleteOnStop: "false"
+    spark.sql.shuffle.partitions: "8"
+  job:
+    config:
+      logging:
+        enableVectorAgent: false
+  driver:
+    config:
+      logging:
+        enableVectorAgent: false
+      resources:
+        cpu:
+          min: "200m"
+          max: "1000m"
+        memory:
+          limit: "1Gi"
+    podOverrides:
+      spec:
+        containers:
+          - name: spark
+            env:
+              - name: TABLE_FORMAT
+                value: "delta"      # In sync met platform-config.yaml; render-script kan dit later vervangen
+              - name: HIVE_METASTORE_URI
+                value: "thrift://uwv-hive-metastore:9083"
+              - name: KAFKA_BOOTSTRAP
+                value: "uwv-kafka-bootstrap.uwv-platform.svc.cluster.local:9092"
+              - name: S3_ACCESS_KEY
+                valueFrom:
+                  secretKeyRef:
+                    name: minio-s3-credentials
+                    key: accessKey
+              - name: S3_SECRET_KEY
+                valueFrom:
+                  secretKeyRef:
+                    name: minio-s3-credentials
+                    key: secretKey
+            volumeMounts:
+              - name: spark-jobs
+                mountPath: /stackable/spark/jobs
+        volumes:
+          - name: spark-jobs
+            configMap:
+              name: spark-streaming-jobs
+  executor:
+    replicas: 1
+    config:
+      logging:
+        enableVectorAgent: false
+      resources:
+        cpu:
+          min: "200m"
+          max: "1500m"
+        memory:
+          limit: "1Gi"
+    podOverrides:
+      spec:
+        containers:
+          - name: spark
+            env:
+              - name: TABLE_FORMAT
+                value: "delta"
+              - name: HIVE_METASTORE_URI
+                value: "thrift://uwv-hive-metastore:9083"
+              - name: S3_ACCESS_KEY
+                valueFrom:
+                  secretKeyRef:
+                    name: minio-s3-credentials
+                    key: accessKey
+              - name: S3_SECRET_KEY
+                valueFrom:
+                  secretKeyRef:
+                    name: minio-s3-credentials
+                    key: secretKey
+            volumeMounts:
+              - name: spark-jobs
+                mountPath: /stackable/spark/jobs
+        volumes:
+          - name: spark-jobs
+            configMap:
+              name: spark-streaming-jobs

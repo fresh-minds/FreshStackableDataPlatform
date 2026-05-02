@@ -1,0 +1,123 @@
+# OpenSearch ILM-policy (improvements #15).
+#
+# Index Lifecycle Management voor `uwv-logs-*` indices: 7 dagen hot, 23 dagen
+# warm, daarna delete. Voor audit-logs (`uwv-logs-audit-*`) houden we 7 jaar.
+#
+# Wordt eenmalig toegepast via een Job na OpenSearch-bootstrap.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensearch-ilm-policies
+  namespace: uwv-meta
+data:
+  app-logs-policy.json: |
+    {
+      "policy": {
+        "description": "UWV-platform app-logs: 7d hot, 23d warm, delete na 30d",
+        "default_state": "hot",
+        "states": [
+          {
+            "name": "hot",
+            "actions": [
+              {"rollover": {"min_index_age": "1d", "min_size": "5gb"}}
+            ],
+            "transitions": [{"state_name": "warm", "conditions": {"min_index_age": "7d"}}]
+          },
+          {
+            "name": "warm",
+            "actions": [
+              {"replica_count": {"number_of_replicas": 0}}
+            ],
+            "transitions": [{"state_name": "delete", "conditions": {"min_index_age": "30d"}}]
+          },
+          {
+            "name": "delete",
+            "actions": [{"delete": {}}],
+            "transitions": []
+          }
+        ],
+        "ism_template": [
+          {"index_patterns": ["uwv-logs-*"], "priority": 50}
+        ]
+      }
+    }
+
+  audit-logs-policy.json: |
+    {
+      "policy": {
+        "description": "UWV-platform audit-logs: 30d hot, daarna 7 jaar warm (R-BIO-20).",
+        "default_state": "hot",
+        "states": [
+          {
+            "name": "hot",
+            "actions": [
+              {"rollover": {"min_index_age": "7d", "min_size": "10gb"}}
+            ],
+            "transitions": [{"state_name": "warm", "conditions": {"min_index_age": "30d"}}]
+          },
+          {
+            "name": "warm",
+            "actions": [{"replica_count": {"number_of_replicas": 0}}],
+            "transitions": [{"state_name": "delete", "conditions": {"min_index_age": "2555d"}}]
+          },
+          {
+            "name": "delete",
+            "actions": [{"delete": {}}]
+          }
+        ],
+        "ism_template": [
+          {"index_patterns": ["uwv-logs-audit-*"], "priority": 100}
+        ]
+      }
+    }
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: opensearch-ilm-bootstrap
+  namespace: uwv-meta
+  labels:
+    uwv.nl/component: opensearch-ilm
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        uwv.nl/component: opensearch-ilm
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: ilm-apply
+          image: curlimages/curl:8.10.1
+          command: ["sh", "-euo", "pipefail", "-c"]
+          args:
+            - |
+              OS_URL="http://opensearch-uwv.uwv-meta.svc.cluster.local:9200"
+
+              echo "Wachten op OpenSearch (max 5 min)..."
+              for i in $(seq 1 60); do
+                if curl -fsS "$OS_URL/_cluster/health" >/dev/null 2>&1; then break; fi
+                sleep 5
+              done
+
+              echo "Apply app-logs ILM"
+              curl -fsS -X PUT "$OS_URL/_plugins/_ism/policies/uwv-app-logs" \
+                -H "Content-Type: application/json" \
+                -d @/policies/app-logs-policy.json
+
+              echo "Apply audit-logs ILM"
+              curl -fsS -X PUT "$OS_URL/_plugins/_ism/policies/uwv-audit-logs" \
+                -H "Content-Type: application/json" \
+                -d @/policies/audit-logs-policy.json
+
+              echo "ILM-policies toegepast."
+          volumeMounts:
+            - name: policies
+              mountPath: /policies
+      volumes:
+        - name: policies
+          configMap:
+            name: opensearch-ilm-policies

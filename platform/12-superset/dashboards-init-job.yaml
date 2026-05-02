@@ -1,0 +1,231 @@
+# Improvements #13 — Superset WIA Funnel-dashboard via API.
+#
+# Volgt na de bestaande superset-init Job. Maakt 3 charts + 1 dashboard
+# tegen de Trino-database via REST API. Idempotent: skipt als naam reeds
+# bestaat.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: superset-dashboards-init-script
+  namespace: uwv-platform
+data:
+  build_dashboards.py: |
+    """Bouw WIA Funnel-dashboard programmatisch in Superset."""
+    import json
+    import os
+    import sys
+    import time
+    from urllib.parse import urljoin
+
+    import requests
+
+    SUPERSET_URL = os.environ.get("SUPERSET_URL", "http://uwv-superset-node:8088")
+    ADMIN_USER = os.environ.get("ADMIN_USER", "uwvplatform")
+    ADMIN_PW   = os.environ["ADMIN_PASSWORD"]
+    DATASET_NAME = os.environ.get("WIA_DATASET", "mart_uc01_wia_funnel_daily")
+
+
+    def log(m): print(f"[dash] {m}", flush=True)
+
+
+    def login() -> requests.Session:
+        s = requests.Session()
+        r = s.post(urljoin(SUPERSET_URL, "/api/v1/security/login"),
+                   json={"username": ADMIN_USER, "password": ADMIN_PW,
+                         "provider": "db", "refresh": True})
+        r.raise_for_status()
+        s.headers["Authorization"] = f"Bearer {r.json()['access_token']}"
+        r = s.get(urljoin(SUPERSET_URL, "/api/v1/security/csrf_token/"))
+        r.raise_for_status()
+        s.headers["X-CSRFToken"] = r.json()["result"]
+        return s
+
+
+    def get_dataset_id(s, name: str) -> int:
+        r = s.get(urljoin(SUPERSET_URL, "/api/v1/dataset/"),
+                  params={"q": f"(filters:!((col:table_name,opr:eq,value:{name})))"})
+        r.raise_for_status()
+        results = r.json().get("result", [])
+        if not results:
+            sys.exit(f"FAIL: dataset {name} niet gevonden — run superset-init Job eerst.")
+        return results[0]["id"]
+
+
+    def find_chart_id(s, slice_name: str) -> int | None:
+        r = s.get(urljoin(SUPERSET_URL, "/api/v1/chart/"),
+                  params={"q": f"(filters:!((col:slice_name,opr:eq,value:{slice_name})))"})
+        if r.status_code == 200 and r.json().get("count", 0) > 0:
+            return r.json()["result"][0]["id"]
+        return None
+
+
+    def create_chart(s, dataset_id: int, slice_name: str, viz_type: str,
+                     params: dict) -> int:
+        existing = find_chart_id(s, slice_name)
+        if existing:
+            log(f"  = chart '{slice_name}' bestaat (id={existing})")
+            return existing
+        body = {
+            "datasource_id": dataset_id,
+            "datasource_type": "table",
+            "viz_type": viz_type,
+            "slice_name": slice_name,
+            "params": json.dumps(params),
+        }
+        r = s.post(urljoin(SUPERSET_URL, "/api/v1/chart/"), json=body)
+        if r.status_code not in (200, 201):
+            log(f"  ! chart create failed: {r.status_code} {r.text[:200]}")
+            r.raise_for_status()
+        cid = r.json()["id"]
+        log(f"  + chart '{slice_name}' (id={cid})")
+        return cid
+
+
+    def find_dashboard_id(s, title: str) -> int | None:
+        r = s.get(urljoin(SUPERSET_URL, "/api/v1/dashboard/"),
+                  params={"q": f"(filters:!((col:dashboard_title,opr:eq,value:{title})))"})
+        if r.status_code == 200 and r.json().get("count", 0) > 0:
+            return r.json()["result"][0]["id"]
+        return None
+
+
+    def create_dashboard(s, title: str, slug: str, chart_ids: list[int]) -> int:
+        existing = find_dashboard_id(s, title)
+        if existing:
+            log(f"  = dashboard '{title}' bestaat (id={existing})")
+            return existing
+        body = {
+            "dashboard_title": title,
+            "slug": slug,
+            "published": True,
+        }
+        r = s.post(urljoin(SUPERSET_URL, "/api/v1/dashboard/"), json=body)
+        r.raise_for_status()
+        did = r.json()["id"]
+        log(f"  + dashboard '{title}' (id={did})")
+
+        # Voeg charts toe via PUT op dashboard
+        for cid in chart_ids:
+            body = {"slices": [cid]}
+            r = s.put(urljoin(SUPERSET_URL, f"/api/v1/dashboard/{did}"), json=body)
+            if r.status_code != 200:
+                log(f"  ! kon chart {cid} niet toevoegen: {r.text[:200]}")
+        return did
+
+
+    def main() -> int:
+        log(f"Wachten op Superset...")
+        for _ in range(60):
+            try:
+                if requests.get(urljoin(SUPERSET_URL, "/health"), timeout=5).status_code == 200:
+                    break
+            except requests.RequestException:
+                pass
+            time.sleep(5)
+
+        s = login()
+        ds_id = get_dataset_id(s, DATASET_NAME)
+        log(f"Dataset id: {ds_id}")
+
+        # Chart 1: line — aanvragen per dag
+        c1 = create_chart(s, ds_id, "WIA aanvragen per dag", "line", {
+            "datasource": f"{ds_id}__table",
+            "viz_type": "line",
+            "granularity_sqla": "aanvraag_datum",
+            "time_grain_sqla": "P1D",
+            "metrics": [{
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "n_aanvragen", "type": "INTEGER"},
+                "aggregate": "SUM",
+                "label": "Aanvragen",
+            }],
+            "groupby": [],
+            "row_limit": 1000,
+        })
+
+        # Chart 2: pie — verdeling per status
+        c2 = create_chart(s, ds_id, "WIA aanvragen per status", "pie", {
+            "datasource": f"{ds_id}__table",
+            "viz_type": "pie",
+            "metrics": [{
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "n_aanvragen", "type": "INTEGER"},
+                "aggregate": "SUM",
+                "label": "Aanvragen",
+            }],
+            "groupby": ["status"],
+            "row_limit": 1000,
+        })
+
+        # Chart 3: big number — totaal aanvragen
+        c3 = create_chart(s, ds_id, "Totaal WIA aanvragen", "big_number_total", {
+            "datasource": f"{ds_id}__table",
+            "viz_type": "big_number_total",
+            "metric": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "n_aanvragen", "type": "INTEGER"},
+                "aggregate": "SUM",
+                "label": "Totaal",
+            },
+        })
+
+        create_dashboard(s, "WIA Funnel", "wia-funnel", [c1, c2, c3])
+        log("Klaar.")
+        return 0
+
+
+    if __name__ == "__main__":
+        sys.exit(main())
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: superset-dashboards-init
+  namespace: uwv-platform
+  labels:
+    uwv.nl/component: superset-dashboards-init
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        uwv.nl/component: superset-dashboards-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: build-dashboards
+          image: python:3.11-slim
+          command: ["bash", "-euo", "pipefail", "-c"]
+          args:
+            - |
+              pip install --quiet --disable-pip-version-check requests
+              python /scripts/build_dashboards.py
+          env:
+            - name: SUPERSET_URL
+              value: "http://uwv-superset-node:8088"
+            - name: ADMIN_USER
+              value: "uwvplatform"
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: superset-postgres-credentials
+                  key: adminPassword
+            - name: WIA_DATASET
+              value: "mart_uc01_wia_funnel_daily"
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: scripts
+          configMap:
+            name: superset-dashboards-init-script

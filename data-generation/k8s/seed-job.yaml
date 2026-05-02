@@ -1,0 +1,68 @@
+# Kubernetes Job die data-generation in-cluster runt en publiceert naar Kafka.
+#
+# ConfigMaps `data-generation-generators` en `data-generation-scripts` worden
+# door scripts/seed.sh aangemaakt vanuit data-generation/. Job gebruikt
+# python:3.11-slim en pip-installeert deps; daarna runt load_to_kafka.py
+# tegen de in-cluster Kafka-bootstrap.
+#
+# Idempotent: scripts/seed.sh deletet de oude Job vóór apply.
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-data-generation
+  namespace: uwv-platform
+  labels:
+    uwv.nl/component: data-generation
+    uwv.nl/dev-only: "true"
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        uwv.nl/component: data-generation
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed
+          image: python:3.11-slim
+          command: ["bash", "-euo", "pipefail", "-c"]
+          args:
+            - |
+              echo "==> pip install runtime deps"
+              pip install --quiet --disable-pip-version-check faker kafka-python click
+              echo "==> running load_to_kafka.py"
+              cd /app
+              python load_to_kafka.py \
+                --count "${COUNT:-10000}" \
+                --seed "${SEED:-2026}" \
+                --bootstrap "${KAFKA_BOOTSTRAP:-uwv-kafka-bootstrap.uwv-platform.svc.cluster.local:9092}"
+          env:
+            - name: COUNT
+              value: "10000"
+            - name: SEED
+              value: "2026"
+            - name: KAFKA_BOOTSTRAP
+              value: "uwv-kafka-bootstrap.uwv-platform.svc.cluster.local:9092"
+            - name: PYTHONPATH
+              value: "/app"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          volumeMounts:
+            - name: scripts
+              mountPath: /app
+            - name: generators
+              mountPath: /app/generators
+      volumes:
+        - name: scripts
+          configMap:
+            name: data-generation-scripts
+        - name: generators
+          configMap:
+            name: data-generation-generators

@@ -42,8 +42,22 @@ bootstrap: ## Installeer Helm-charts: cert-manager, MinIO, Postgres, Keycloak, S
 	bash scripts/bootstrap.sh
 
 .PHONY: deploy-platform
-deploy-platform: ## Deploy alle platform-manifests onder platform/
+deploy-platform: render-catalogs ## Deploy alle platform-manifests onder platform/
 	bash scripts/deploy-platform.sh
+
+.PHONY: render-catalogs
+render-catalogs: ## Render Trino-catalog templates op basis van platform-config.yaml
+	python3 scripts/render-trino-catalogs.py
+
+.PHONY: opa-test
+opa-test: ## Run opa fmt + opa test op opa-policies-src/
+	@command -v opa >/dev/null 2>&1 || { echo "opa niet geïnstalleerd — zie scripts/doctor.sh"; exit 1; }
+	opa fmt --diff opa-policies-src/trino/
+	opa test opa-policies-src/trino/ opa-policies-src/data/uwv_role_mappings.json -v
+
+.PHONY: opa-bundle
+opa-bundle: opa-test ## Build OPA-bundle: sync rego + data naar platform/10-opa/policies/
+	bash scripts/build-opa-bundle.sh
 
 .PHONY: seed
 seed: ## Genereer en laad synthetische data (10k cliënten)
@@ -97,3 +111,40 @@ doctor: ## Check vereiste tooling op host
 .PHONY: forward
 forward: ## Start kubectl port-forwards voor UI's (zie scripts)
 	@bash scripts/port-forward.sh
+
+##@ AKS (Azure)
+
+.PHONY: aks-up
+aks-up: ## Provision AKS cluster via Terraform (existing dev-stackable-rg)
+	bash scripts/azure/aks-up.sh
+
+.PHONY: aks-context
+aks-context: ## Set kubectl context to AKS cluster (az aks get-credentials)
+	bash scripts/azure/aks-context.sh
+
+.PHONY: aks-bootstrap
+aks-bootstrap: ## Install helm charts + Stackable operators on AKS
+	bash scripts/azure/aks-bootstrap.sh
+
+.PHONY: aks-deploy
+aks-deploy: render-catalogs ## Deploy platform manifests on AKS
+	bash scripts/azure/aks-deploy.sh
+
+.PHONY: aks-smoke
+aks-smoke: ## Run smoke tests against the AKS context
+	bash scripts/run-smoke-tests.sh
+
+.PHONY: aks-all
+aks-all: aks-up aks-context aks-bootstrap aks-deploy aks-smoke ## End-to-end AKS lifecycle: up + context + bootstrap + deploy + smoke
+
+.PHONY: aks-stop
+aks-stop: ## Stop AKS cluster (deallocate nodes — cost-saving, reversible)
+	bash scripts/azure/aks-stop.sh
+
+.PHONY: aks-start
+aks-start: ## Resume a stopped AKS cluster
+	bash scripts/azure/aks-start.sh
+
+.PHONY: aks-down
+aks-down: ## terraform destroy — full teardown, zero ongoing cost
+	bash scripts/azure/aks-down.sh

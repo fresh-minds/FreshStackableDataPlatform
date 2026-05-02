@@ -1,0 +1,47 @@
+# CI: lint — yamllint, ruff, opa fmt --diff. Snel + zonder cluster.
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  yamllint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install --quiet yamllint
+      - run: yamllint -c ci/yamllint.yaml platform/ infrastructure/ ci/
+
+  ruff:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install --quiet ruff
+      - run: ruff check data-generation/ spark-jobs/
+
+  opa-fmt:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install OPA
+        run: |
+          curl -fsSL -o /usr/local/bin/opa \
+            https://openpolicyagent.org/downloads/v0.69.0/opa_linux_amd64_static
+          chmod +x /usr/local/bin/opa
+      - run: opa fmt --diff opa-policies-src/trino/
+
+  bash-shellcheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck (best-effort)
+        run: |
+          shellcheck --version
+          find scripts/ tests/smoke/ tests/e2e/ -name '*.sh' \
+            -exec shellcheck -e SC1091,SC2086 {} +

@@ -1,0 +1,110 @@
+name: uwv_data_platform
+version: 0.1.0
+config-version: 2
+
+profile: uwv_trino
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+analysis-paths: ["analyses"]
+
+target-path: target
+clean-targets:
+  - target
+  - dbt_packages
+
+# Centrale variabelen — table_format komt uit env, default delta.
+# Switching naar iceberg: TABLE_FORMAT=iceberg dbt run.
+vars:
+  table_format: "{{ env_var('TABLE_FORMAT', 'delta') }}"
+  # Zout voor pseudonymize-macro. DEV-only; productie via secret.
+  pseudonymize_salt: "{{ env_var('UWV_PSEUDONYMIZE_SALT', 'UWV-DEV-SALT-2026') }}"
+
+# ----------------------------------------------------------------------
+# Model-config per laag.
+#   staging  -> catalog `silver`,    schema = domein (ww, wia, ...)
+#   intermediate -> catalog `silver`, schema = `intermediate`
+#   marts    -> catalog `gold`,      schema = uc-id
+#
+# Table-format (delta vs iceberg) wordt niet hier gehard-codeerd; modellen
+# gebruiken `properties=table_format_properties()` via de macro.
+# ----------------------------------------------------------------------
+models:
+  uwv_data_platform:
+    +on_table_exists: replace
+
+    staging:
+      +database: silver
+      +materialized: view
+      persona:
+        +schema: persoon
+      polisadm:
+        +schema: polisadm
+      ww:
+        +schema: ww
+      wia:
+        +schema: wia
+      wajong:
+        +schema: wajong
+      zw:
+        +schema: zw
+      crm:
+        +schema: crm
+      fez:
+        +schema: fez
+
+    intermediate:
+      +database: silver
+      +schema: intermediate
+      +materialized: view
+
+    marts:
+      +database: gold
+      +materialized: table
+      uc01_wia_funnel:
+        +schema: uc01_wia_funnel
+      uc04_tw_eligibility:
+        +schema: uc04_tw_eligibility
+      uc05_client_360:
+        +schema: uc05_client_360
+      uc06_lastprognose:
+        +schema: uc06_lastprognose
+      uc07_dq_polisadm:
+        +schema: uc07_dq_polisadm
+
+# ----------------------------------------------------------------------
+# Seeds
+# ----------------------------------------------------------------------
+seeds:
+  uwv_data_platform:
+    +database: silver
+    +schema: seed
+    +quote_columns: false
+    cgm_uitkering_typen:
+      +column_types:
+        code: varchar(8)
+        beschrijving: varchar(200)
+        wet: varchar(8)
+    cgm_wet_codes:
+      +column_types:
+        code: varchar(8)
+        naam: varchar(80)
+        omschrijving: varchar(400)
+    cgm_regio_codes:
+      +column_types:
+        code: varchar(4)
+        naam: varchar(80)
+        provincie: varchar(40)
+    tw_normen_2026:
+      +column_types:
+        huishoud_type: varchar(40)
+        norm_per_maand_eur: integer
+    scenario_inputs:
+      +column_types:
+        scenario_id: varchar(40)
+        beschrijving: varchar(200)
+        parameter: varchar(80)
+        waarde: varchar(40)

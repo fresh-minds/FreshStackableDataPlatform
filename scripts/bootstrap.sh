@@ -29,6 +29,9 @@ POSTGRES_VERSION="${POSTGRES_VERSION:-16.0.6}"
 MINIO_VERSION="${MINIO_VERSION:-5.3.0}"
 KEYCLOAK_VERSION="${KEYCLOAK_VERSION:-22.2.6}"
 PROM_VERSION="${PROM_VERSION:-65.5.1}"
+OPENSEARCH_VERSION="${OPENSEARCH_VERSION:-2.27.1}"
+OPENMETADATA_VERSION="${OPENMETADATA_VERSION:-1.5.0}"
+VECTOR_VERSION="${VECTOR_VERSION:-0.36.1}"
 
 log()   { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn()  { printf '\033[1;33m!!\033[0m %s\n' "$*"; }
@@ -41,6 +44,15 @@ command -v stackablectl >/dev/null || error "stackablectl niet gevonden — zie 
 
 warn "Dev-only credentials in dit bootstrap. NIET gebruiken in productie. Zie infrastructure/helm/*/values.yaml."
 
+# Optional per-chart override directory (set by AKS/EKS/GKE wrappers).
+# Looked up file: ${HELM_OVERRIDES_DIR}/<chart>-values-aks.yaml — appended via -f after base values.
+chart_override_args() {
+  local chart="$1"
+  if [[ -n "${HELM_OVERRIDES_DIR:-}" && -f "${HELM_OVERRIDES_DIR}/${chart}-values-aks.yaml" ]]; then
+    printf -- '--values %s' "${HELM_OVERRIDES_DIR}/${chart}-values-aks.yaml"
+  fi
+}
+
 # 0. Helm repo's
 log "Helm repos toevoegen / updaten"
 helm repo add jetstack https://charts.jetstack.io >/dev/null
@@ -48,6 +60,9 @@ helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/nul
 helm repo add bitnami https://charts.bitnami.com/bitnami >/dev/null
 helm repo add minio https://charts.min.io/ >/dev/null
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null
+helm repo add opensearch https://opensearch-project.github.io/helm-charts/ >/dev/null
+helm repo add open-metadata https://helm.open-metadata.org/ >/dev/null
+helm repo add vector https://helm.vector.dev >/dev/null
 helm repo update >/dev/null
 
 # 1. cert-manager
@@ -56,6 +71,7 @@ helm upgrade --install cert-manager jetstack/cert-manager \
   --namespace cert-manager --create-namespace \
   --version "${CERT_MANAGER_VERSION}" \
   --values "${ROOT}/infrastructure/helm/cert-manager/values.yaml" \
+  --force-conflicts \
   --wait --timeout 5m
 
 # 2. ClusterIssuer (na cert-manager — CRDs moeten ready zijn)
@@ -79,7 +95,8 @@ helm upgrade --install postgres bitnami/postgresql \
   --namespace uwv-data \
   --version "${POSTGRES_VERSION}" \
   --values "${ROOT}/infrastructure/helm/postgresql/values.yaml" \
-  --wait --timeout 5m
+  $(chart_override_args postgres) \
+  --atomic --wait --timeout 10m
 
 # 5. MinIO
 log "Install MinIO ${MINIO_VERSION}"
@@ -88,7 +105,8 @@ helm upgrade --install minio minio/minio \
   --namespace uwv-platform \
   --version "${MINIO_VERSION}" \
   --values "${ROOT}/infrastructure/helm/minio/values.yaml" \
-  --wait --timeout 10m
+  $(chart_override_args minio) \
+  --atomic --wait --timeout 10m
 
 # 6. Keycloak — eerst realm-ConfigMap, daarna chart die hem mountt
 log "ConfigMap: Keycloak UWV-realm"
@@ -103,7 +121,8 @@ helm upgrade --install keycloak bitnami/keycloak \
   --namespace uwv-auth \
   --version "${KEYCLOAK_VERSION}" \
   --values "${ROOT}/infrastructure/helm/keycloak/values.yaml" \
-  --wait --timeout 10m
+  $(chart_override_args keycloak) \
+  --atomic --wait --timeout 10m
 
 # 7. Prometheus + Grafana
 log "Install kube-prometheus-stack ${PROM_VERSION}"
@@ -112,7 +131,8 @@ helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
   --namespace uwv-monitoring \
   --version "${PROM_VERSION}" \
   --values "${ROOT}/infrastructure/helm/prometheus-stack/values.yaml" \
-  --wait --timeout 10m
+  $(chart_override_args prometheus-stack) \
+  --atomic --wait --timeout 15m
 
 # 8. Stackable operators
 log "Install Stackable operators (release uwv-platform-26.3)"
@@ -123,11 +143,44 @@ kubectl wait --for=condition=Ready pod \
   -l app.kubernetes.io/managed-by=stackablectl \
   -A --timeout=5m || warn "Niet alle Stackable operator-pods zijn (nog) Ready — check 'kubectl get pods -A'"
 
+# 9. OpenSearch single-node (gedeeld voor Vector logs + OpenMetadata search)
+log "Install OpenSearch ${OPENSEARCH_VERSION} (single-node, uwv-meta)"
+kubectl create namespace uwv-meta --dry-run=client -o yaml | kubectl apply -f -
+helm upgrade --install opensearch-uwv opensearch/opensearch \
+  --namespace uwv-meta \
+  --version "${OPENSEARCH_VERSION}" \
+  --values "${ROOT}/infrastructure/helm/opensearch/values.yaml" \
+  $(chart_override_args opensearch) \
+  --atomic --wait --timeout 10m
+
+# 10. OpenMetadata
+log "Install OpenMetadata ${OPENMETADATA_VERSION}"
+helm upgrade --install openmetadata open-metadata/openmetadata \
+  --namespace uwv-meta \
+  --version "${OPENMETADATA_VERSION}" \
+  --values "${ROOT}/infrastructure/helm/openmetadata/values.yaml" \
+  $(chart_override_args openmetadata) \
+  --wait --timeout 15m || warn "OpenMetadata install timing out — continue (init-Job kan later draaien)"
+
+# 11. Vector (logs collector → OpenSearch)
+log "Install Vector ${VECTOR_VERSION} (Agent-mode op alle nodes)"
+helm upgrade --install vector vector/vector \
+  --namespace uwv-monitoring \
+  --version "${VECTOR_VERSION}" \
+  --values "${ROOT}/infrastructure/helm/vector/values.yaml" \
+  --wait --timeout 5m
+
 log "Bootstrap voltooid."
 echo
 echo "Endpoints (na /etc/hosts injectie + ingress-nginx ready):"
 echo "  https://keycloak.uwv-platform.local:8443      (kcadmin / dev-only-pw)"
 echo "  https://minio-console.uwv-platform.local:8443 (uwvadmin / dev-only-pw)"
 echo "  https://grafana.uwv-platform.local:8443       (admin / dev-only-pw)"
+echo "  https://openmetadata.uwv-platform.local:8443  (admin@uwv-platform.local / dev-only-pw)"
+echo
+echo "Genereer een OpenMetadata JWT-token (voor init-Job + Airflow DAGs):"
+echo "  kubectl -n uwv-meta exec deploy/openmetadata -- metadata generate-token > /tmp/om-token"
+echo "  kubectl -n uwv-meta patch secret openmetadata-admin --type merge \\"
+echo "    -p \"{\\\"stringData\\\":{\\\"jwtToken\\\":\\\"\$(cat /tmp/om-token)\\\"}}\""
 echo
 echo "Volgende stap: make deploy-platform"

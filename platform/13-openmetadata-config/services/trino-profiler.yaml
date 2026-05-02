@@ -1,0 +1,30 @@
+# Trino profiler — kolom-statistieken (null-fractie, distinct count, value distribution).
+# UC-07 anchor: bron voor datakwaliteits-dashboard.
+---
+source:
+  type: trino
+  serviceName: uwv-trino
+  sourceConfig:
+    config:
+      type: Profiler
+      profileSample: 30  # 30% sample voor scaled-down k3d
+      generateSampleData: false
+      schemaFilterPattern:
+        includes:
+          - polisadm
+          - persoon
+          - ww
+          - wia
+processor:
+  type: orm-profiler
+  config: {}
+sink:
+  type: metadata-rest
+  config: {}
+workflowConfig:
+  loggerLevel: INFO
+  openMetadataServerConfig:
+    hostPort: http://openmetadata.uwv-meta.svc.cluster.local:8585/api
+    authProvider: openmetadata
+    securityConfig:
+      jwtToken: ${OM_JWT_TOKEN}

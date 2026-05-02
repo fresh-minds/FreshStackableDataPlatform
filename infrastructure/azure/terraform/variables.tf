@@ -1,0 +1,79 @@
+variable "subscription_id" {
+  description = "Azure subscription ID."
+  type        = string
+}
+
+variable "tenant_id" {
+  description = "Azure AD tenant ID."
+  type        = string
+}
+
+variable "resource_group_name" {
+  description = "Existing resource group that will hold the AKS cluster."
+  type        = string
+  default     = "dev-stackable-rg"
+}
+
+variable "location" {
+  description = "Azure region. Must match the existing resource group."
+  type        = string
+  default     = "westeurope"
+}
+
+variable "cluster_name" {
+  description = "AKS cluster name."
+  type        = string
+  default     = "uwv-platform-aks"
+}
+
+variable "dns_prefix" {
+  description = "DNS prefix for the AKS API server."
+  type        = string
+  default     = "uwv-platform"
+}
+
+variable "node_count" {
+  description = "Number of nodes in the default node pool."
+  type        = number
+  default     = 3
+}
+
+variable "node_vm_size" {
+  description = "VM size for the default node pool."
+  type        = string
+  default     = "Standard_D8s_v5"
+}
+
+variable "node_os_disk_size_gb" {
+  description = "OS disk size per node."
+  type        = number
+  default     = 128
+}
+
+variable "kubernetes_version" {
+  description = "AKS Kubernetes version. Empty = pick latest GA in the region (default_version)."
+  type        = string
+  default     = ""
+}
+
+variable "sp_client_id" {
+  description = "Service principal client ID used as AKS cluster identity."
+  type        = string
+}
+
+variable "sp_client_secret" {
+  description = "Service principal client secret. Pass via TF_VAR_sp_client_secret env var, never commit."
+  type        = string
+  sensitive   = true
+}
+
+variable "tags" {
+  description = "Tags applied to all created resources."
+  type        = map(string)
+  default = {
+    project     = "uwv-data-platform"
+    environment = "dev"
+    managed_by  = "terraform"
+    purpose     = "reference-implementation"
+  }
+}

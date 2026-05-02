@@ -1,0 +1,70 @@
+# UWV Platform namespaces — declaratief, met BIO-classificatie en doelbinding
+# als labels/annotaties zodat OpenMetadata's K8s-connector ze later kan oogsten.
+#
+# Sommige namespaces worden ook door bootstrap.sh aangemaakt (idempotent
+# kubectl apply). Dit bestand is de canonical bron.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: uwv-platform
+  labels:
+    uwv.nl/zone: data-platform
+    uwv.nl/environment: dev
+    pod-security.kubernetes.io/enforce: baseline
+  annotations:
+    uwv.nl/description: "Stackable data-platform workloads (Trino, Kafka, Spark, NiFi, etc.)"
+    uwv.nl/bio-classificatie: "vertrouwelijk"
+    uwv.nl/doelbinding: "primair_proces"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: uwv-data
+  labels:
+    uwv.nl/zone: shared-data-services
+    uwv.nl/environment: dev
+    pod-security.kubernetes.io/enforce: baseline
+  annotations:
+    uwv.nl/description: "Gedeelde data-services (PostgreSQL voor HMS/Airflow/Superset/OM/Keycloak)"
+    uwv.nl/bio-classificatie: "vertrouwelijk"
+    uwv.nl/doelbinding: "primair_proces"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: uwv-meta
+  labels:
+    uwv.nl/zone: governance
+    uwv.nl/environment: dev
+    pod-security.kubernetes.io/enforce: baseline
+  annotations:
+    uwv.nl/description: "Catalog, lineage en governance (OpenMetadata, OpenSearch)"
+    uwv.nl/bio-classificatie: "intern"
+    uwv.nl/doelbinding: "governance"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: uwv-monitoring
+  labels:
+    uwv.nl/zone: observability
+    uwv.nl/environment: dev
+    pod-security.kubernetes.io/enforce: privileged
+  annotations:
+    uwv.nl/description: "Prometheus, Grafana, Alertmanager (privileged i.v.m. node-exporter)"
+    uwv.nl/bio-classificatie: "intern"
+    uwv.nl/doelbinding: "observability"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: uwv-auth
+  labels:
+    uwv.nl/zone: identity
+    uwv.nl/environment: dev
+    pod-security.kubernetes.io/enforce: baseline
+  annotations:
+    uwv.nl/description: "Keycloak (OIDC IdP, mock realm UWV)"
+    uwv.nl/bio-classificatie: "vertrouwelijk"
+    uwv.nl/doelbinding: "authenticatie"

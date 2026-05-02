@@ -96,5 +96,82 @@ else
   fail "Keycloak realm 'uwv' beantwoordt geen OIDC-discovery"
 fi
 
+# ----------------------------------------------------------------------
+# Foundation services (fase 2). Skipt elegant als deze nog niet zijn applied.
+# ----------------------------------------------------------------------
+log "Foundation services (fase 2) — als reeds applied"
+
+ready_or_skip() {
+  local kind="$1" name="$2" ns="${3:-uwv-platform}"
+  if ! kubectl -n "$ns" get "$kind" "$name" >/dev/null 2>&1; then
+    printf "  [SKIP] %s/%s — nog niet applied (run 'make deploy-platform')\n" "$kind" "$name"
+    return 0
+  fi
+  # Wacht maximaal 30s op Ready-pods voor deze workload-label.
+  if kubectl -n "$ns" wait --for=condition=Ready pod \
+       -l app.kubernetes.io/instance="$name" --timeout=30s >/dev/null 2>&1; then
+    pass "$kind/$name pods Ready"
+  else
+    fail "$kind/$name pods NIET Ready"
+  fi
+}
+
+ready_or_skip zookeepercluster uwv-zookeeper
+ready_or_skip hivecluster uwv-hive
+ready_or_skip kafkacluster uwv-kafka
+
+# Stackable-CRDs aanwezig (basisset uit release.yaml)
+log "Stackable CRD-installatie check"
+expected_crds=(
+  zookeeperclusters.zookeeper.stackable.tech
+  hiveclusters.hive.stackable.tech
+  kafkaclusters.kafka.stackable.tech
+  trinoclusters.trino.stackable.tech
+  trinocatalogs.trino.stackable.tech
+  sparkapplications.spark.stackable.tech
+  airflowclusters.airflow.stackable.tech
+  supersetclusters.superset.stackable.tech
+  nificlusters.nifi.stackable.tech
+  opaclusters.opa.stackable.tech
+  authenticationclasses.authentication.stackable.tech
+  s3connections.s3.stackable.tech
+  secretclasses.secrets.stackable.tech
+)
+crd_missing=0
+for crd in "${expected_crds[@]}"; do
+  if kubectl get crd "$crd" >/dev/null 2>&1; then
+    : # ok, niet luid loggen — anders te veel ruis
+  else
+    printf "  [MISS] CRD %s\n" "$crd"
+    crd_missing=$((crd_missing+1))
+  fi
+done
+if [[ $crd_missing -eq 0 ]]; then
+  pass "Stackable CRDs aanwezig (${#expected_crds[@]} stuks)"
+else
+  fail "$crd_missing Stackable CRDs ontbreken"
+fi
+
+# Foundation-resources die in fase 2 zijn aangemaakt
+log "Foundation custom resources (skip indien afwezig)"
+for r in \
+  "secretclass/s3-credentials-minio:" \
+  "secretclass/oidc-client-credentials:" \
+  "authenticationclass/keycloak-uwv:" \
+  "s3connection/s3-minio:uwv-platform" \
+  "zookeepercluster/uwv-zookeeper:uwv-platform" \
+  "zookeeperznode/uwv-zookeeper-znode-kafka:uwv-platform"
+do
+  kind_name="${r%%:*}"
+  ns="${r##*:}"
+  ns_arg=""
+  [[ -n "$ns" ]] && ns_arg="-n $ns"
+  if kubectl get "$kind_name" $ns_arg >/dev/null 2>&1; then
+    pass "$kind_name aanwezig"
+  else
+    printf "  [SKIP] %s — nog niet applied\n" "$kind_name"
+  fi
+done
+
 echo
 pass "smoke 01-stackable-up: alle checks groen"

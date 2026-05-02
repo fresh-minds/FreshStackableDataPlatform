@@ -1,0 +1,14 @@
+version: 2
+
+models:
+  - name: int_huishouden_inkomen
+    description: "Inkomen-per-maand-aggregaat per BSN (UC-04 helper)."
+    config:
+      tags: ["intermediate"]
+    columns:
+      - name: bsn
+        tests: [not_null, unique, bsn_valid]
+      - name: inkomen_jaar_eur
+        tests: [not_null]
+      - name: inkomen_maand_eur
+        tests: [not_null]

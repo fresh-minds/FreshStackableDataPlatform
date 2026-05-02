@@ -1,0 +1,62 @@
+# Improvements #8 — pre-commit hooks.
+#
+# Installeer:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Run on alles:
+#   pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '^(infrastructure/helm/keycloak/realm-uwv\.json)$'
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: '^(platform/09-trino/catalogs/.*\.yaml\.tmpl)$'
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: [-c, ci/yamllint.yaml]
+        files: '^(platform|infrastructure|ci)/.*\.ya?ml$'
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        files: '^(data-generation|spark-jobs|platform/11-airflow/dags|ci/scripts)/'
+      - id: ruff-format
+        files: '^(data-generation|spark-jobs|platform/11-airflow/dags|ci/scripts)/'
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        args: [-e, "SC1091,SC2086"]
+
+  # Lokaal: opa fmt — vereist `opa` in PATH.
+  - repo: local
+    hooks:
+      - id: opa-fmt
+        name: opa fmt
+        entry: opa fmt --diff
+        language: system
+        files: '^opa-policies-src/.*\.rego$'
+        pass_filenames: true
+
+      - id: dbt-meta-check
+        name: dbt meta-block check
+        entry: python3 ci/scripts/check-dbt-meta.py
+        language: system
+        files: '^dbt/models/.*_.*\.yml$'
+        pass_filenames: false

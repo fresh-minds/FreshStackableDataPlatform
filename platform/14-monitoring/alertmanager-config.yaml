@@ -1,0 +1,84 @@
+# AlertmanagerConfig — Slack/PagerDuty receiver (improvements #5).
+#
+# Vereist Alertmanager actief (kube-prometheus-stack heeft het uit by default;
+# zet `alertmanager.enabled: true` in helm-values voor productie).
+#
+# De Slack/PagerDuty webhook-URLs zitten in een Secret zodat ze niet in code
+# komen.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-receivers
+  namespace: uwv-monitoring
+  labels:
+    uwv.nl/dev-only: "true"
+type: Opaque
+stringData:
+  # Vervang door echte webhook-URLs. Tot die tijd is dit een placeholder.
+  slack_webhook: "https://hooks.slack.com/services/REPLACE/WITH/REAL"
+  pagerduty_routing_key: "REPLACE_WITH_PD_INTEGRATION_KEY"
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: uwv-platform-receivers
+  namespace: uwv-monitoring
+  labels:
+    alertmanagerConfig: uwv-platform
+spec:
+  route:
+    receiver: slack-uwv-warning
+    groupBy: [alertname, cluster, namespace]
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 4h
+    routes:
+      - receiver: pagerduty-critical
+        matchers:
+          - name: severity
+            value: critical
+        continue: false
+      - receiver: slack-uwv-warning
+        matchers:
+          - name: severity
+            value: warning
+
+  receivers:
+    - name: slack-uwv-warning
+      slackConfigs:
+        - apiURL:
+            name: alertmanager-receivers
+            key: slack_webhook
+          channel: "#uwv-data-platform"
+          sendResolved: true
+          title: "{{ .Status | toUpper }} — {{ .CommonLabels.alertname }}"
+          text: |
+            {{ range .Alerts }}
+            *{{ .Annotations.summary }}*
+            {{ .Annotations.description }}
+            {{ if .Annotations.runbook_url }}<{{ .Annotations.runbook_url }}|Runbook>{{ end }}
+            *Severity*: {{ .Labels.severity }} · *Component*: {{ .Labels.component }}
+            {{ end }}
+
+    - name: pagerduty-critical
+      pagerdutyConfigs:
+        - routingKey:
+            name: alertmanager-receivers
+            key: pagerduty_routing_key
+          severity: critical
+          description: "{{ .CommonLabels.alertname }}"
+          details:
+            summary: "{{ .CommonAnnotations.summary }}"
+            description: "{{ .CommonAnnotations.description }}"
+            runbook_url: "{{ .CommonAnnotations.runbook_url }}"
+
+  inhibitRules:
+    # Suppresses warnings als er een critical voor hetzelfde component is.
+    - sourceMatch:
+        - name: severity
+          value: critical
+      targetMatch:
+        - name: severity
+          value: warning
+      equal: [component, namespace]

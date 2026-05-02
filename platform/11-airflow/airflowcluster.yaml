@@ -1,0 +1,88 @@
+# AirflowCluster — orchestratie voor dbt-runs, lakehouse-maintenance, seed,
+# en (fase 8) OpenMetadata-ingestie.
+#
+# DB: gedeelde Postgres `uwv-data/postgres-postgresql.uwv-data.svc.cluster.local`
+#     database `airflow` (init-script in fase 1 maakt deze aan).
+# Auth: OIDC via keycloak-uwv (productie). Voor dev is admin-flow ook open.
+# DAGs: ConfigMap `airflow-dags` (zie kustomization configMapGenerator) gemount
+#       via podOverrides op /stackable/airflow/dags. Productie zou dagsGitSync
+#       gebruiken — zie README.
+---
+apiVersion: airflow.stackable.tech/v1alpha1
+kind: AirflowCluster
+metadata:
+  name: uwv-airflow
+  namespace: uwv-platform
+spec:
+  image:
+    productVersion: "2.10.4"
+  clusterConfig:
+    listenerClass: cluster-internal
+    loadExamples: false
+    exposeConfig: false
+    credentialsSecret: airflow-postgres-credentials
+    database:
+      connString: postgresql+psycopg2://uwvplatform@postgres-postgresql.uwv-data.svc.cluster.local:5432/airflow
+      credentialsSecret: airflow-postgres-credentials
+      dbType: postgresql
+    executor:
+      kubernetes: {}
+    authentication:
+      - authenticationClass: keycloak-uwv
+
+  webservers:
+    config:
+      logging:
+        enableVectorAgent: false
+      resources:
+        cpu:
+          min: "100m"
+          max: "500m"
+        memory:
+          limit: "1Gi"
+    roleGroups:
+      default:
+        replicas: 1
+        podOverrides:
+          spec:
+            containers:
+              - name: airflow
+                volumeMounts:
+                  - name: dags
+                    mountPath: /stackable/airflow/dags
+            volumes:
+              - name: dags
+                configMap:
+                  name: airflow-dags
+
+  schedulers:
+    config:
+      logging:
+        enableVectorAgent: false
+      resources:
+        cpu:
+          min: "100m"
+          max: "1000m"
+        memory:
+          limit: "1Gi"
+    roleGroups:
+      default:
+        replicas: 1
+        podOverrides:
+          spec:
+            containers:
+              - name: airflow
+                volumeMounts:
+                  - name: dags
+                    mountPath: /stackable/airflow/dags
+            volumes:
+              - name: dags
+                configMap:
+                  name: airflow-dags
+
+  celeryExecutors:
+    # Niet gebruikt — we draaien KubernetesExecutor (zie executor.kubernetes)
+    config: {}
+    roleGroups:
+      default:
+        replicas: 0

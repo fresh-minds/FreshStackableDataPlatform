@@ -1,0 +1,29 @@
+# Airflow pipeline-ingestion. Levert DAGs + tasks + run-history.
+---
+source:
+  type: airflow
+  serviceName: uwv-airflow
+  serviceConnection:
+    config:
+      type: Airflow
+      hostPort: http://uwv-airflow-webserver.uwv-platform.svc.cluster.local:8080
+      connection:
+        type: Backend  # praat met Airflow's metastore-DB direct
+        username: uwvplatform
+        password: ${AIRFLOW_DB_PW}
+        hostPort: postgres-postgresql.uwv-data.svc.cluster.local:5432
+        database: airflow
+  sourceConfig:
+    config:
+      type: PipelineMetadata
+      includeLineage: true
+sink:
+  type: metadata-rest
+  config: {}
+workflowConfig:
+  loggerLevel: INFO
+  openMetadataServerConfig:
+    hostPort: http://openmetadata.uwv-meta.svc.cluster.local:8585/api
+    authProvider: openmetadata
+    securityConfig:
+      jwtToken: ${OM_JWT_TOKEN}

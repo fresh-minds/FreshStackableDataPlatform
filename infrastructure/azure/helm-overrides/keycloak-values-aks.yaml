@@ -1,0 +1,7 @@
+# Keycloak override for AKS — point at bitnamilegacy mirror.
+image:
+  repository: bitnamilegacy/keycloak
+
+postgresql:
+  image:
+    repository: bitnamilegacy/postgresql

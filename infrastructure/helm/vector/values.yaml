@@ -35,10 +35,26 @@ customConfig:
         .uwv_platform = "uwv-data-platform"
         .uwv_zone = "dev-k3d"
 
-  sinks:
-    opensearch:
-      type: elasticsearch
+    # Improvements #12 — splits OPA decision-logs af voor 7-jaars-retentie
+    # en aparte audit-index (R-AVG-15, R-BIO-20).
+    route_audit_logs:
+      type: route
       inputs: [add_uwv_metadata]
+      route:
+        opa_decisions: |
+          (.kubernetes.pod_namespace == "uwv-platform"
+            && includes(string!(.kubernetes.container_name ?? ""), "opa")
+            && contains(string!(.message ?? ""), "decision_id"))
+        trino_audit: |
+          (.kubernetes.pod_namespace == "uwv-platform"
+            && includes(string!(.kubernetes.container_name ?? ""), "trino")
+            && contains(string!(.message ?? ""), "queryId"))
+
+  sinks:
+    opensearch_app:
+      type: elasticsearch
+      inputs:
+        - "route_audit_logs._unmatched"
       endpoints:
         - "http://opensearch-uwv.uwv-meta.svc.cluster.local:9200"
       bulk:
@@ -47,4 +63,20 @@ customConfig:
       api_version: v8
       compression: gzip
       healthcheck:
-        enabled: false   # OpenSearch is single-node, kan kort starten
+        enabled: false
+
+    # Aparte audit-index met 7-jaar-retentie (zie OS ILM uwv-audit-logs).
+    opensearch_audit:
+      type: elasticsearch
+      inputs:
+        - "route_audit_logs.opa_decisions"
+        - "route_audit_logs.trino_audit"
+      endpoints:
+        - "http://opensearch-uwv.uwv-meta.svc.cluster.local:9200"
+      bulk:
+        index: "uwv-logs-audit-%Y.%m.%d"
+      mode: bulk
+      api_version: v8
+      compression: gzip
+      healthcheck:
+        enabled: false

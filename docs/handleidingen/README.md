@@ -1,0 +1,99 @@
+# Handleidingen per rol
+
+Dit is de gebruikersdocumentatie van het UWV Referentie Data- en Analyseplatform,
+opgesplitst per rol. Elke rol heeft zijn eigen handleiding met:
+
+1. **Inloggen, MFA & applicaties** — hoe je begint
+2. **Welke data je wel en niet ziet** — catalogs, schemas, kolom-maskers, rij-filters
+3. **Dagelijkse workflows met voorbeelden** — concrete scenario's, queries, dashboards
+4. **Hulp, fouten & escalatie** — wat te doen bij problemen
+
+> **Belangrijk.** Dit platform is een **fictieve, illustratieve referentie-implementatie**.
+> Alle datasets zijn synthetisch (alleen 9-prefix BSN's, `meta.synthetic: true`).
+> De handleidingen beschrijven hoe het platform *werkt*, niet hoe productie-UWV werkt.
+> Productie-installaties verwijzen naar dit document als blauwdruk, niet als procedure.
+
+---
+
+## Overzicht van rollen
+
+Het platform onderscheidt **11 menselijke rollen** + **1 systeemrol**, gemodelleerd
+in [`infrastructure/helm/keycloak/realm-uwv.json`](../../infrastructure/helm/keycloak/realm-uwv.json)
+en [`opa-policies-src/data/uwv_role_mappings.json`](../../opa-policies-src/data/uwv_role_mappings.json).
+
+### Business-rollen (eindgebruikers)
+
+| # | Rol | Domein | Handleiding |
+|---|---|---|---|
+| 1 | WIA-beoordelaar | AG / WIA | [01-wia-beoordelaar.md](01-wia-beoordelaar.md) |
+| 2 | WW-handhaver | WW | [02-ww-handhaver.md](02-ww-handhaver.md) |
+| 3 | Wajong-arbeidsdeskundige | AG / Wajong | [03-wajong-arbeidsdeskundige.md](03-wajong-arbeidsdeskundige.md) |
+| 4 | CRM-medewerker | CRM / Klantcontact | [04-crm-medewerker.md](04-crm-medewerker.md) |
+| 5 | FEZ-analist | Financiën | [05-fez-analist.md](05-fez-analist.md) |
+| 6 | SMZ-planner | Sociaal-medische zaken | [06-smz-planner.md](06-smz-planner.md) |
+| 7 | Proactief dienstverlener | Toeslagenwet (proactief) | [07-proactief-dienstverlener.md](07-proactief-dienstverlener.md) |
+| 8 | Researcher | Onderzoek (sandbox) | [08-researcher.md](08-researcher.md) |
+
+### Technische rollen (platform-team)
+
+| # | Rol | Verantwoordelijkheid | Handleiding |
+|---|---|---|---|
+| 9 | Data-steward | Datakwaliteit, governance, lineage | [09-data-steward.md](09-data-steward.md) |
+| 10 | Data-engineer | Pipelines, ingestion, transformaties | [10-data-engineer.md](10-data-engineer.md) |
+| 11 | Platform-admin | Cluster, security, break-glass | [11-platform-admin.md](11-platform-admin.md) |
+
+### Systeemrol
+
+| # | Rol | Functie | Handleiding |
+|---|---|---|---|
+| 12 | Smoketest | Service-account voor automated tests + dbt-runs | [12-smoketest-systeem.md](12-smoketest-systeem.md) |
+
+---
+
+## Eén gebundeld handboek
+
+Voor distributie of offline lezen is er een **gebundeld handboek** met alle
+rollen achter elkaar:
+
+- Markdown: [00-handboek.md](00-handboek.md)
+- Word (.docx): `UWV_Platform_Handboek_per_rol.docx` in de hoofdmap
+
+---
+
+## Veelgebruikte begrippen
+
+| Term | Uitleg |
+|---|---|
+| **Catalog** | Trino-namespace die overeenkomt met een datazone: `bronze`, `silver`, `gold`, `sensitive`, `sandbox`. |
+| **Schema** | Domein binnen een catalog, bv. `silver.wia` of `gold.uc01_wia_funnel`. |
+| **OPA** | Open Policy Agent — bepaalt bij elke query wie wat mag zien. |
+| **Doelbinding** | De wettelijke taak waarvoor data verwerkt mag worden. Toegang vereist een geldig doel. |
+| **PII** | Persoonlijk Identificeerbare Informatie (BSN, naam, geboortedatum, adres). |
+| **Pseudonimisering** | Vervangen van BSN door een hash + zout — niet herleidbaar zonder sleutel. |
+| **Sensitive Vault** | Aparte catalog voor bijzondere persoonsgegevens (art. 9 AVG). |
+| **Mart** | Eindproduct van dbt: een tabel/view klaar voor consumptie in `gold.*`. |
+| **JIT-toegang** | Just-in-time: tijdelijke verhoogde rechten met audit-log, alleen op aanvraag. |
+| **Break-glass** | Noodprocedure: admin-toegang die altijd gelogd en achteraf gereviewd wordt. |
+
+---
+
+## Zes regels die voor iedereen gelden
+
+1. **Doelbinding eerst** — gebruik data alleen voor de taak waarvoor je rol toegang heeft.
+2. **Niets is "zomaar"** — elke query wordt gelogd, elke toegang is herleidbaar.
+3. **Mens beslist** — algoritmes geven advies, jij neemt het besluit.
+4. **Bij twijfel niet doen** — vraag eerst de data-steward of platform-admin.
+5. **Geen schermafbeeldingen van persoonsgegevens** — ook niet voor bug-rapporten.
+6. **Geen wachtwoorden delen** — ook niet "even snel" met collega's.
+
+---
+
+## Eerste hulp
+
+Werkt iets niet? In deze volgorde:
+
+1. **Lees** de sectie *Hulp, fouten & escalatie* in jouw rol-handleiding.
+2. **Vraag** een collega met dezelfde rol.
+3. **Mail** de data-steward (`data.steward@uwv-platform.local`).
+4. **Voor incidenten** (rare meldingen, plotse toegang verloren, vermoede inbreuk):
+   bel de platform-admin direct, niet via e-mail.

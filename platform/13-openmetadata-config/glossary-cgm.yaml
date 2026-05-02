@@ -1,0 +1,103 @@
+# CGM (Canoniek Gegevensmodel UWV) glossary voor OpenMetadata.
+#
+# Termen uit referentiearchitectuur Bijlage B + use-case-secties.
+# Wordt via init-Job met POST /api/v1/glossaries en /api/v1/glossaryTerms toegepast.
+#
+# Productie zou de officiële CGM-yaml uit het Data Office repo halen.
+
+glossary:
+  name: CGM
+  displayName: "Canoniek Gegevensmodel UWV"
+  description: |
+    Canoniek Gegevensmodel — UWV-breed conceptueel datamodel. Elke gold-tabel
+    mapt 1-op-1 naar één of meer CGM-entiteiten; afwijking vereist explicit
+    waiver van Data Office.
+  reviewers:
+    - data.steward
+  owner:
+    type: user
+    name: data.steward
+
+terms:
+  # Cliënt-domein
+  - name: Client
+    displayName: "Cliënt"
+    description: "Natuurlijke persoon waarvoor UWV een dienst uitvoert."
+    relatedTerms: [Aanvraag, Uitkering, Contact]
+  - name: Persona
+    displayName: "Persoon"
+    description: "Persoonsgegeven-deel van een Cliënt (NAW + geboortedatum)."
+
+  # Aanvraag- en beoordelings-domein
+  - name: Aanvraag
+    displayName: "Aanvraag"
+    description: "Verzoek tot uitkering of voorziening (WW, WIA, Wajong, ZW, TW)."
+  - name: Beoordeling
+    displayName: "Beoordeling"
+    description: "Inhoudelijke toetsing van een Aanvraag door beoordelaar."
+  - name: Beoordelaar
+    displayName: "Beoordelaar"
+    description: "UWV-medewerker die Beoordeling uitvoert (verzekeringsarts of arbeidsdeskundige)."
+  - name: Capaciteit
+    displayName: "Capaciteit"
+    description: "Beschikbare uren per Beoordelaar (UC-08)."
+
+  # Diagnose / sociaal-medisch
+  - name: Diagnose
+    displayName: "Diagnose"
+    description: "Medische diagnose — bijzonder PG (art. 9 AVG). Sensitive Vault."
+
+  # Re-integratie
+  - name: Traject
+    displayName: "Re-integratietraject"
+    description: "Re-integratie-instrument (IPS, proefplaatsing, scholing, jobcoaching)."
+  - name: Werkhervatting
+    displayName: "Werkhervatting"
+    description: "Daadwerkelijke werkhervatting na een traject."
+  - name: Uitkomst
+    displayName: "Uitkomst"
+    description: "Resultaat van een Traject, gemeten op duurzaam-werk-criterium."
+
+  # Polisadministratie
+  - name: IKV
+    displayName: "Inkomstenverhouding"
+    description: "Kerneenheid polisadministratie — combinatie werknemer × werkgever × periode."
+  - name: Werknemer
+    displayName: "Werknemer"
+    description: "Natuurlijke persoon met lopend dienstverband."
+  - name: Werkgever
+    displayName: "Werkgever"
+    description: "Werkgever — onderneming met loonheffingennummer."
+  - name: Dienstverband
+    displayName: "Dienstverband"
+    description: "Arbeidsovereenkomst — onderdeel van een IKV."
+  - name: Ontslag
+    displayName: "Ontslag"
+    description: "Beëindiging van een Dienstverband."
+
+  # Uitkering / financieel
+  - name: Uitkering
+    displayName: "Uitkering"
+    description: "Periodieke betaling aan Cliënt op grond van een wet (WW/WIA/Wajong/ZW/TW)."
+  - name: Inkomen
+    displayName: "Inkomen"
+    description: "Bruto inkomen per periode (uit IKV's)."
+  - name: Huishouden
+    displayName: "Huishouden"
+    description: "Huishoudsamenstelling (uit BRP-spiegel) voor TW-toets."
+  - name: Aggregaat
+    displayName: "Aggregaat"
+    description: "Geanonimiseerde geaggregeerde uitkeringslast per wet × regio × periode (UC-06)."
+
+  # CRM
+  - name: Contact
+    displayName: "Klantcontact"
+    description: "Contactgebeurtenis tussen Cliënt en UWV (telefoon, balie, beeldbellen, mail)."
+  - name: Kanaal
+    displayName: "Kanaal"
+    description: "Communicatiekanaal — telefoon, balie, beeldbellen, werkmap_bericht, mail."
+
+  # Doelgroep
+  - name: Doelgroepregister
+    displayName: "Doelgroepregister Banenafspraak"
+    description: "Indicaties art. 38d Wfsv."

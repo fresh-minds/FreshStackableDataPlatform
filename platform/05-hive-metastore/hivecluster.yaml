@@ -1,0 +1,39 @@
+# HiveCluster — Hive Metastore service.
+#
+# Werkt voor Iceberg én Delta als catalog backend (beide gebruiken
+# Hive-style metadata). Postgres-backed (gedeelde instance in uwv-data).
+# S3 connectie naar MinIO voor warehouse-locaties.
+#
+# Image-versie: 4.0.1 (HMS standalone). Stackable bouwt eigen image bovenop.
+---
+apiVersion: hive.stackable.tech/v1alpha1
+kind: HiveCluster
+metadata:
+  name: uwv-hive
+  namespace: uwv-platform
+spec:
+  image:
+    productVersion: "4.0.1"
+  clusterConfig:
+    database:
+      connString: jdbc:postgresql://postgres-postgresql.uwv-data.svc.cluster.local:5432/hivemetastore
+      user: uwvplatform
+      credentialsSecret: hive-postgres-credentials
+      dbType: postgres
+    s3:
+      reference: s3-minio
+    listenerClass: cluster-internal
+  metastore:
+    config:
+      logging:
+        enableVectorAgent: false
+    roleGroups:
+      default:
+        replicas: 1
+        config:
+          resources:
+            cpu:
+              min: "200m"
+              max: "1000m"
+            memory:
+              limit: "1Gi"

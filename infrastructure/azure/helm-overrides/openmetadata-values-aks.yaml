@@ -1,0 +1,4 @@
+# OpenMetadata override for AKS.
+persistence:
+  storageClass: "managed-csi"
+  size: 5Gi
