@@ -39,6 +39,7 @@ LAYERS=(
   "platform/12-superset"
   "platform/13-openmetadata-config"
   "platform/14-monitoring"
+  "platform/15-portal"
 )
 
 for layer in "${LAYERS[@]}"; do

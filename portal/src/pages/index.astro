@@ -1,0 +1,92 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { roles } from '../data/roles';
+import { components } from '../data/components';
+---
+<Layout title="Home">
+  <section class="panel">
+    <h1>UWV Reference Data Platform</h1>
+    <p>
+      Eén plek om <strong>te zien hoe het platform werkt</strong> en om naar
+      de tools te springen die bij <strong>jouw rol</strong> horen. Alle
+      componenten zijn open source; toegang en data-zichtbaarheid worden
+      bepaald door OPA-policies en Keycloak-rollen.
+    </p>
+    <p class="cta">
+      <a class="btn" href="/architecture/">→ Architectuurkaart bekijken</a>
+      <a class="btn btn-primary" href="/me/">→ Naar mijn werkplek</a>
+    </p>
+    <p class="note">
+      Synthetische data, illustratieve referentie. Geen productie-UWV-systeem.
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>Twee manieren om te navigeren</h2>
+    <div class="grid-2">
+      <div>
+        <h3>1. Architectuur</h3>
+        <p>
+          Klikbare landkaart van alle <strong>{components.length} componenten</strong>:
+          ingestion (NiFi → Kafka → Spark), opslag (Delta op MinIO),
+          query (Trino + OPA), BI (Superset), governance (OpenMetadata),
+          observability (Prometheus + OpenSearch). Hover voor uitleg, klik
+          om de UI te openen, kleur-stip toont live status.
+        </p>
+      </div>
+      <div>
+        <h3>2. Rol</h3>
+        <p>
+          Log in via Keycloak en je ziet alleen de tools die <strong>jouw rol</strong>
+          mag gebruiken, met shortcuts naar de werkstromen uit je rol-handleiding.
+          {roles.length} rollen beschikbaar — van <em>WIA-beoordelaar</em> tot
+          <em>platform-admin</em>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Rollen op dit platform</h2>
+    <div class="grid-3">
+      {roles.map((r) => (
+        <a class="role-card" href={`/me/?role=${r.id}`}>
+          <strong>{r.displayName}</strong>
+          <span>{r.domain}</span>
+          <span class="cat">{r.category === 'tech' ? 'tech' : 'business'}</span>
+        </a>
+      ))}
+    </div>
+    <p class="note">
+      Klikken op een rol opent „Mijn werkplek” in <em>demo-modus</em> (zonder login).
+      Echte rol komt uit je Keycloak-token na SSO.
+    </p>
+  </section>
+</Layout>
+
+<style>
+  .cta { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: 1rem; }
+  .btn {
+    display: inline-block; padding: .55rem 1rem; border-radius: var(--radius);
+    background: var(--c-panel-2); color: var(--c-text); border: 1px solid var(--c-border);
+  }
+  .btn:hover { border-color: var(--c-accent); text-decoration: none; }
+  .btn-primary { background: var(--c-accent); color: #1a1206; border-color: var(--c-accent); font-weight: 600; }
+  .note { font-size: .8rem; color: var(--c-muted); margin-top: 1rem; }
+  .role-card {
+    display: flex; flex-direction: column; gap: .15rem;
+    padding: .75rem .9rem;
+    background: var(--c-panel-2);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    color: var(--c-text);
+    position: relative;
+  }
+  .role-card:hover { border-color: var(--c-accent); text-decoration: none; }
+  .role-card span { font-size: .8rem; color: var(--c-muted); }
+  .role-card .cat {
+    position: absolute; top: .55rem; right: .65rem;
+    font-size: .65rem; text-transform: uppercase; letter-spacing: .05em;
+    background: var(--c-panel); padding: .1rem .4rem; border-radius: 999px;
+  }
+</style>

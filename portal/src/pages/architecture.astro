@@ -1,0 +1,157 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Mermaid from '../components/Mermaid.astro';
+import ComponentCard from '../components/ComponentCard.astro';
+import { components } from '../data/components';
+
+const chart = `flowchart LR
+  subgraph SRC["Bronsystemen"]
+    BRON["UWV-bronnen<br/>(synthetisch)"]
+  end
+
+  subgraph AUTH["Identiteit"]
+    KC["Keycloak<br/>(OIDC + MFA)"]
+  end
+
+  subgraph INGEST["Ingestion"]
+    NIFI["Apache NiFi"]
+    KAFKA["Kafka"]
+  end
+
+  subgraph COMPUTE["Compute"]
+    SPARK["Spark<br/>Streaming + Batch"]
+  end
+
+  subgraph LAKE["Lakehouse"]
+    MINIO[("MinIO<br/>bronze · silver · gold · sensitive")]
+    HIVE["Hive Metastore"]
+  end
+
+  subgraph QUERY["Query"]
+    TRINO["Trino"]
+    OPA["OPA<br/>doelbinding · rij-filter · masker"]
+  end
+
+  subgraph ORCH["Orkestratie"]
+    AIR["Airflow"]
+  end
+
+  subgraph CONS["Consumptie"]
+    SUP["Superset"]
+    OM["OpenMetadata"]
+  end
+
+  subgraph OBS["Observability"]
+    PROM["Prometheus"]
+    OS["OpenSearch"]
+  end
+
+  BRON --> NIFI --> KAFKA --> SPARK --> MINIO
+  HIVE -.-> TRINO
+  HIVE -.-> SPARK
+  MINIO --> TRINO
+  TRINO -. "policy check" .- OPA
+  TRINO --> SUP
+  AIR --> SPARK
+  AIR -. "dbt run" .- TRINO
+  OM -. "lineage / DQ" .- TRINO
+  OM -. "ingestion hooks" .- NIFI
+  KC -. "SSO" .- SUP
+  KC -. "SSO" .- TRINO
+  KC -. "SSO" .- AIR
+  KC -. "SSO" .- NIFI
+  KC -. "SSO" .- OM
+  PROM -. "scrape" .- TRINO
+  PROM -. "scrape" .- KAFKA
+  PROM -. "scrape" .- SPARK
+  OS -. "logs" .- TRINO
+
+  click KC "https://keycloak.uwv-platform.local" "Open Keycloak" _blank
+  click MINIO "https://minio.uwv-platform.local" "Open MinIO" _blank
+  click NIFI "https://nifi.uwv-platform.local" "Open NiFi" _blank
+  click TRINO "https://trino.uwv-platform.local" "Open Trino" _blank
+  click AIR "https://airflow.uwv-platform.local" "Open Airflow" _blank
+  click SUP "https://superset.uwv-platform.local" "Open Superset" _blank
+  click OM "https://openmetadata.uwv-platform.local" "Open OpenMetadata" _blank
+
+  classDef ext fill:#1a1206,stroke:#f59e0b,color:#fbbf24;
+  class KC,NIFI,TRINO,SUP,AIR,OM,MINIO ext;
+`;
+---
+<Layout title="Architectuur">
+  <section class="panel">
+    <h1>Architectuurkaart</h1>
+    <p>
+      De boxen met oranje rand zijn klikbaar — ze openen de UI van die
+      component. Stippellijnen zijn control-paden (auth, lineage, scrape),
+      doorgetrokken lijnen zijn dataflow.
+    </p>
+  </section>
+
+  <Mermaid chart={chart} />
+
+  <section class="panel" style="margin-top:1.5rem">
+    <h2>Status van alle componenten</h2>
+    <p>
+      Live <code>up{`{job=...}`}</code> uit Prometheus. Stip wordt na een
+      seconde groen/rood; blijft hij grijs, dan is Prometheus zelf niet
+      bereikbaar of staat de portal in lokale dev.
+    </p>
+    <div class="grid-3">
+      {components.map((c) => <ComponentCard component={c} />)}
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Datazones</h2>
+    <p>
+      Vier zones in MinIO + Hive: <code>bronze</code> (ruw, alleen data-engineers
+      met JIT), <code>silver</code> (geconformeerd, primair domein-toegang),
+      <code>gold</code> (marts voor BI), <code>sensitive</code> (art. 9 AVG,
+      4-eyes) en <code>sandbox</code> (gepseudonimiseerd, voor researchers).
+      Welke zone jij mag zien zie je op
+      <a href="/me/">Mijn werkplek</a>.
+    </p>
+  </section>
+
+  <script>
+    // Live status badges. Eén fetch per component zodat we ook bij groot
+    // aantal niet 13× tegelijk Prometheus bestoken — maar pas op dat we
+    // dit alleen doen als de proxy bereikbaar is.
+    async function refreshStatus() {
+      const els = document.querySelectorAll<HTMLElement>('[data-status-job]');
+      for (const el of els) {
+        const job = el.dataset.statusJob!;
+        try {
+          const r = await fetch(`/api/status/up?job=${encodeURIComponent(job)}`, {
+            credentials: 'include',
+          });
+          if (!r.ok) {
+            el.classList.add('warn');
+            continue;
+          }
+          const j = await r.json();
+          // Verwacht: { status: "ok", up: <0|1> }
+          const up = j?.up;
+          el.classList.remove('ok', 'warn', 'bad');
+          if (up === 1) {
+            el.classList.add('ok');
+            el.title = `up{job="${job}"} = 1`;
+          } else if (up === 0) {
+            el.classList.add('bad');
+            el.title = `up{job="${job}"} = 0`;
+          } else {
+            el.classList.add('warn');
+            el.title = `Geen data voor up{job="${job}"}`;
+          }
+        } catch {
+          el.classList.add('warn');
+        }
+      }
+    }
+
+    refreshStatus();
+    // Iedere 30s opnieuw — kost weinig en vangt herstart-pieken.
+    setInterval(refreshStatus, 30_000);
+  </script>
+</Layout>

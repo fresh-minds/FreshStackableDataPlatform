@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.astro/
+.cache/
+.env
+.env.local
+*.log
+src/data/role-mappings.generated.json

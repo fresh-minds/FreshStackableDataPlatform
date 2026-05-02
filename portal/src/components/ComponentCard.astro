@@ -1,0 +1,43 @@
+---
+import type { PlatformComponent } from '../data/components';
+import StatusBadge from './StatusBadge.astro';
+
+interface Props {
+  component: PlatformComponent;
+  emphasis?: boolean;
+}
+const { component, emphasis = false } = Astro.props;
+const hasUrl = component.url !== null;
+---
+<article class={`comp ${emphasis ? 'comp-emph' : ''}`}>
+  <header>
+    <h3>
+      {hasUrl ? (
+        <a href={component.url} target="_blank" rel="noopener noreferrer">{component.name} ↗</a>
+      ) : (
+        <span>{component.name}</span>
+      )}
+    </h3>
+    {component.prometheusJob && <StatusBadge job={component.prometheusJob} label="" />}
+  </header>
+  <p>{component.short}</p>
+  <footer>
+    <span class="layer">{component.layer}</span>
+  </footer>
+</article>
+
+<style>
+  .comp {
+    background: var(--c-panel);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    padding: .85rem 1rem;
+    display: flex; flex-direction: column;
+  }
+  .comp-emph { border-color: var(--c-accent); }
+  .comp header { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+  .comp h3 { margin: 0; font-size: .95rem; }
+  .comp p { color: var(--c-muted); font-size: .85rem; margin: .4rem 0 .6rem; flex: 1; }
+  .comp footer { font-size: .7rem; color: var(--c-muted); text-transform: uppercase; letter-spacing: .05em; }
+  .layer { background: var(--c-panel-2); padding: .1rem .45rem; border-radius: 999px; }
+</style>

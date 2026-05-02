@@ -1,0 +1,268 @@
+---
+import Layout from '../layouts/Layout.astro';
+import ComponentCard from '../components/ComponentCard.astro';
+import { roles, type RoleId } from '../data/roles';
+import { components } from '../data/components';
+import { shortcuts } from '../data/role-shortcuts';
+import roleMappings from '../data/role-mappings.generated.json';
+
+// Bouw een client-side payload zodat de pagina puur statisch kan zijn:
+// alle 11 rollen + componenten + shortcuts in één JSON, en de browser
+// kiest op basis van Keycloak-claim of ?role=<id> wat zichtbaar wordt.
+
+const capabilities = (roleMappings as { uwv_role_mappings: { roles: Record<string, unknown> } })
+  .uwv_role_mappings.roles;
+
+const payload = {
+  roles,
+  components,
+  shortcuts,
+  capabilities,
+};
+---
+<Layout title="Mijn werkplek">
+  <section class="panel" id="role-picker" hidden>
+    <h1>Kies een rol om te bekijken</h1>
+    <p>
+      Je bent niet ingelogd via Keycloak — dit is de demo-modus. Kies hieronder
+      een rol om te zien wat die persoon op het platform mag doen. In
+      productie wordt deze pagina automatisch ingevuld na SSO.
+    </p>
+    <div class="grid-3" id="picker-grid"></div>
+  </section>
+
+  <section class="panel" id="role-view" hidden>
+    <header class="role-head">
+      <div>
+        <h1 id="rh-name">…</h1>
+        <p id="rh-purpose" class="muted"></p>
+      </div>
+      <div class="role-meta">
+        <span class="badge" id="rh-domain">…</span>
+        <span class="badge" id="rh-category">…</span>
+      </div>
+    </header>
+
+    <h2>Wat mag jij zien?</h2>
+    <ul class="caps" id="caps-list"></ul>
+
+    <h2>Snel naar je werk</h2>
+    <div class="grid-2" id="shortcut-grid"></div>
+
+    <h2>Jouw tools</h2>
+    <p class="muted">
+      Klik om te openen — SSO regelt dat je niet opnieuw hoeft in te loggen.
+    </p>
+    <div class="grid-3" id="tool-grid"></div>
+
+    <h2>Tools die je <em>niet</em> gebruikt</h2>
+    <p class="muted">Voor referentie — toegang is geblokkeerd door OPA en Keycloak.</p>
+    <div class="grid-3" id="other-grid"></div>
+
+    <h2>Hulp en uitleg</h2>
+    <ul>
+      <li>
+        <a id="help-handleiding" href="#">Lees jouw rol-handleiding</a>
+        — workflows, foutmeldingen, escalatie.
+      </li>
+      <li><a href="/architecture/">Bekijk de architectuurkaart</a></li>
+      <li>Mail <a href="mailto:data.steward@uwv-platform.local">data.steward@uwv-platform.local</a> bij vragen over data</li>
+      <li>Bel platform-admin bij vermoede inbreuk (niet via mail)</li>
+    </ul>
+
+    <p>
+      <a class="link-pick" href="/me/">← andere rol kiezen</a>
+    </p>
+  </section>
+
+  <script type="application/json" id="me-data" set:html={JSON.stringify(payload)} />
+
+  <script>
+    interface RoleMeta { id: string; displayName: string; domain: string; category: string; handleidingPath: string; }
+    interface Component {
+      id: string; name: string; layer: string; short: string; url: string | null;
+      prometheusJob?: string; rolesUsing: string[];
+    }
+    interface Shortcut { title: string; hint: string; component: string; href: string; }
+    interface Capability {
+      catalogs: string[]; schemas: string[] | null; purposes: string[];
+      can_see_pii: boolean; can_see_medical: boolean; can_see_bankrekening: boolean;
+      regio_filter: boolean; break_glass: boolean;
+      jit_required?: boolean; four_eyes_required?: boolean; _role_purpose?: string;
+    }
+    interface Payload {
+      roles: RoleMeta[];
+      components: Component[];
+      shortcuts: Record<string, Shortcut[]>;
+      capabilities: Record<string, Capability>;
+    }
+
+    const data: Payload = JSON.parse(
+      document.getElementById('me-data')!.textContent ?? '{}',
+    );
+
+    function pickerHtml(): string {
+      return data.roles.map((r) => `
+        <a class="role-card" href="?role=${r.id}">
+          <strong>${r.displayName}</strong>
+          <span>${r.domain}</span>
+        </a>
+      `).join('');
+    }
+
+    function escape(s: string): string {
+      return s.replace(/[&<>"']/g, (c) => ({
+        '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;',
+      }[c]!));
+    }
+
+    function fmtBool(b: boolean, yes: string, no: string): string {
+      return b ? `<span class="cap-yes">${yes}</span>` : `<span class="cap-no">${no}</span>`;
+    }
+
+    function showPicker() {
+      const grid = document.getElementById('picker-grid')!;
+      grid.innerHTML = pickerHtml();
+      document.getElementById('role-picker')!.hidden = false;
+      document.getElementById('role-view')!.hidden = true;
+    }
+
+    function showRole(roleId: string) {
+      const role = data.roles.find((r) => r.id === roleId);
+      const cap = data.capabilities[roleId];
+      if (!role || !cap) {
+        showPicker();
+        return;
+      }
+
+      document.getElementById('role-view')!.hidden = false;
+      document.getElementById('role-picker')!.hidden = true;
+
+      document.getElementById('rh-name')!.textContent = role.displayName;
+      document.getElementById('rh-purpose')!.textContent = cap._role_purpose ?? '';
+      document.getElementById('rh-domain')!.textContent = role.domain;
+      document.getElementById('rh-category')!.textContent =
+        role.category === 'tech' ? 'platform-team' : 'eindgebruiker';
+
+      const handleiding = document.getElementById('help-handleiding') as HTMLAnchorElement;
+      handleiding.href = `/${role.handleidingPath}`;
+
+      // Capabilities
+      const caps: string[] = [];
+      caps.push(`Catalogs: ${cap.catalogs.map((c) => `<code>${c}</code>`).join(', ')}`);
+      if (cap.schemas) caps.push(`Schemas: ${cap.schemas.map((s) => `<code>${s}</code>`).join(', ')}`);
+      caps.push(`Doelbinding(en): ${cap.purposes.map((p) => `<code>${p}</code>`).join(', ')}`);
+      caps.push(`PII zien: ${fmtBool(cap.can_see_pii, 'ja', 'nee')}`);
+      caps.push(`Medische data: ${fmtBool(cap.can_see_medical, 'ja', 'nee')}`);
+      caps.push(`Bankrekening / IBAN: ${fmtBool(cap.can_see_bankrekening, 'ja', 'nee (gemaskeerd)')}`);
+      caps.push(`Rij-filter regio: ${fmtBool(cap.regio_filter, 'ja, alleen jouw regio', 'nee')}`);
+      if (cap.jit_required) caps.push('<span class="cap-warn">JIT-toegang vereist</span>');
+      if (cap.four_eyes_required) caps.push('<span class="cap-warn">4-eyes vereist</span>');
+      if (cap.break_glass) caps.push('<span class="cap-warn">Break-glass — alle handelingen gelogd</span>');
+      document.getElementById('caps-list')!.innerHTML = caps.map((c) => `<li>${c}</li>`).join('');
+
+      // Shortcuts
+      const sc = data.shortcuts[roleId] ?? [];
+      document.getElementById('shortcut-grid')!.innerHTML = sc.length === 0
+        ? '<p class="muted">Geen shortcuts gedefinieerd voor deze rol.</p>'
+        : sc.map((s) => {
+            const comp = data.components.find((c) => c.id === s.component);
+            const layer = comp?.layer ?? '';
+            return `
+              <a class="shortcut" href="${escape(s.href)}" target="_blank" rel="noopener noreferrer">
+                <strong>${escape(s.title)}</strong>
+                <span class="hint">${escape(s.hint)}</span>
+                <span class="badge">${escape(comp?.name ?? s.component)} · ${escape(layer)}</span>
+              </a>`;
+          }).join('');
+
+      // Tools die je gebruikt + tools die je niet gebruikt
+      const myTools = data.components.filter((c) =>
+        c.rolesUsing.includes('*') || c.rolesUsing.includes(roleId),
+      );
+      const otherTools = data.components.filter((c) =>
+        !c.rolesUsing.includes('*') && !c.rolesUsing.includes(roleId),
+      );
+
+      const renderCard = (c: Component, emph: boolean): string => {
+        const linkOpen = c.url ? `<a href="${escape(c.url)}" target="_blank" rel="noopener noreferrer">${escape(c.name)} ↗</a>`
+                                 : `<span>${escape(c.name)}</span>`;
+        const status = c.prometheusJob
+          ? `<span class="badge" data-status-job="${escape(c.prometheusJob)}"><span class="dot"></span></span>`
+          : '';
+        return `
+          <article class="comp ${emph ? 'comp-emph' : ''}">
+            <header><h3>${linkOpen}</h3>${status}</header>
+            <p>${escape(c.short)}</p>
+            <footer><span class="layer">${escape(c.layer)}</span></footer>
+          </article>`;
+      };
+
+      document.getElementById('tool-grid')!.innerHTML = myTools.map((c) => renderCard(c, true)).join('');
+      document.getElementById('other-grid')!.innerHTML = otherTools.length === 0
+        ? '<p class="muted">Je rol gebruikt alle componenten.</p>'
+        : otherTools.map((c) => renderCard(c, false)).join('');
+
+      // Trigger live status fetches
+      refreshStatus();
+    }
+
+    async function refreshStatus() {
+      const els = document.querySelectorAll<HTMLElement>('[data-status-job]');
+      for (const el of els) {
+        const job = el.dataset.statusJob!;
+        try {
+          const r = await fetch(`/api/status/up?job=${encodeURIComponent(job)}`, {
+            credentials: 'include',
+          });
+          if (!r.ok) { el.classList.add('warn'); continue; }
+          const j = await r.json();
+          el.classList.remove('ok', 'warn', 'bad');
+          if (j?.up === 1) el.classList.add('ok');
+          else if (j?.up === 0) el.classList.add('bad');
+          else el.classList.add('warn');
+        } catch { el.classList.add('warn'); }
+      }
+    }
+
+    function init() {
+      // Voorrang: Keycloak-rol uit sessionStorage (gevuld door Layout.astro).
+      // Daarna: ?role=… uit URL (demo-modus).
+      const urlRole = new URLSearchParams(location.search).get('role');
+      const ssoRole = sessionStorage.getItem('uwv-portal-role');
+      const role = ssoRole || urlRole;
+      if (role) showRole(role);
+      else showPicker();
+    }
+
+    init();
+    setInterval(refreshStatus, 30_000);
+  </script>
+
+  <style>
+    .role-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; flex-wrap: wrap; margin-bottom: 1rem; }
+    .role-head h1 { margin-bottom: .15rem; }
+    .role-meta { display: flex; gap: .35rem; }
+    .muted { color: var(--c-muted); }
+    .caps { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: .35rem .85rem; }
+    .caps li { padding: .25rem 0; font-size: .9rem; border-bottom: 1px dashed var(--c-border); }
+    .cap-yes { color: var(--c-ok); font-weight: 600; }
+    .cap-no { color: var(--c-bad); font-weight: 600; }
+    .cap-warn { color: var(--c-accent); font-weight: 600; }
+    .role-card { display: flex; flex-direction: column; gap: .15rem; padding: .75rem .9rem; background: var(--c-panel-2); border: 1px solid var(--c-border); border-radius: var(--radius); color: var(--c-text); }
+    .role-card:hover { border-color: var(--c-accent); text-decoration: none; }
+    .role-card span { font-size: .8rem; color: var(--c-muted); }
+    .shortcut { display: flex; flex-direction: column; gap: .25rem; padding: .85rem 1rem; background: var(--c-panel-2); border: 1px solid var(--c-border); border-radius: var(--radius); color: var(--c-text); }
+    .shortcut:hover { border-color: var(--c-accent); text-decoration: none; }
+    .shortcut .hint { color: var(--c-muted); font-size: .85rem; }
+    .shortcut .badge { align-self: flex-start; margin-top: .35rem; }
+    .comp { background: var(--c-panel-2); border: 1px solid var(--c-border); border-radius: var(--radius); padding: .85rem 1rem; display: flex; flex-direction: column; }
+    .comp-emph { border-color: var(--c-accent); }
+    .comp header { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+    .comp h3 { margin: 0; font-size: .95rem; }
+    .comp p { color: var(--c-muted); font-size: .85rem; margin: .4rem 0 .6rem; flex: 1; }
+    .comp footer { font-size: .7rem; color: var(--c-muted); text-transform: uppercase; letter-spacing: .05em; }
+    .layer { background: var(--c-panel); padding: .1rem .45rem; border-radius: 999px; }
+    .badge .dot { display: inline-block; width: .55em; height: .55em; border-radius: 50%; background: var(--c-muted); margin-right: .35em; vertical-align: middle; }
+  </style>
+</Layout>

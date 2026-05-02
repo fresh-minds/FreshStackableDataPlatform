@@ -1,0 +1,42 @@
+---
+interface Props {
+  chart: string;
+  id?: string;
+}
+const { chart, id = `mmd-${Math.random().toString(36).slice(2, 8)}` } = Astro.props;
+---
+<div class="mermaid-host" id={id}>
+  <pre class="mermaid">{chart}</pre>
+</div>
+
+<style>
+  .mermaid-host {
+    background: var(--c-panel);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    overflow-x: auto;
+  }
+  .mermaid { background: transparent !important; }
+</style>
+
+<script>
+  // Mermaid lazy-loaded vanaf de Astro module-map zodat we geen CDN nodig
+  // hebben en ook offline werken (BIO/NIS2: geen externe runtime-dependencies).
+  import mermaid from 'mermaid';
+
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'dark',
+    securityLevel: 'strict',
+    themeVariables: {
+      primaryColor: '#1f262d',
+      primaryTextColor: '#e6edf3',
+      primaryBorderColor: '#30363d',
+      lineColor: '#9ba6b1',
+      tertiaryColor: '#161b22',
+    },
+  });
+
+  await mermaid.run({ querySelector: '.mermaid' });
+</script>

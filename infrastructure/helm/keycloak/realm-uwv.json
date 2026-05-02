@@ -296,6 +296,25 @@
       "redirectUris": ["http://openmetadata.uwv-platform.local/*", "https://openmetadata.uwv-platform.local/*"],
       "webOrigins": ["+"],
       "fullScopeAllowed": true
+    },
+    {
+      "_comment": "UWV Platform Portal — Astro+oauth2-proxy. Client-secret matcht platform/15-portal/secret.yaml.",
+      "clientId": "portal",
+      "name": "UWV Platform Portal",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-portal-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["https://platform.uwv-platform.local/oauth2/callback"],
+      "webOrigins": ["https://platform.uwv-platform.local"],
+      "attributes": {
+        "post.logout.redirect.uris": "https://platform.uwv-platform.local/*"
+      },
+      "defaultClientScopes": ["web-origins", "profile", "roles", "email"],
+      "fullScopeAllowed": true
     }
   ],
   "clientScopes": [

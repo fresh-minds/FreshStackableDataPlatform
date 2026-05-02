@@ -1,0 +1,23 @@
+---
+interface Props {
+  job: string;
+  label?: string;
+}
+const { job, label } = Astro.props;
+---
+<span class="badge" data-status-job={job} title={`Prometheus: up{job="${job}"}`}>
+  <span class="dot"></span>
+  {label ?? 'status'}
+</span>
+
+<style>
+  .badge .dot {
+    display: inline-block;
+    width: .55em;
+    height: .55em;
+    border-radius: 50%;
+    background: var(--c-muted);
+    margin-right: .35em;
+    vertical-align: middle;
+  }
+</style>
