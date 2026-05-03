@@ -84,9 +84,17 @@ consoleIngress:
     - hosts: [minio-console.uwv-platform.local]
       secretName: minio-console-tls
 
-# Server-side encryption (KES) — productie-only; uit voor referentie
+# In-cluster TLS aan: Trino 469+ vereist TLS voor S3 connections.
+# Cert komt uit cert-manager Certificate `minio-tls-internal` (zie
+# platform/03-storage/minio-cert.yaml). MinIO chart verwacht keys
+# 'public.crt' + 'private.key' — die staan in cert-manager-secret als
+# tls.crt/tls.key, dus we hebben een aparte mount-fixup nodig of we
+# kopieren ze. Voor referentie: simpele copy via init.
 tls:
-  enabled: false
+  enabled: true
+  certSecret: "minio-tls-internal-fixed"
+  publicCrt: public.crt
+  privateKey: private.key
 
 # Disable Bitnami-style metrics (chart heeft eigen metrics endpoint)
 metrics:

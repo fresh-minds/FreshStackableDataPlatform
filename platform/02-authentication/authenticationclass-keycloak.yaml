@@ -21,8 +21,14 @@ metadata:
 spec:
   provider:
     oidc:
-      hostname: keycloak.uwv-platform.local
-      port: 8443
+      # In-cluster service-DNS voor server-side OIDC discovery.
+      # Keycloak draait met proxy=edge + hostname=keycloak.uwv-platform.local
+      # (zie helm/keycloak/values.yaml) zodat issuer-claim de externe URL
+      # blijft — browser-redirects gaan dus naar de externe ingress.
+      # Pod kan keycloak.uwv-platform.local niet resolveren (k3d /etc/hosts
+      # zit alleen op de host) → daarom de svc.cluster.local-naam.
+      hostname: keycloak.uwv-auth.svc.cluster.local
+      port: 80
       rootPath: /realms/uwv
       principalClaim: preferred_username
       scopes:
@@ -31,10 +37,5 @@ spec:
         - email
         - roles
       providerHint: Keycloak
-      tls:
-        # Self-signed CA uit cert-manager. Stackable-services importeren deze
-        # CA via een gekoppelde SecretClass (zie Stackable docs over OIDC-tls).
-        verification:
-          server:
-            caCert:
-              secretClass: tls-internal
+      # tls weggehaald: in-cluster naar Keycloak is HTTP. Productie zou via
+      # service-mesh of een interne TLS-cert wel TLS aan kunnen zetten.

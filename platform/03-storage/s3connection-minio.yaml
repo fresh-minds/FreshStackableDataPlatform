@@ -17,4 +17,12 @@ spec:
   accessStyle: Path   # MinIO/path-style; alternatief: VirtualHosted (AWS-style)
   credentials:
     secretClass: s3-credentials-minio
-  # tls: ... (uit voor in-cluster http; productie: enable + verify CA)
+  # Trino 469+ vereist TLS for S3 én weigert verification:none.
+  # CA komt uit cert-manager (Certificate `minio-tls-internal`) en wordt
+  # via secret `minio-ca-bundle` (label secrets.stackable.tech/class=minio-ca)
+  # door SecretClass `minio-ca` aan pods aangeleverd.
+  tls:
+    verification:
+      server:
+        caCert:
+          secretClass: minio-ca

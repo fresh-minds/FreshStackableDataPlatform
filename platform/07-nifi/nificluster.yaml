@@ -36,6 +36,27 @@ spec:
     roleGroups:
       default:
         replicas: 1
+        # NiFi 1.x heeft 3-5 min boot-tijd; default liveness probe (3 failures
+        # à 10s) killt 'm voortijdig. Override met ruimere thresholds.
+        podOverrides:
+          spec:
+            containers:
+              - name: nifi
+                startupProbe:
+                  httpGet:
+                    path: /nifi
+                    port: 8443
+                    scheme: HTTPS
+                  initialDelaySeconds: 60
+                  periodSeconds: 10
+                  failureThreshold: 60   # 10 min totaal voor startup
+                livenessProbe:
+                  httpGet:
+                    path: /nifi
+                    port: 8443
+                    scheme: HTTPS
+                  periodSeconds: 30
+                  failureThreshold: 6
         config:
           resources:
             cpu:
