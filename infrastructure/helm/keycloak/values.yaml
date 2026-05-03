@@ -59,9 +59,20 @@ extraVolumeMounts:
     mountPath: /opt/bitnami/keycloak/data/import
     readOnly: true
 
-# Hostname / proxy voor ingress-nginx vóór Keycloak
+# Hostname / proxy voor ingress-nginx vóór Keycloak.
+# In k3d luistert de host op port 8443 (zie infrastructure/k3d/k3d-cluster.yaml)
+# — Keycloak moet weten dat hij op die niet-standaard poort staat zodat
+# zelf-gegenereerde URLs (bv. tijdens login-flow) ook :8443 bevatten.
 proxy: edge
-hostname: keycloak.uwv-platform.local
+extraEnvVars:
+  - name: KC_HOSTNAME
+    value: "https://keycloak.uwv-platform.local:8443"
+  - name: KC_HOSTNAME_STRICT
+    value: "false"
+  - name: KC_HOSTNAME_STRICT_BACKCHANNEL
+    value: "false"
+  - name: KC_PROXY_HEADERS
+    value: "xforwarded"
 
 # Ingress
 ingress:
