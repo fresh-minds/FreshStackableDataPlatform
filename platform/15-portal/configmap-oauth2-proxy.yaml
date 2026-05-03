@@ -56,6 +56,11 @@ data:
     # aangemaakt. Vraag alleen wat WEL bestaat.
     scope                   = "openid roles"
     insecure_oidc_allow_unverified_email = true
+    # Zonder email-scope mist het id_token een 'email' claim → oauth2-proxy
+    # faalt callback met "neither the id_token nor profileURL set an email".
+    # Gebruik preferred_username (zit altijd in Keycloak-tokens) als bron.
+    oidc_email_claim        = "preferred_username"
+    user_id_claim           = "preferred_username"
 
     # Roles uit Keycloak realm-roles claim → groups
     oidc_groups_claim       = "roles"
