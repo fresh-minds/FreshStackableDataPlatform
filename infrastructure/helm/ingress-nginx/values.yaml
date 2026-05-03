@@ -18,9 +18,19 @@ controller:
       # 256Mi limit was te krap: OOMKilled tijdens admission-webhook reloads
       # zodra meerdere ingresses werden aangemaakt (keycloak, superset, etc.)
 
+  # k3d's serverlb routeert naar node-IPs op port 80/443. Met servicelb
+  # uitgeschakeld (zie infrastructure/k3d/k3d-cluster.yaml) heeft de
+  # LoadBalancer-service geen externe IP. Oplossing: hostNetwork zodat de
+  # controller direct op de node bind — k3d serverlb route werkt dan.
+  hostNetwork: true
+  hostPort:
+    enabled: true
+  dnsPolicy: ClusterFirstWithHostNet
+  kind: DaemonSet
+
   service:
-    type: LoadBalancer
-    # k3d's loadbalancer mapt host:8080 → svc:80 en host:8443 → svc:443
+    type: ClusterIP
+    # k3d's loadbalancer mapt host:8080 → node:80 en host:8443 → node:443
 
   config:
     use-proxy-protocol: "false"
