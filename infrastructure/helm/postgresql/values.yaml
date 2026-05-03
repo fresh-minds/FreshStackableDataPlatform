@@ -6,6 +6,18 @@
 # Productie: aparte instances met eigen retentie, replicatie, backup-strategie.
 #
 # Chart: bitnami/postgresql
+#
+# Bitnami heeft sinds aug 2025 docker.io/bitnami/* leeggeruimd (paid Secure
+# Images). Gratis tags staan tijdelijk in docker.io/bitnamilegacy/*.
+# Override de image-pointers totdat we naar een andere chart of een eigen
+# mirror migreren. Zelfde patch staat in keycloak/values.yaml.
+global:
+  security:
+    allowInsecureImages: true
+
+image:
+  registry: docker.io
+  repository: bitnamilegacy/postgresql
 
 architecture: standalone
 

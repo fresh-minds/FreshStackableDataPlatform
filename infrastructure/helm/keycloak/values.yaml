@@ -4,6 +4,15 @@
 # Productie: separate instance, MFA verplicht, externe IdP-federatie (DigiD/eHerkenning).
 #
 # Chart: bitnami/keycloak
+#
+# Zie postgresql/values.yaml voor uitleg. Zelfde Bitnami-mirror-patch.
+global:
+  security:
+    allowInsecureImages: true
+
+image:
+  registry: docker.io
+  repository: bitnamilegacy/keycloak
 
 # Auth (DEV ONLY)
 auth:
