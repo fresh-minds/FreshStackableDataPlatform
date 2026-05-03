@@ -48,7 +48,8 @@ Browser ── ingress-nginx ──► Service portal:80
 ```bash
 # vanuit repo-root
 docker build -f portal/Dockerfile -t uwv-platform/portal:dev .
-k3d image import uwv-platform/portal:dev -c uwv
+# Cluster-naam = $CLUSTER_NAME uit Makefile (default: uwv-platform).
+k3d image import uwv-platform/portal:dev -c uwv-platform
 ```
 
 ## Smoke
