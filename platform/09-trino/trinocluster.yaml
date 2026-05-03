@@ -25,7 +25,6 @@ spec:
     catalogLabelSelector:
       matchLabels:
         trino: uwv-trino
-    listenerClass: cluster-internal
     authentication:
       - authenticationClass: trino-static-uwv
       - authenticationClass: keycloak-uwv
@@ -34,6 +33,9 @@ spec:
         configMapName: uwv-opa
         package: trino
   coordinators:
+    # 26.3: listenerClass per role
+    roleConfig:
+      listenerClass: cluster-internal
     config:
       logging:
         enableVectorAgent: false

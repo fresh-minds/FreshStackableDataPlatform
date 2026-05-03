@@ -14,8 +14,7 @@ spec:
   image:
     productVersion: "4.1.1"
   clusterConfig:
-    listenerClass: cluster-internal
-    loadExamplesOnInit: false
+    # 26.3: listenerClass + loadExamplesOnInit uit clusterConfig.
     credentialsSecret: superset-postgres-credentials
     authentication:
       - authenticationClass: keycloak-uwv
@@ -23,6 +22,8 @@ spec:
         userRegistrationRole: Public
         syncRolesAt: Login
   nodes:
+    roleConfig:
+      listenerClass: cluster-internal
     config:
       logging:
         enableVectorAgent: false

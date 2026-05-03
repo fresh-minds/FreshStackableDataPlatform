@@ -34,11 +34,8 @@ spec:
     groupInterval: 5m
     repeatInterval: 4h
     routes:
-      - receiver: pagerduty-critical
-        matchers:
-          - name: severity
-            value: critical
-        continue: false
+      # pagerduty-critical receiver uitgeschakeld (zie below); critical alerts
+      # gaan tijdelijk naar slack-uwv-warning. Productie reactiveert PagerDuty.
       - receiver: slack-uwv-warning
         matchers:
           - name: severity
@@ -61,17 +58,16 @@ spec:
             *Severity*: {{ .Labels.severity }} · *Component*: {{ .Labels.component }}
             {{ end }}
 
-    - name: pagerduty-critical
-      pagerdutyConfigs:
-        - routingKey:
-            name: alertmanager-receivers
-            key: pagerduty_routing_key
-          severity: critical
-          description: "{{ .CommonLabels.alertname }}"
-          details:
-            summary: "{{ .CommonAnnotations.summary }}"
-            description: "{{ .CommonAnnotations.description }}"
-            runbook_url: "{{ .CommonAnnotations.runbook_url }}"
+    # PagerDuty receiver uitgeschakeld voor lokale dev:
+    # newer prometheus-operator AlertmanagerConfig schema vereist 'details'
+    # als array van {key,value} paren ipv free-form object. Voor productie
+    # opnieuw inschakelen na schema-conform maken.
+    # - name: pagerduty-critical
+    #   pagerdutyConfigs:
+    #     - routingKey:
+    #         name: alertmanager-receivers
+    #         key: pagerduty_routing_key
+    #       severity: critical
 
   inhibitRules:
     # Suppresses warnings als er een critical voor hetzelfde component is.

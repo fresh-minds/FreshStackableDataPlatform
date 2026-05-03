@@ -12,9 +12,11 @@ spec:
   image:
     productVersion: "3.9.3"
   clusterConfig:
-    listenerClass: cluster-internal
     vectorAggregatorConfigMapName: ""   # Vector wordt in fase 8 aangezet
   servers:
+    # listenerClass is in 26.3 verplaatst van clusterConfig naar role-config.
+    roleConfig:
+      listenerClass: cluster-internal
     config:
       logging:
         enableVectorAgent: false

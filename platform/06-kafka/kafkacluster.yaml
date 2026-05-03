@@ -15,10 +15,11 @@ spec:
     productVersion: "3.7.1"
   clusterConfig:
     zookeeperConfigMapName: uwv-zookeeper-znode-kafka
-    listenerClass: cluster-internal
-    bootstrapListenerClass: cluster-internal
   brokers:
+    # 26.3: listener-classes verplaatst naar brokers.config
     config:
+      brokerListenerClass: cluster-internal
+      bootstrapListenerClass: cluster-internal
       logging:
         enableVectorAgent: false
     configOverrides:

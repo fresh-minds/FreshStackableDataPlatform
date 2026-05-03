@@ -16,14 +16,16 @@ spec:
     productVersion: "4.0.1"
   clusterConfig:
     database:
+      # 26.3: 'user' veld weg, komt uit credentialsSecret
       connString: jdbc:postgresql://postgres-postgresql.uwv-data.svc.cluster.local:5432/hivemetastore
-      user: uwvplatform
       credentialsSecret: hive-postgres-credentials
       dbType: postgres
     s3:
       reference: s3-minio
-    listenerClass: cluster-internal
   metastore:
+    # listenerClass verplaatst naar roleConfig in 26.3
+    roleConfig:
+      listenerClass: cluster-internal
     config:
       logging:
         enableVectorAgent: false

@@ -30,10 +30,7 @@ spec:
   sparkConf:
     spark.sql.streaming.checkpointLocation.deleteOnStop: "false"
     spark.sql.shuffle.partitions: "8"
-  job:
-    config:
-      logging:
-        enableVectorAgent: false
+  # 'job.config.logging' weg in 26.3 schema; logging direct onder driver/executor.
   driver:
     config:
       logging:

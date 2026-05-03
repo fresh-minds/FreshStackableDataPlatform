@@ -46,15 +46,16 @@ customConfig:
       type: route
       inputs: [add_uwv_metadata]
       route:
-        # VRL vereist binary-operatoren aan EIND van regel, niet aan het begin.
+        # VRL: binary-operator aan eind van regel; `contains` voor strings,
+        # `includes` is alleen voor arrays.
         opa_decisions: |
           (.kubernetes.pod_namespace == "uwv-platform" &&
-            includes(string!(.kubernetes.container_name ?? ""), "opa") &&
-            contains(string!(.message ?? ""), "decision_id"))
+            contains(string!(.kubernetes.container_name), "opa") &&
+            contains(to_string!(.message),"decision_id"))
         trino_audit: |
           (.kubernetes.pod_namespace == "uwv-platform" &&
-            includes(string!(.kubernetes.container_name ?? ""), "trino") &&
-            contains(string!(.message ?? ""), "queryId"))
+            contains(string!(.kubernetes.container_name), "trino") &&
+            contains(to_string!(.message),"queryId"))
 
   sinks:
     opensearch_app:

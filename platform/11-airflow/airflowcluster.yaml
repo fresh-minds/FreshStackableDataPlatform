@@ -17,20 +17,18 @@ spec:
   image:
     productVersion: "2.10.4"
   clusterConfig:
-    listenerClass: cluster-internal
+    # 26.3: database/executor/listenerClass uit clusterConfig.
+    # Database-config zit in credentialsSecret (zie secret).
+    # Executor is nu top-level kubernetesExecutors block.
     loadExamples: false
     exposeConfig: false
     credentialsSecret: airflow-postgres-credentials
-    database:
-      connString: postgresql+psycopg2://uwvplatform@postgres-postgresql.uwv-data.svc.cluster.local:5432/airflow
-      credentialsSecret: airflow-postgres-credentials
-      dbType: postgresql
-    executor:
-      kubernetes: {}
     authentication:
       - authenticationClass: keycloak-uwv
 
   webservers:
+    roleConfig:
+      listenerClass: cluster-internal
     config:
       logging:
         enableVectorAgent: false
