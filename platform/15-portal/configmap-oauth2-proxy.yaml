@@ -51,6 +51,12 @@ data:
     email_domains           = ["*"]
     skip_provider_button    = true
 
+    # Onze realm-uwv.json definieert alleen de 'roles' scope; default
+    # 'profile' en 'email' scopes worden niet door realm-import
+    # aangemaakt. Vraag alleen wat WEL bestaat.
+    scope                   = "openid roles"
+    insecure_oidc_allow_unverified_email = true
+
     # Roles uit Keycloak realm-roles claim → groups
     oidc_groups_claim       = "roles"
 
