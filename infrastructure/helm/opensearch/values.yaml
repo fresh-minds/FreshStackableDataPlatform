@@ -45,8 +45,8 @@ securityConfig:
   enabled: false
 
 extraEnvs:
-  - name: discovery.type
-    value: single-node
+  # discovery.type wordt door de chart zelf gezet via singleNode/clusterName;
+  # duplicate-key error als we 'm hier ook opvoeren.
   - name: DISABLE_SECURITY_PLUGIN
     value: "true"
   - name: bootstrap.memory_lock

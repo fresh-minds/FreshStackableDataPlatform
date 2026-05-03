@@ -11,6 +11,11 @@
 # Agent-mode: één Vector pod per K8s-node verzamelt container-logs.
 role: Agent
 
+# Geen Service nodig voor Agent-mode (push-only naar OpenSearch).
+# Zonder dit faalde install op `Service "vector" is invalid: spec.ports`.
+service:
+  enabled: false
+
 resources:
   requests:
     cpu: 50m
@@ -41,14 +46,15 @@ customConfig:
       type: route
       inputs: [add_uwv_metadata]
       route:
+        # VRL vereist binary-operatoren aan EIND van regel, niet aan het begin.
         opa_decisions: |
-          (.kubernetes.pod_namespace == "uwv-platform"
-            && includes(string!(.kubernetes.container_name ?? ""), "opa")
-            && contains(string!(.message ?? ""), "decision_id"))
+          (.kubernetes.pod_namespace == "uwv-platform" &&
+            includes(string!(.kubernetes.container_name ?? ""), "opa") &&
+            contains(string!(.message ?? ""), "decision_id"))
         trino_audit: |
-          (.kubernetes.pod_namespace == "uwv-platform"
-            && includes(string!(.kubernetes.container_name ?? ""), "trino")
-            && contains(string!(.message ?? ""), "queryId"))
+          (.kubernetes.pod_namespace == "uwv-platform" &&
+            includes(string!(.kubernetes.container_name ?? ""), "trino") &&
+            contains(string!(.message ?? ""), "queryId"))
 
   sinks:
     opensearch_app:

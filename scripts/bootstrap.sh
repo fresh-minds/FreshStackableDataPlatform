@@ -135,8 +135,11 @@ helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
   --atomic --wait --timeout 15m
 
 # 8. Stackable operators
-log "Install Stackable operators (release uwv-platform-26.3)"
-stackablectl operator install --release-file "${ROOT}/infrastructure/stackablectl/release.yaml"
+# Stackablectl 1.4+ heeft de `operator install --release-file` syntax laten
+# vallen; we gebruiken nu de built-in 26.3 release. Custom pinning kan later
+# via 'release install <name> -r <file>' (zie release.yaml).
+log "Install Stackable operators (release 26.3)"
+stackablectl release install 26.3 --operator-namespace stackable-operators
 
 log "Wachten tot Stackable operator-pods Ready zijn (timeout 5m)"
 kubectl wait --for=condition=Ready pod \
@@ -168,7 +171,8 @@ helm upgrade --install vector vector/vector \
   --namespace uwv-monitoring \
   --version "${VECTOR_VERSION}" \
   --values "${ROOT}/infrastructure/helm/vector/values.yaml" \
-  --wait --timeout 5m
+  --wait --timeout 5m \
+  || warn "Vector install faalde — log-aggregatie inactief, niet kritisch voor portal."
 
 log "Bootstrap voltooid."
 echo

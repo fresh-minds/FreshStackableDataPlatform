@@ -52,7 +52,8 @@ openmetadata:
   config:
     upgradeMigrationConfigs:
       debug: false
-  serviceType: ClusterIP
+# 'serviceType: ClusterIP' was hier in chart 1.5+ niet meer geldig
+# (schema-validatie). Service-type is nu de chart-default ClusterIP.
 
 resources:
   requests:

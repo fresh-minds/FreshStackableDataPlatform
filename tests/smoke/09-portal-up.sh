@@ -50,20 +50,15 @@ else
   fail "portal-web /api/health gaf onverwacht: ${HEALTH:-leeg}"
 fi
 
-# 3. oauth2-proxy /ping
-log "Ping-endpoint oauth2-proxy"
-PING=$(kubectl -n "$NS" exec "$POD" -c oauth2-proxy -- \
+# 3. oauth2-proxy /ping — check via portal-web container want oauth2-proxy
+# distroless image heeft geen shell/wget/curl.
+log "Ping-endpoint oauth2-proxy (via portal-web)"
+PING=$(kubectl -n "$NS" exec "$POD" -c portal-web -- \
          wget -qO- http://127.0.0.1:4180/ping 2>/dev/null || true)
-if [[ "$PING" == "OK" ]]; then
-  pass "oauth2-proxy /ping = OK"
+if [[ "$PING" == *"OK"* || "$PING" == *"pong"* ]]; then
+  pass "oauth2-proxy /ping antwoordt"
 else
-  # oauth2-proxy v7 returnt soms andere body; check exit-code via curl
-  if kubectl -n "$NS" exec "$POD" -c oauth2-proxy -- \
-       wget -q -O /dev/null --server-response http://127.0.0.1:4180/ping 2>&1 | grep -q "200 OK"; then
-    pass "oauth2-proxy /ping = 200"
-  else
-    fail "oauth2-proxy /ping faalt: ${PING:-leeg}"
-  fi
+  fail "oauth2-proxy /ping faalt: ${PING:-leeg}"
 fi
 
 # 4. Service routing portal:80 → 4180

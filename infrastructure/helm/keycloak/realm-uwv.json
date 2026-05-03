@@ -1,5 +1,4 @@
 {
-  "_comment": "DEV-ONLY UWV-realm voor de referentie-implementatie. Alle wachtwoorden en client-secrets zijn placeholders. Voor productie: rotateer alles, koppel federatie (DigiD/eHerkenning), zet MFA verplicht.",
   "realm": "uwv",
   "displayName": "UWV Reference Platform",
   "displayNameHtml": "<b>UWV</b> Reference Platform",
@@ -20,21 +19,21 @@
   "quickLoginCheckMilliSeconds": 1000,
   "maxDeltaTimeSeconds": 43200,
   "failureFactor": 5,
-  "_comment_password_policy": "Improvements #6 — sterk wachtwoord-beleid (R-BIO-05). Productie zou dit nog strakker zetten + 90-dagen rotatie.",
   "passwordPolicy": "length(12) and digits(1) and lowerCase(1) and upperCase(1) and specialChars(1) and notUsername and passwordHistory(5)",
-  "_comment_session_timeouts": "Sessietimeouts (R-BIO-05). Verkort voor productie.",
   "ssoSessionIdleTimeout": 3600,
   "ssoSessionMaxLifespan": 28800,
   "accessTokenLifespan": 900,
   "accessTokenLifespanForImplicitFlow": 900,
   "offlineSessionIdleTimeout": 2592000,
-  "_comment_otp_policy": "TOTP-policy (R-BIO-05 + R-NIS2-06). Verplicht voor admin/data_engineer/wajong_arbeidsdeskundige via requiredActions per user (zie users-block).",
   "otpPolicyType": "totp",
   "otpPolicyAlgorithm": "HmacSHA1",
   "otpPolicyDigits": 6,
   "otpPolicyLookAheadWindow": 1,
   "otpPolicyPeriod": 30,
-  "otpSupportedApplications": ["FreeOTP", "Google Authenticator"],
+  "otpSupportedApplications": [
+    "FreeOTP",
+    "Google Authenticator"
+  ],
   "defaultRole": {
     "name": "default-roles-uwv",
     "description": "${role_default-roles}",
@@ -99,9 +98,15 @@
       "lastName": "Beoordelaar",
       "email": "wia.beoordelaar@uwv-platform.local",
       "credentials": [
-        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Wia2026", "temporary": false}
+        {
+          "type": "password",
+          "value": "uwv-dev-only-CHANGE-ME-Wia2026",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["wia_beoordelaar"]
+      "realmRoles": [
+        "wia_beoordelaar"
+      ]
     },
     {
       "username": "ww.handhaver",
@@ -111,9 +116,15 @@
       "lastName": "Handhaver",
       "email": "ww.handhaver@uwv-platform.local",
       "credentials": [
-        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Ww2026", "temporary": false}
+        {
+          "type": "password",
+          "value": "uwv-dev-only-CHANGE-ME-Ww2026",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["ww_handhaver"]
+      "realmRoles": [
+        "ww_handhaver"
+      ]
     },
     {
       "username": "wajong.arbeidsdeskundige",
@@ -123,10 +134,18 @@
       "lastName": "Arbeidsdeskundige",
       "email": "wajong.arbeidsdeskundige@uwv-platform.local",
       "credentials": [
-        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Wajong2026", "temporary": false}
+        {
+          "type": "password",
+          "value": "uwv-dev-only-CHANGE-ME-Wajong2026",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["wajong_arbeidsdeskundige"],
-      "requiredActions": ["CONFIGURE_TOTP"]
+      "realmRoles": [
+        "wajong_arbeidsdeskundige"
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ]
     },
     {
       "username": "crm.medewerker",
@@ -136,9 +155,15 @@
       "lastName": "Medewerker",
       "email": "crm.medewerker@uwv-platform.local",
       "credentials": [
-        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Crm2026", "temporary": false}
+        {
+          "type": "password",
+          "value": "uwv-dev-only-CHANGE-ME-Crm2026",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["crm_medewerker"]
+      "realmRoles": [
+        "crm_medewerker"
+      ]
     },
     {
       "username": "fez.analist",
@@ -148,9 +173,15 @@
       "lastName": "Analist",
       "email": "fez.analist@uwv-platform.local",
       "credentials": [
-        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Fez2026", "temporary": false}
+        {
+          "type": "password",
+          "value": "uwv-dev-only-CHANGE-ME-Fez2026",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["fez_analist"]
+      "realmRoles": [
+        "fez_analist"
+      ]
     },
     {
       "username": "data.steward",
@@ -160,9 +191,15 @@
       "lastName": "Steward",
       "email": "data.steward@uwv-platform.local",
       "credentials": [
-        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Steward2026", "temporary": false}
+        {
+          "type": "password",
+          "value": "uwv-dev-only-CHANGE-ME-Steward2026",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["data_steward"]
+      "realmRoles": [
+        "data_steward"
+      ]
     },
     {
       "username": "data.engineer",
@@ -172,10 +209,18 @@
       "lastName": "Engineer",
       "email": "data.engineer@uwv-platform.local",
       "credentials": [
-        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Engineer2026", "temporary": false}
+        {
+          "type": "password",
+          "value": "uwv-dev-only-CHANGE-ME-Engineer2026",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["data_engineer"],
-      "requiredActions": ["CONFIGURE_TOTP"]
+      "realmRoles": [
+        "data_engineer"
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ]
     },
     {
       "username": "platform.admin",
@@ -185,10 +230,18 @@
       "lastName": "Admin",
       "email": "platform.admin@uwv-platform.local",
       "credentials": [
-        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Admin2026", "temporary": false}
+        {
+          "type": "password",
+          "value": "uwv-dev-only-CHANGE-ME-Admin2026",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["platform_admin"],
-      "requiredActions": ["CONFIGURE_TOTP"]
+      "realmRoles": [
+        "platform_admin"
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ]
     },
     {
       "username": "researcher",
@@ -198,9 +251,15 @@
       "lastName": "Researcher",
       "email": "researcher@uwv-platform.local",
       "credentials": [
-        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Researcher2026", "temporary": false}
+        {
+          "type": "password",
+          "value": "uwv-dev-only-CHANGE-ME-Researcher2026",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["researcher"]
+      "realmRoles": [
+        "researcher"
+      ]
     },
     {
       "username": "smz.planner",
@@ -210,9 +269,15 @@
       "lastName": "Planner",
       "email": "smz.planner@uwv-platform.local",
       "credentials": [
-        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Smz2026", "temporary": false}
+        {
+          "type": "password",
+          "value": "uwv-dev-only-CHANGE-ME-Smz2026",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["smz_planner"]
+      "realmRoles": [
+        "smz_planner"
+      ]
     },
     {
       "username": "proactief.dienstverlener",
@@ -222,9 +287,15 @@
       "lastName": "Dienstverlener",
       "email": "proactief.dienstverlener@uwv-platform.local",
       "credentials": [
-        {"type": "password", "value": "uwv-dev-only-CHANGE-ME-Pdv2026", "temporary": false}
+        {
+          "type": "password",
+          "value": "uwv-dev-only-CHANGE-ME-Pdv2026",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["proactief_dienstverlener"]
+      "realmRoles": [
+        "proactief_dienstverlener"
+      ]
     }
   ],
   "clients": [
@@ -242,11 +313,18 @@
         "https://trino.uwv-platform.local:8443/*",
         "https://trino.uwv-platform.local/*"
       ],
-      "webOrigins": ["+"],
+      "webOrigins": [
+        "+"
+      ],
       "attributes": {
         "post.logout.redirect.uris": "+"
       },
-      "defaultClientScopes": ["web-origins", "profile", "roles", "email"],
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
       "fullScopeAllowed": true
     },
     {
@@ -257,8 +335,13 @@
       "publicClient": false,
       "secret": "uwv-dev-only-CHANGE-ME-superset-secret",
       "standardFlowEnabled": true,
-      "redirectUris": ["https://superset.uwv-platform.local:8443/*", "https://superset.uwv-platform.local/*"],
-      "webOrigins": ["+"],
+      "redirectUris": [
+        "https://superset.uwv-platform.local:8443/*",
+        "https://superset.uwv-platform.local/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
       "fullScopeAllowed": true
     },
     {
@@ -269,8 +352,13 @@
       "publicClient": false,
       "secret": "uwv-dev-only-CHANGE-ME-airflow-secret",
       "standardFlowEnabled": true,
-      "redirectUris": ["https://airflow.uwv-platform.local:8443/*", "https://airflow.uwv-platform.local/*"],
-      "webOrigins": ["+"],
+      "redirectUris": [
+        "https://airflow.uwv-platform.local:8443/*",
+        "https://airflow.uwv-platform.local/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
       "fullScopeAllowed": true
     },
     {
@@ -281,8 +369,13 @@
       "publicClient": false,
       "secret": "uwv-dev-only-CHANGE-ME-nifi-secret",
       "standardFlowEnabled": true,
-      "redirectUris": ["https://nifi.uwv-platform.local:8443/*", "https://nifi.uwv-platform.local/*"],
-      "webOrigins": ["+"],
+      "redirectUris": [
+        "https://nifi.uwv-platform.local:8443/*",
+        "https://nifi.uwv-platform.local/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
       "fullScopeAllowed": true
     },
     {
@@ -293,12 +386,16 @@
       "publicClient": false,
       "secret": "uwv-dev-only-CHANGE-ME-openmetadata-secret",
       "standardFlowEnabled": true,
-      "redirectUris": ["http://openmetadata.uwv-platform.local/*", "https://openmetadata.uwv-platform.local/*"],
-      "webOrigins": ["+"],
+      "redirectUris": [
+        "http://openmetadata.uwv-platform.local/*",
+        "https://openmetadata.uwv-platform.local/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
       "fullScopeAllowed": true
     },
     {
-      "_comment": "UWV Platform Portal — Astro+oauth2-proxy. Client-secret matcht platform/15-portal/secret.yaml.",
       "clientId": "portal",
       "name": "UWV Platform Portal",
       "enabled": true,
@@ -308,12 +405,21 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["https://platform.uwv-platform.local/oauth2/callback"],
-      "webOrigins": ["https://platform.uwv-platform.local"],
+      "redirectUris": [
+        "https://platform.uwv-platform.local/oauth2/callback"
+      ],
+      "webOrigins": [
+        "https://platform.uwv-platform.local"
+      ],
       "attributes": {
         "post.logout.redirect.uris": "https://platform.uwv-platform.local/*"
       },
-      "defaultClientScopes": ["web-origins", "profile", "roles", "email"],
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
       "fullScopeAllowed": true
     }
   ],

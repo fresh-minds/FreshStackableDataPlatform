@@ -42,7 +42,11 @@ primary:
     size: 8Gi
 
   # Init-script maakt extra databases en gebruikers aan voor de consumers.
+  # Draait als 'postgres' superuser (i.p.v. default uwvplatform) zodat
+  # CREATE DATABASE ... OWNER niet faalt op rechten.
   initdb:
+    user: postgres
+    password: "uwv-dev-only-CHANGE-ME-2026"
     scripts:
       00-uwv-databases.sql: |
         -- Aanmaken van databases voor elk platform-onderdeel.
@@ -60,17 +64,11 @@ primary:
         GRANT ALL ON DATABASE openmetadata TO uwvplatform;
         GRANT ALL ON DATABASE keycloak TO uwvplatform;
 
-  # Pas op met postgresql.conf in scaled-down: lage shared_buffers.
-  pgHbaConfiguration: |
-    host all all 0.0.0.0/0 md5
-    host all all ::/0 md5
-    local all all trust
-  extendedConfiguration: |
-    max_connections = 100
-    shared_buffers = 128MB
-    effective_cache_size = 512MB
-    log_statement = 'none'
-    log_connections = off
+  # NB: pgHbaConfiguration / extendedConfiguration override zijn weggelaten.
+  # Bitnami chart 16.0.6 + bitnamilegacy/postgresql:17 mountt die ConfigMaps
+  # zo dat de default postgresql.conf leeg blijft (alleen `port = '5432'`)
+  # en de pod crasht in de init-fase. Chart-defaults werken wel.
+  # Productie: tune via Bitnami secure-image of stap over op CloudNativePG.
 
 # Service exposure (binnen-cluster only)
 service:
