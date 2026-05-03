@@ -406,13 +406,15 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
+        "https://platform.uwv-platform.local:8443/oauth2/callback",
         "https://platform.uwv-platform.local/oauth2/callback"
       ],
       "webOrigins": [
+        "https://platform.uwv-platform.local:8443",
         "https://platform.uwv-platform.local"
       ],
       "attributes": {
-        "post.logout.redirect.uris": "https://platform.uwv-platform.local/*"
+        "post.logout.redirect.uris": "https://platform.uwv-platform.local:8443/*##https://platform.uwv-platform.local/*"
       },
       "defaultClientScopes": [
         "web-origins",

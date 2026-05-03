@@ -16,11 +16,11 @@ data:
     # Provider
     provider                = "keycloak-oidc"
     client_id               = "portal"
-    oidc_issuer_url         = "https://keycloak.uwv-platform.local/realms/uwv"
+    oidc_issuer_url         = "https://keycloak.uwv-platform.local:8443/realms/uwv"
 
     # Split discovery: server-side endpoints intern, browser-redirect extern.
     skip_oidc_discovery     = true
-    login_url               = "https://keycloak.uwv-platform.local/realms/uwv/protocol/openid-connect/auth"
+    login_url               = "https://keycloak.uwv-platform.local:8443/realms/uwv/protocol/openid-connect/auth"
     redeem_url              = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/token"
     profile_url             = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/userinfo"
     validate_url            = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/userinfo"
@@ -39,7 +39,7 @@ data:
     # Upstream = nginx in dezelfde pod
     http_address            = "0.0.0.0:4180"
     upstreams               = ["http://127.0.0.1:8080"]
-    redirect_url            = "https://platform.uwv-platform.local/oauth2/callback"
+    redirect_url            = "https://platform.uwv-platform.local:8443/oauth2/callback"
 
     # Identity headers voor de browser (Layout.astro leest /oauth2/userinfo)
     pass_user_headers       = true
