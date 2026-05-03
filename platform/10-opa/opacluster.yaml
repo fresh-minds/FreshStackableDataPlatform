@@ -13,8 +13,9 @@ metadata:
   namespace: uwv-platform
 spec:
   image:
-    productVersion: "1.0.1"
+    productVersion: "1.12.3"
   clusterConfig:
+    # OPA 26.3: listenerClass blijft onder clusterConfig (anders dan andere operators).
     listenerClass: cluster-internal
   servers:
     config:

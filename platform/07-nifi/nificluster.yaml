@@ -17,7 +17,7 @@ metadata:
   namespace: uwv-platform
 spec:
   image:
-    productVersion: "2.0.0"
+    productVersion: "1.28.1"
   clusterConfig:
     sensitiveProperties:
       keySecret: nifi-sensitive-key
@@ -25,6 +25,8 @@ spec:
     zookeeperConfigMapName: uwv-zookeeper-znode-nifi
     authentication:
       - authenticationClass: keycloak-uwv
+        oidc:
+          clientCredentialsSecret: nifi-oidc-client
   nodes:
     roleConfig:
       listenerClass: cluster-internal

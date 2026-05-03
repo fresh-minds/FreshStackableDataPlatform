@@ -20,7 +20,7 @@ metadata:
   namespace: uwv-platform
 spec:
   image:
-    productVersion: "470"
+    productVersion: "477"
   clusterConfig:
     catalogLabelSelector:
       matchLabels:
@@ -28,6 +28,8 @@ spec:
     authentication:
       - authenticationClass: trino-static-uwv
       - authenticationClass: keycloak-uwv
+        oidc:
+          clientCredentialsSecret: trino-oidc-client
     authorization:
       opa:
         configMapName: uwv-opa

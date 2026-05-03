@@ -12,12 +12,14 @@ metadata:
   namespace: uwv-platform
 spec:
   image:
-    productVersion: "4.1.1"
+    productVersion: "4.1.4"
   clusterConfig:
     # 26.3: listenerClass + loadExamplesOnInit uit clusterConfig.
     credentialsSecret: superset-postgres-credentials
     authentication:
       - authenticationClass: keycloak-uwv
+        oidc:
+          clientCredentialsSecret: superset-oidc-client
         userRegistration: true
         userRegistrationRole: Public
         syncRolesAt: Login

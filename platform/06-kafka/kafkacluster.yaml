@@ -12,7 +12,7 @@ metadata:
   namespace: uwv-platform
 spec:
   image:
-    productVersion: "3.7.1"
+    productVersion: "3.9.1"
   clusterConfig:
     zookeeperConfigMapName: uwv-zookeeper-znode-kafka
   brokers:

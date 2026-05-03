@@ -10,7 +10,7 @@ metadata:
   namespace: uwv-platform
 spec:
   image:
-    productVersion: "3.9.3"
+    productVersion: "3.9.4"
   clusterConfig:
     vectorAggregatorConfigMapName: ""   # Vector wordt in fase 8 aangezet
   servers:

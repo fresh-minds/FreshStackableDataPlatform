@@ -7,53 +7,54 @@
 # Chart: open-metadata/openmetadata
 # Zie ook: infrastructure/helm/openmetadata/dependencies.md (TODO fase 8)
 
-global:
-  # Externe Postgres (gedeeld)
-  database:
-    enabled: true
-    host: postgres-postgresql.uwv-data.svc.cluster.local
-    port: 5432
-    driverClass: org.postgresql.Driver
-    dbScheme: postgresql
-    databaseName: openmetadata
-    auth:
-      username: uwvplatform
-      password:
-        secretRef: openmetadata-postgres
-        secretKey: password
-
-  # Externe OpenSearch (gedeeld met Vector)
-  elasticsearch:
-    enabled: true
-    host: opensearch-uwv.uwv-meta.svc.cluster.local
-    port: 9200
-    scheme: http
-    searchType: opensearch
-
-  # OIDC via Keycloak
-  authentication:
-    provider: oidc
-    publicKeys:
-      - http://openmetadata.uwv-platform.local/api/v1/system/config/jwks
-      - http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/certs
-    authority: http://keycloak.uwv-auth.svc.cluster.local/realms/uwv
-    clientId: openmetadata
-    callbackUrl: http://openmetadata.uwv-platform.local/callback
-
-  authorizer:
-    className: org.openmetadata.service.security.DefaultAuthorizer
-    initialAdmins:
-      - data.steward
-      - platform.admin
-    principalDomain: uwv-platform.local
-
-# Resources (scaled-down)
+# Chart 1.5: alle config zit onder `openmetadata.config.*`, niet `global.*`.
 openmetadata:
   config:
     upgradeMigrationConfigs:
       debug: false
-# 'serviceType: ClusterIP' was hier in chart 1.5+ niet meer geldig
-# (schema-validatie). Service-type is nu de chart-default ClusterIP.
+
+    # Externe Postgres (gedeeld in uwv-data)
+    database:
+      enabled: true
+      host: postgres-postgresql.uwv-data.svc.cluster.local
+      port: 5432
+      driverClass: org.postgresql.Driver
+      dbScheme: postgresql
+      databaseName: openmetadata
+      auth:
+        username: uwvplatform
+        password:
+          secretRef: mysql-secrets               # chart-template hardcoded naam
+          secretKey: openmetadata-mysql-password # idem
+
+    # Externe OpenSearch (gedeeld met Vector)
+    elasticsearch:
+      enabled: true
+      host: opensearch-uwv.uwv-meta.svc.cluster.local
+      port: 9200
+      scheme: http
+      searchType: opensearch
+
+    # OIDC via Keycloak
+    authentication:
+      provider: custom-oidc
+      publicKeys:
+        - http://openmetadata.uwv-platform.local/api/v1/system/config/jwks
+        - http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/certs
+      authority: http://keycloak.uwv-auth.svc.cluster.local/realms/uwv
+      clientId: openmetadata
+      callbackUrl: http://openmetadata.uwv-platform.local/callback
+
+    authorizer:
+      className: org.openmetadata.service.security.DefaultAuthorizer
+      initialAdmins:
+        - data.steward
+        - platform.admin
+      principalDomain: uwv-platform.local
+
+    # Airflow-pipelinesserver — geen Airflow geconfigureerd; uit
+    pipelineServiceClientConfig:
+      enabled: false
 
 resources:
   requests:

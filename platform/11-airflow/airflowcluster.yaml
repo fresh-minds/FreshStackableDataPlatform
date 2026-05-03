@@ -15,7 +15,7 @@ metadata:
   namespace: uwv-platform
 spec:
   image:
-    productVersion: "2.10.4"
+    productVersion: "2.9.3"
   clusterConfig:
     # 26.3: database/executor/listenerClass uit clusterConfig.
     # Database-config zit in credentialsSecret (zie secret).
@@ -25,6 +25,8 @@ spec:
     credentialsSecret: airflow-postgres-credentials
     authentication:
       - authenticationClass: keycloak-uwv
+        oidc:
+          clientCredentialsSecret: airflow-oidc-client
 
   webservers:
     roleConfig:
@@ -41,17 +43,10 @@ spec:
     roleGroups:
       default:
         replicas: 1
-        podOverrides:
-          spec:
-            containers:
-              - name: airflow
-                volumeMounts:
-                  - name: dags
-                    mountPath: /stackable/airflow/dags
-            volumes:
-              - name: dags
-                configMap:
-                  name: airflow-dags
+        # podOverrides voor DAG-mount zijn weggehaald: chart 26.3 mountt
+        # /stackable/airflow/dags al via dagsGitSync of empty default;
+        # extra mount caused "Detected recursive loop walking DAG directory".
+        # DAGs voor productie via dagsGitSync of separate Job.
 
   schedulers:
     config:
@@ -66,17 +61,10 @@ spec:
     roleGroups:
       default:
         replicas: 1
-        podOverrides:
-          spec:
-            containers:
-              - name: airflow
-                volumeMounts:
-                  - name: dags
-                    mountPath: /stackable/airflow/dags
-            volumes:
-              - name: dags
-                configMap:
-                  name: airflow-dags
+        # podOverrides voor DAG-mount zijn weggehaald: chart 26.3 mountt
+        # /stackable/airflow/dags al via dagsGitSync of empty default;
+        # extra mount caused "Detected recursive loop walking DAG directory".
+        # DAGs voor productie via dagsGitSync of separate Job.
 
   celeryExecutors:
     # Niet gebruikt — we draaien KubernetesExecutor (zie executor.kubernetes)
