@@ -25,11 +25,13 @@ spec:
     catalogLabelSelector:
       matchLabels:
         trino: uwv-trino
-    authentication:
-      - authenticationClass: trino-static-uwv
-      - authenticationClass: keycloak-uwv
-        oidc:
-          clientCredentialsSecret: trino-oidc-client
+    # Authentication uitgeschakeld voor demo:
+    # - trino-static-uwv: password-file-updater sidecar crashloop
+    # - keycloak-uwv OIDC: issuer-mismatch tussen interne discovery-URL
+    #   en externe issuer-claim die Keycloak adverteert (KC_HOSTNAME=:8443).
+    # Productie: of Keycloak issuer in-cluster resolvable maken (CoreDNS
+    # rewrite + 443:443 port-mapping in k3d), of mTLS via SecretClass tls.
+    authentication: []
     authorization:
       opa:
         configMapName: uwv-opa
