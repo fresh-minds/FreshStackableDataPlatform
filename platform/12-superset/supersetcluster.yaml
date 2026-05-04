@@ -35,6 +35,15 @@ spec:
           max: "1000m"
         memory:
           limit: "1Gi"
+    # ENABLE_PROXY_FIX laat Superset X-Forwarded-Proto/Host respecteren
+    # (https i.p.v. http). WEBSERVER_BASE_URL hardcodet :8443 want
+    # ingress-nginx propageert geen X-Forwarded-Port standaard, en k3d
+    # mapt host:8443 → cluster:443. Zonder dit blijft :8443 weg uit
+    # redirect_uri → browser landt op port 443 die niet luistert.
+    configOverrides:
+      superset_config.py:
+        ENABLE_PROXY_FIX: "True"
+        WEBSERVER_BASE_URL: '"https://superset.uwv-platform.local:8443"'
     roleGroups:
       default:
         replicas: 1

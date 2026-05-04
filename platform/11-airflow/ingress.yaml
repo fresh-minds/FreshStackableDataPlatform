@@ -8,6 +8,9 @@ metadata:
   namespace: uwv-platform
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
+    # Zie superset/ingress.yaml — :8443 in OAuth redirect_uri.
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header X-Forwarded-Port 8443;
 spec:
   ingressClassName: nginx
   tls:

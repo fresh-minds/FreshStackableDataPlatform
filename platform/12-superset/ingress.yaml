@@ -24,6 +24,13 @@ metadata:
   namespace: uwv-platform
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
+    # Superset (Flask-AppBuilder) bouwt OAuth redirect_uri vanuit
+    # request-context via ProxyFix. ingress-nginx stuurt X-Forwarded-Proto
+    # en X-Forwarded-Host standaard, maar geen X-Forwarded-Port. K3d mapt
+    # host:8443 naar cluster:443, dus zonder deze header bouwt Superset
+    # een URL zonder :8443 → browser landt op port 443 die niet luistert.
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header X-Forwarded-Port 8443;
 spec:
   ingressClassName: nginx
   tls:
