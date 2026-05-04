@@ -1,0 +1,27 @@
+# Ingress voor OpenSearch REST-API (poort 9200).
+# Service opensearch-uwv. Geen auth — security is uit voor dev (zie
+# infrastructure/helm/opensearch/values.yaml).
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: opensearch
+  namespace: uwv-meta
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["opensearch.uwv-platform.local"]
+      secretName: opensearch-tls
+  rules:
+    - host: opensearch.uwv-platform.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: opensearch-uwv
+                port:
+                  number: 9200

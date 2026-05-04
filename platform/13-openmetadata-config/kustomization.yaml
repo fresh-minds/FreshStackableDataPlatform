@@ -4,6 +4,7 @@ namespace: uwv-meta
 
 resources:
   - init-job.yaml
+  - ingress-opensearch.yaml
 
 # Bundle classifications + glossary + service-configs in een ConfigMap die
 # de init-Job mount op /config.

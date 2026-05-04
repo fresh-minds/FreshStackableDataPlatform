@@ -7,3 +7,4 @@ resources:
   - pdb-uwv.yaml
   - hpa-trino.yaml
   - opensearch-ilm-job.yaml
+  - ingress-prometheus.yaml
