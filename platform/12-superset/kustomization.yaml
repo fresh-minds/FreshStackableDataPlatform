@@ -6,3 +6,4 @@ resources:
   - supersetcluster.yaml
   - init-job.yaml
   - dashboards-init-job.yaml
+  - ingress.yaml

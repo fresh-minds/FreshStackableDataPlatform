@@ -4,6 +4,7 @@ namespace: uwv-platform
 
 resources:
   - airflowcluster.yaml
+  - ingress.yaml
 
 # DAGs worden via een ConfigMap gemount op /stackable/airflow/dags.
 # Productie zou Stackable's `dagsGitSync` gebruiken.

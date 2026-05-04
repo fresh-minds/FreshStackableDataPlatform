@@ -66,13 +66,13 @@ const chart = `flowchart LR
   PROM -. "scrape" .- SPARK
   OS -. "logs" .- TRINO
 
-  click KC "https://keycloak.uwv-platform.local" "Open Keycloak" _blank
-  click MINIO "https://minio.uwv-platform.local" "Open MinIO" _blank
-  click NIFI "https://nifi.uwv-platform.local" "Open NiFi" _blank
-  click TRINO "https://trino.uwv-platform.local" "Open Trino" _blank
-  click AIR "https://airflow.uwv-platform.local" "Open Airflow" _blank
-  click SUP "https://superset.uwv-platform.local" "Open Superset" _blank
-  click OM "https://openmetadata.uwv-platform.local" "Open OpenMetadata" _blank
+  click KC "https://keycloak.uwv-platform.local:8443" "Open Keycloak" _blank
+  click MINIO "https://minio.uwv-platform.local:8443" "Open MinIO" _blank
+  click NIFI "https://nifi.uwv-platform.local:8443" "Open NiFi" _blank
+  click TRINO "https://trino.uwv-platform.local:8443" "Open Trino" _blank
+  click AIR "https://airflow.uwv-platform.local:8443" "Open Airflow" _blank
+  click SUP "https://superset.uwv-platform.local:8443" "Open Superset" _blank
+  click OM "https://openmetadata.uwv-platform.local:8443" "Open OpenMetadata" _blank
 
   classDef ext fill:#1a1206,stroke:#f59e0b,color:#fbbf24;
   class KC,NIFI,TRINO,SUP,AIR,OM,MINIO ext;

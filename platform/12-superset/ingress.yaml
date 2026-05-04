@@ -1,0 +1,42 @@
+# Service + Ingress voor Superset.
+# Stackable maakt alleen headless Services; voor browser-toegang is een
+# normale ClusterIP Service + nginx-ingress nodig.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: superset
+  namespace: uwv-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: superset
+    app.kubernetes.io/instance: uwv-superset
+  ports:
+    - name: http
+      port: 8088
+      targetPort: 8088
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: superset
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["superset.uwv-platform.local"]
+      secretName: superset-tls
+  rules:
+    - host: superset.uwv-platform.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: superset
+                port:
+                  number: 8088

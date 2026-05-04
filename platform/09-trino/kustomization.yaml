@@ -4,4 +4,5 @@ namespace: uwv-platform
 resources:
   - trino-static-auth.yaml
   - trinocluster.yaml
+  - ingress.yaml
   - catalogs/rendered  # gegenereerd door scripts/render-trino-catalogs.py

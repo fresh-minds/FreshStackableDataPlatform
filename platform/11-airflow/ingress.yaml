@@ -1,0 +1,26 @@
+# Ingress voor Airflow webserver. Service uwv-airflow-webserver bestaat
+# al via Stackable-operator (ClusterIP op 8080).
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: airflow
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["airflow.uwv-platform.local"]
+      secretName: airflow-tls
+  rules:
+    - host: airflow.uwv-platform.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: uwv-airflow-webserver
+                port:
+                  number: 8080
