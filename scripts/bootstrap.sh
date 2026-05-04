@@ -98,6 +98,55 @@ helm upgrade --install postgres bitnami/postgresql \
   $(chart_override_args postgres) \
   --atomic --wait --timeout 10m
 
+# 4b. MinIO TLS-secret voorbereiden (vóór helm install minio).
+# MinIO chart values pinnen `tls.certSecret: minio-tls-internal-fixed`,
+# verwachten keys public.crt + private.key. cert-manager produceert
+# tls.crt/tls.key. Daarom: maak Certificate, wacht op secret, re-key
+# met juiste keynamen.
+log "Prepare MinIO TLS secret via cert-manager"
+kubectl create namespace uwv-platform --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+cat <<'EOF' | kubectl apply -f -
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: minio-tls-internal
+  namespace: uwv-platform
+spec:
+  secretName: minio-tls-internal
+  issuerRef:
+    name: uwv-platform-issuer
+    kind: ClusterIssuer
+  commonName: minio.uwv-platform.svc.cluster.local
+  dnsNames:
+    - minio.uwv-platform.svc.cluster.local
+    - minio.uwv-platform.svc
+    - minio
+    - minio.uwv-platform.local
+  duration: 8760h
+EOF
+# Wacht tot Secret bestaat
+for i in {1..30}; do
+  kubectl -n uwv-platform get secret minio-tls-internal >/dev/null 2>&1 && break
+  sleep 2
+done
+# Re-key naar de naam + sleutels die MinIO chart verwacht
+TMPCRT=$(mktemp); TMPKEY=$(mktemp); TMPCA=$(mktemp)
+kubectl -n uwv-platform get secret minio-tls-internal -o jsonpath='{.data.tls\.crt}' | base64 -d > "$TMPCRT"
+kubectl -n uwv-platform get secret minio-tls-internal -o jsonpath='{.data.tls\.key}' | base64 -d > "$TMPKEY"
+kubectl -n uwv-platform get secret minio-tls-internal -o jsonpath='{.data.ca\.crt}' | base64 -d > "$TMPCA"
+kubectl -n uwv-platform create secret generic minio-tls-internal-fixed \
+  --from-file=public.crt="$TMPCRT" --from-file=private.key="$TMPKEY" --from-file=ca.crt="$TMPCA" \
+  --dry-run=client -o yaml | kubectl apply -f -
+# CA-bundle voor S3Connection (Stackable Trino server-verify) + uwv-ca-bundle
+# voor pods die OAuth doen via keycloak.uwv-platform.local:8443 (Superset/Airflow).
+kubectl -n uwv-platform create secret generic minio-ca-bundle \
+  --from-file=ca.crt="$TMPCA" --dry-run=client -o yaml | \
+  sed 's|^metadata:|metadata:\n  labels:\n    secrets.stackable.tech/class: minio-ca|' | \
+  kubectl apply -f -
+kubectl -n uwv-platform create configmap uwv-ca-bundle \
+  --from-file=ca.crt="$TMPCA" --dry-run=client -o yaml | kubectl apply -f -
+rm -f "$TMPCRT" "$TMPKEY" "$TMPCA"
+
 # 5. MinIO
 log "Install MinIO ${MINIO_VERSION}"
 kubectl create namespace uwv-platform --dry-run=client -o yaml | kubectl apply -f -
