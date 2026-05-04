@@ -300,6 +300,56 @@
   ],
   "clients": [
     {
+      "clientId": "minio",
+      "name": "MinIO Console",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-minio-secret",
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "https://minio-console.uwv-platform.local:8443/oauth_callback",
+        "https://minio-console.uwv-platform.local:8443/*",
+        "http://minio-console.uwv-platform.local:8443/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "audience-minio",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "minio",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "minio-policy",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "policy",
+            "claim.name": "policy",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "multivalued": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "trino",
       "name": "Trino (UWV)",
       "enabled": true,
