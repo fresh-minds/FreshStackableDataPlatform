@@ -31,6 +31,12 @@ spec:
   webservers:
     roleConfig:
       listenerClass: cluster-internal
+    # Cert-manager CA mount voor OAuth token-exchange via
+    # https://keycloak.uwv-platform.local:8443. Zie supersetcluster.yaml.
+    # In Airflow CRD zit envOverrides onder de role, niet top-level.
+    envOverrides:
+      REQUESTS_CA_BUNDLE: "/etc/uwv-ca/ca.crt"
+      SSL_CERT_FILE: "/etc/uwv-ca/ca.crt"
     config:
       logging:
         enableVectorAgent: false
@@ -43,12 +49,23 @@ spec:
     roleGroups:
       default:
         replicas: 1
-        # podOverrides voor DAG-mount zijn weggehaald: chart 26.3 mountt
-        # /stackable/airflow/dags al via dagsGitSync of empty default;
-        # extra mount caused "Detected recursive loop walking DAG directory".
-        # DAGs voor productie via dagsGitSync of separate Job.
+        podOverrides:
+          spec:
+            containers:
+              - name: airflow
+                volumeMounts:
+                  - name: uwv-ca
+                    mountPath: /etc/uwv-ca
+                    readOnly: true
+            volumes:
+              - name: uwv-ca
+                configMap:
+                  name: uwv-ca-bundle
 
   schedulers:
+    envOverrides:
+      REQUESTS_CA_BUNDLE: "/etc/uwv-ca/ca.crt"
+      SSL_CERT_FILE: "/etc/uwv-ca/ca.crt"
     config:
       logging:
         enableVectorAgent: false
@@ -61,10 +78,18 @@ spec:
     roleGroups:
       default:
         replicas: 1
-        # podOverrides voor DAG-mount zijn weggehaald: chart 26.3 mountt
-        # /stackable/airflow/dags al via dagsGitSync of empty default;
-        # extra mount caused "Detected recursive loop walking DAG directory".
-        # DAGs voor productie via dagsGitSync of separate Job.
+        podOverrides:
+          spec:
+            containers:
+              - name: airflow
+                volumeMounts:
+                  - name: uwv-ca
+                    mountPath: /etc/uwv-ca
+                    readOnly: true
+            volumes:
+              - name: uwv-ca
+                configMap:
+                  name: uwv-ca-bundle
 
   celeryExecutors:
     # Niet gebruikt — we draaien KubernetesExecutor (zie executor.kubernetes)
