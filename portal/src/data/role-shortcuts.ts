@@ -57,7 +57,7 @@ export const shortcuts: Record<RoleId, Shortcut[]> = {
   data_engineer: [
     { title: 'NiFi flows', hint: 'Ingestion-pipelines bewerken', component: 'nifi', href: 'https://nifi.uwv-platform.local:8443' },
     { title: 'Airflow DAGs', hint: 'Batch- en dbt-runs', component: 'airflow', href: 'https://airflow.uwv-platform.local:8443' },
-    { title: 'MinIO buckets', hint: 'bronze/silver/gold/sensitive', component: 'minio', href: 'https://minio.uwv-platform.local:8443' },
+    { title: 'MinIO buckets', hint: 'bronze/silver/gold/sensitive', component: 'minio', href: 'https://minio-console.uwv-platform.local:8443' },
     { title: 'JIT-toegang aanvragen', hint: 'Bronze alleen met just-in-time', component: 'keycloak', href: 'https://keycloak.uwv-platform.local:8443/realms/uwv/account' },
   ],
   platform_admin: [

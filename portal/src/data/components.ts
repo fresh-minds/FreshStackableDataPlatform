@@ -56,7 +56,7 @@ export const components: PlatformComponent[] = [
     name: 'MinIO',
     layer: 'storage',
     short: 'S3-compatible object store met buckets bronze/silver/gold/sensitive.',
-    url: 'https://minio.uwv-platform.local:8443',
+    url: 'https://minio-console.uwv-platform.local:8443',
     prometheusJob: 'minio',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
