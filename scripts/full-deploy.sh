@@ -159,77 +159,47 @@ done
 if [[ -z "$TOKEN" ]]; then
   warn "Keycloak niet bereikbaar; sla realm-patches over"
 else
-  kubectl -n uwv-auth exec keycloak-0 -c keycloak -- bash -s "$TOKEN" <<'KCEOF'
-TOKEN="$1"
+  # bash -c via single-quoted string + escapes — anders interpoleert de
+  # outer shell de inner $TOKEN/$ADM en faalt het patch-script silent.
+  kubectl -n uwv-auth exec keycloak-0 -c keycloak -- bash -c "
+T=\$(curl -fsS -d 'client_id=admin-cli' -d 'username=kcadmin' -d 'password=uwv-dev-only-CHANGE-ME-2026' -d 'grant_type=password' http://localhost:8080/realms/master/protocol/openid-connect/token | sed 's/.*access_token\":\"\\([^\"]*\\)\".*/\\1/')
 KC=http://localhost:8080
-ADM="curl -fsS -H Authorization:\ Bearer\ $TOKEN -H Content-Type:application/json"
+A='Authorization: Bearer '\"\$T\"
 
-# Clear CONFIGURE_TOTP requirement op admin/demo users (voor demo gemak)
+# 1. TOTP clearen voor demo-admins
 for u in platform.admin wajong.arbeidsdeskundige data.engineer; do
-  KCUID=$($ADM "$KC/admin/realms/uwv/users?username=$u" 2>/dev/null | grep -oE '"id":"[^"]*"' | head -1 | cut -d\" -f4)
-  [[ -z "$KCUID" ]] && continue
-  curl -sS -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-    "$KC/admin/realms/uwv/users/$KCUID" -d '{"requiredActions":[]}' -o /dev/null
-  curl -sS -X DELETE -H "Authorization: Bearer $TOKEN" \
-    "$KC/admin/realms/uwv/attack-detection/brute-force/users/$KCUID" -o /dev/null
+  KCUID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/users?username=\$u\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
+  [ -z \"\$KCUID\" ] && continue
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/\$KCUID\" -d '{\"requiredActions\":[]}' -o /dev/null
+  curl -sS -X DELETE -H \"\$A\" \"\$KC/admin/realms/uwv/attack-detection/brute-force/users/\$KCUID\" -o /dev/null
 done
 
-# Profile scope aanmaken indien afwezig (realm-import skip standaard scopes)
-if ! $ADM "$KC/admin/realms/uwv/client-scopes" 2>/dev/null | grep -q '"name":"profile"'; then
-  curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-    "$KC/admin/realms/uwv/client-scopes" -d '{
-    "name":"profile","protocol":"openid-connect",
-    "attributes":{"include.in.token.scope":"true","display.on.consent.screen":"true"},
-    "protocolMappers":[
-      {"name":"username","protocol":"openid-connect","protocolMapper":"oidc-usermodel-property-mapper",
-       "config":{"user.attribute":"username","claim.name":"preferred_username","jsonType.label":"String",
-                 "id.token.claim":"true","access.token.claim":"true","userinfo.token.claim":"true"}},
-      {"name":"firstname","protocol":"openid-connect","protocolMapper":"oidc-usermodel-property-mapper",
-       "config":{"user.attribute":"firstName","claim.name":"given_name","jsonType.label":"String",
-                 "id.token.claim":"true","access.token.claim":"true","userinfo.token.claim":"true"}},
-      {"name":"lastname","protocol":"openid-connect","protocolMapper":"oidc-usermodel-property-mapper",
-       "config":{"user.attribute":"lastName","claim.name":"family_name","jsonType.label":"String",
-                 "id.token.claim":"true","access.token.claim":"true","userinfo.token.claim":"true"}}
-    ]}' -o /dev/null
-fi
+# 2. profile + email scopes aanmaken (realm-import skipt deze)
+curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/client-scopes\" 2>/dev/null | grep -q '\"name\":\"profile\"' || \\
+  curl -sS -X POST -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/client-scopes\" -d '{\"name\":\"profile\",\"protocol\":\"openid-connect\",\"attributes\":{\"include.in.token.scope\":\"true\"},\"protocolMappers\":[{\"name\":\"username\",\"protocol\":\"openid-connect\",\"protocolMapper\":\"oidc-usermodel-property-mapper\",\"config\":{\"user.attribute\":\"username\",\"claim.name\":\"preferred_username\",\"jsonType.label\":\"String\",\"id.token.claim\":\"true\",\"access.token.claim\":\"true\",\"userinfo.token.claim\":\"true\"}}]}' -o /dev/null
 
-# Email-scope idem
-if ! $ADM "$KC/admin/realms/uwv/client-scopes" 2>/dev/null | grep -q '"name":"email"'; then
-  curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-    "$KC/admin/realms/uwv/client-scopes" -d '{
-    "name":"email","protocol":"openid-connect",
-    "attributes":{"include.in.token.scope":"true","display.on.consent.screen":"true"},
-    "protocolMappers":[{
-      "name":"email","protocol":"openid-connect","protocolMapper":"oidc-usermodel-property-mapper",
-      "config":{"user.attribute":"email","claim.name":"email","jsonType.label":"String",
-                "id.token.claim":"true","access.token.claim":"true","userinfo.token.claim":"true"}
-    }]}' -o /dev/null
-fi
+curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/client-scopes\" 2>/dev/null | grep -q '\"name\":\"email\"' || \\
+  curl -sS -X POST -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/client-scopes\" -d '{\"name\":\"email\",\"protocol\":\"openid-connect\",\"attributes\":{\"include.in.token.scope\":\"true\"},\"protocolMappers\":[{\"name\":\"email\",\"protocol\":\"openid-connect\",\"protocolMapper\":\"oidc-usermodel-property-mapper\",\"config\":{\"user.attribute\":\"email\",\"claim.name\":\"email\",\"jsonType.label\":\"String\",\"id.token.claim\":\"true\",\"access.token.claim\":\"true\",\"userinfo.token.claim\":\"true\"}}]}' -o /dev/null
 
-# Profile/email scopes assignen aan elke client + policy-attribute op demo users
-PROFILE_ID=$($ADM "$KC/admin/realms/uwv/client-scopes" | tr '{' '\n' | grep '"name":"profile"' | grep -oE '"id":"[^"]*"' | head -1 | cut -d\" -f4)
-EMAIL_ID=$($ADM "$KC/admin/realms/uwv/client-scopes" | tr '{' '\n' | grep '"name":"email"' | grep -oE '"id":"[^"]*"' | head -1 | cut -d\" -f4)
-ROLES_ID=$($ADM "$KC/admin/realms/uwv/client-scopes" | tr '{' '\n' | grep '"name":"roles"' | grep -oE '"id":"[^"]*"' | head -1 | cut -d\" -f4)
-
+# 3. scopes assignen
+PROFILE=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/client-scopes\" | tr '{' '\\n' | grep '\"name\":\"profile\"' | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
+EMAIL=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/client-scopes\" | tr '{' '\\n' | grep '\"name\":\"email\"' | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
+ROLES=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/client-scopes\" | tr '{' '\\n' | grep '\"name\":\"roles\"' | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
 for c in superset airflow nifi openmetadata minio; do
-  CID=$($ADM "$KC/admin/realms/uwv/clients?clientId=$c" 2>/dev/null | sed 's/.*"id":"\([^"]*\)".*/\1/')
-  [[ -z "$CID" ]] && continue
-  for s in $PROFILE_ID $EMAIL_ID $ROLES_ID; do
-    curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
-      "$KC/admin/realms/uwv/clients/$CID/default-client-scopes/$s" -o /dev/null
+  CID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/clients?clientId=\$c\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
+  [ -z \"\$CID\" ] && continue
+  for s in \$PROFILE \$EMAIL \$ROLES; do
+    curl -sS -X PUT -H \"\$A\" \"\$KC/admin/realms/uwv/clients/\$CID/default-client-scopes/\$s\" -o /dev/null
   done
 done
 
-# MinIO 'policy' attribute op demo-users (consoleAdmin = full bucket access)
+# 4. policy attribute voor MinIO consoleAdmin
 for u in wia.beoordelaar platform.admin; do
-  KCUID=$($ADM "$KC/admin/realms/uwv/users?username=$u" 2>/dev/null | grep -oE '"id":"[^"]*"' | head -1 | cut -d\" -f4)
-  [[ -z "$KCUID" ]] && continue
-  curl -sS -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-    "$KC/admin/realms/uwv/users/$KCUID" -d '{"attributes":{"policy":["consoleAdmin"]}}' -o /dev/null
+  KCUID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/users?username=\$u\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
+  [ -z \"\$KCUID\" ] && continue
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/\$KCUID\" -d '{\"attributes\":{\"policy\":[\"consoleAdmin\"]}}' -o /dev/null
 done
-
-echo "Keycloak realm-patches done"
-KCEOF
+" 2>&1 | tail -3
   ok "Keycloak runtime patches applied"
 fi
 
