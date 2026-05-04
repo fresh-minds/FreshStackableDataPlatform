@@ -34,7 +34,10 @@ data:
     cookie_expire           = "8h"
     cookie_refresh          = "30m"
     cookie_domains          = ["platform.uwv-platform.local"]
-    whitelist_domains       = [".uwv-platform.local"]
+    # NB: whitelist matcht host+port exact. ':8443' is nodig zodat
+    # /oauth2/sign_out?rd=… naar de Keycloak end-session endpoint mag
+    # redirecten (anders blokkeert validator.go de RP-initiated logout).
+    whitelist_domains       = [".uwv-platform.local", ".uwv-platform.local:8443"]
 
     # Upstream = nginx in dezelfde pod
     http_address            = "0.0.0.0:4180"

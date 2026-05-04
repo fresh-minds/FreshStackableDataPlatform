@@ -87,53 +87,50 @@ rm -f "$TMP_CA"
 ok "uwv-ca-bundle gemount"
 
 # ---------------------------------------------------------------------- 5
-log "5/10  CoreDNS NodeHosts patch (in-cluster keycloak.uwv-platform.local)"
-# Wacht eerst tot keycloak-external Service een ClusterIP heeft (na
-# deploy-platform stap 02-authentication).
-KC_SVC_IP=""
-for i in {1..30}; do
-  KC_SVC_IP=$(kubectl -n uwv-auth get svc keycloak-external -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
-  [[ -n "$KC_SVC_IP" && "$KC_SVC_IP" != "None" ]] && break
-  sleep 2
-done
-if [[ -z "$KC_SVC_IP" || "$KC_SVC_IP" == "None" ]]; then
-  warn "keycloak-external Service nog niet beschikbaar; CoreDNS-patch nu skippen, doe dat na make deploy-platform"
-else
-  kubectl -n kube-system get cm coredns -o yaml > /tmp/coredns.yaml
-  python3 <<EOF
-import yaml
-d = yaml.safe_load(open('/tmp/coredns.yaml'))
-hosts = d['data']['NodeHosts']
-lines = [l for l in hosts.splitlines() if 'keycloak.uwv-platform.local' not in l]
-lines.append('${KC_SVC_IP} keycloak.uwv-platform.local')
-d['data']['NodeHosts'] = '\n'.join(lines) + '\n'
-yaml.safe_dump(d, open('/tmp/coredns.yaml', 'w'))
-EOF
-  kubectl apply -f /tmp/coredns.yaml >/dev/null
-  kubectl -n kube-system rollout restart deploy coredns >/dev/null
-  ok "CoreDNS NodeHosts patched (keycloak → $KC_SVC_IP)"
-fi
+log "5/10  CoreDNS-patch: skip pre-deploy (Service bestaat nog niet)"
+warn "post-deploy stap doet de echte patch zodra keycloak-external bestaat"
 
 # ---------------------------------------------------------------------- 6
 log "6/10  deploy-platform (alle K8s manifests)"
 make deploy-platform || warn "deploy-platform meldde fouten — check output"
 ok "platform manifests applied"
 
-# Re-run CoreDNS patch nu de Service zeker bestaat
-KC_SVC_IP=$(kubectl -n uwv-auth get svc keycloak-external -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
-if [[ -n "$KC_SVC_IP" && "$KC_SVC_IP" != "None" ]]; then
+# CoreDNS hosts-override voor keycloak.uwv-platform.local zodat in-cluster
+# pods (MinIO/Trino/Superset/Airflow/NiFi/OpenMetadata) Keycloak's externe
+# URL kunnen resolveren. De keycloak-external Service in ingress-nginx NS
+# (selector-based, robuust tegen pod-restart) is de target.
+log "CoreDNS NodeHosts patch (in-cluster keycloak.uwv-platform.local)"
+KC_SVC_IP=""
+for i in {1..30}; do
+  KC_SVC_IP=$(kubectl -n ingress-nginx get svc keycloak-external -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+  [[ -n "$KC_SVC_IP" && "$KC_SVC_IP" != "None" ]] && break
+  sleep 2
+done
+if [[ -z "$KC_SVC_IP" || "$KC_SVC_IP" == "None" ]]; then
+  warn "keycloak-external Service nog niet beschikbaar; CoreDNS-patch overgeslagen"
+else
   kubectl -n kube-system get cm coredns -o yaml > /tmp/coredns.yaml
   python3 <<EOF
 import yaml
 d = yaml.safe_load(open('/tmp/coredns.yaml'))
-lines = [l for l in d['data']['NodeHosts'].splitlines() if 'keycloak.uwv-platform.local' not in l]
+hosts = d.get('data', {}).get('NodeHosts', '') or ''
+lines = [l for l in hosts.splitlines() if 'keycloak.uwv-platform.local' not in l and l.strip()]
 lines.append('${KC_SVC_IP} keycloak.uwv-platform.local')
 d['data']['NodeHosts'] = '\n'.join(lines) + '\n'
 yaml.safe_dump(d, open('/tmp/coredns.yaml', 'w'))
 EOF
   kubectl apply -f /tmp/coredns.yaml >/dev/null
   kubectl -n kube-system rollout restart deploy coredns >/dev/null
-  ok "CoreDNS opnieuw gepatcht voor keycloak → $KC_SVC_IP"
+  kubectl -n kube-system rollout status deploy coredns --timeout=60s >/dev/null || true
+  ok "CoreDNS NodeHosts gepatched (keycloak → $KC_SVC_IP)"
+
+  # MinIO doet OIDC discovery alleen bij startup; restart zodat de Console
+  # de Keycloak SSO-knop toont.
+  if kubectl -n uwv-platform get deployment minio >/dev/null 2>&1; then
+    kubectl -n uwv-platform rollout restart deployment minio >/dev/null
+    kubectl -n uwv-platform rollout status deployment minio --timeout=120s >/dev/null || true
+    ok "MinIO herstart (OIDC discovery picks up de DNS-fix)"
+  fi
 fi
 
 # ---------------------------------------------------------------------- 7

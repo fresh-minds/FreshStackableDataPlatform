@@ -27,6 +27,37 @@ service-connection definities voor Trino / dbt / Superset / Airflow / Kafka.
 - Postgres `openmetadata` database init (via fase 1 init-script).
 - JWT-token voor admin: `metadata generate-token` na bootstrap; resultaat in Secret `openmetadata-admin.jwtToken`.
 
+## SSO via Keycloak
+
+OpenMetadata is gekoppeld aan Keycloak met de `openmetadata` confidential
+client (zie [`infrastructure/helm/keycloak/realm-uwv.json`](../../infrastructure/helm/keycloak/realm-uwv.json) regel ~458).
+Configuratie zit in [`infrastructure/helm/openmetadata/values.yaml`](../../infrastructure/helm/openmetadata/values.yaml) onder `openmetadata.config.authentication`:
+
+| Veld | Waarde |
+|---|---|
+| `clientType` | `confidential` |
+| `provider` | `custom-oidc` |
+| `authority` | `https://keycloak.uwv-platform.local:8443/realms/uwv` |
+| `callbackUrl` | `https://openmetadata.uwv-platform.local:8443/callback` |
+| `clientId` | `openmetadata` |
+| `oidcConfiguration.secret` | refereert naar Secret `openmetadata-oidc-client` |
+
+Het client-secret zit in K8s Secret `openmetadata-oidc-client` (NS `uwv-meta`,
+zie [`platform/01-secrets/dev-secrets.yaml`](../01-secrets/dev-secrets.yaml)) en moet identiek zijn
+aan de `secret`-waarde in `realm-uwv.json` voor de `openmetadata` client.
+
+Initial admins (aangemaakt bij eerste login via Keycloak): `data.steward`,
+`platform.admin`. Andere users krijgen viewer-rechten — promoten via OM UI.
+
+### Java truststore (k3d only)
+
+De OM-pod doet server-side een token-exchange tegen het ingress-nginx
+TLS-endpoint (zelf-signed CA via cert-manager). Een initContainer mountt
+[`uwv-ca-bundle`](../../scripts/bootstrap.sh) (kopie uit `uwv-platform` NS) en
+importeert `ca.crt` in een fresh JKS truststore op `/shared-truststore/cacerts`,
+die de OM-container via `JAVA_OPTS_APPEND` activeert. Op AKS is dit niet nodig
+(zie [`infrastructure/azure/helm-overrides/openmetadata-values-aks.yaml`](../../infrastructure/azure/helm-overrides/openmetadata-values-aks.yaml) — de CA is van een echte CA).
+
 ## Apply
 
 ```bash

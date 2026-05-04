@@ -43,6 +43,15 @@ spec:
     config:
       logging:
         enableVectorAgent: false
+    # Reverse-proxy aware: ingress-nginx stuurt X-Forwarded-* headers door.
+    # Trino's Jetty (airlift) wijst die default af → HTTP 406
+    # "Server configuration does not allow processing of the X-Forwarded-For
+    # header". process-forwarded=true laat Trino de proto/host/port uit de
+    # X-Forwarded-* headers gebruiken voor o.a. UI redirects en OAuth
+    # callback-URLs.
+    configOverrides:
+      config.properties:
+        http-server.process-forwarded: "true"
     roleGroups:
       default:
         replicas: 1

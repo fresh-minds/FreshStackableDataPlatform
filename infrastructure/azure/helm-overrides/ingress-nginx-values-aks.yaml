@@ -1,0 +1,10 @@
+# ingress-nginx override for AKS.
+#
+# Base values use hostNetwork=true + service.type=ClusterIP because k3d's
+# serverlb routes host:80/443 straight to node ports. AKS has neither a
+# host-port pass-through nor a serverlb — we need a real Azure Standard LB.
+controller:
+  hostNetwork: false
+  dnsPolicy: ClusterFirst
+  service:
+    type: LoadBalancer

@@ -31,15 +31,25 @@ spec:
   webservers:
     roleConfig:
       listenerClass: cluster-internal
-    # Cert-manager CA mount voor OAuth token-exchange via
-    # https://keycloak.uwv-platform.local:8443.
-    envOverrides:
-      REQUESTS_CA_BUNDLE: "/etc/uwv-ca/ca.crt"
-      SSL_CERT_FILE: "/etc/uwv-ca/ca.crt"
+    # Airflow draait achter TLS-terminating ingress-nginx. De webserver
+    # bouwt de OAuth redirect_uri — zonder BASE_URL + proxy-fix wordt
+    # dat http://...:8443 → nginx 400 "plain HTTP request was sent to
+    # HTTPS port". REQUESTS_CA_BUNDLE/SSL_CERT_FILE zijn voor de OAuth
+    # token-exchange naar https://keycloak.uwv-platform.local:8443
+    # (cert-manager self-signed CA).
     # NB: airflow.cfg dump op disk toont nog defaults
     # (base_url=http://localhost:8080, enable_proxy_fix=False).
     # `airflow config get-value webserver base_url` geeft echter de
     # ECHTE waarde uit env-vars terug — die overschrijven cfg op runtime.
+    envOverrides:
+      REQUESTS_CA_BUNDLE: "/etc/uwv-ca/ca.crt"
+      SSL_CERT_FILE: "/etc/uwv-ca/ca.crt"
+      AIRFLOW__WEBSERVER__BASE_URL: "https://airflow.uwv-platform.local:8443"
+      AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: "True"
+      AIRFLOW__WEBSERVER__PROXY_FIX_X_PROTO: "1"
+      AIRFLOW__WEBSERVER__PROXY_FIX_X_HOST: "1"
+      AIRFLOW__WEBSERVER__PROXY_FIX_X_PORT: "1"
+      AIRFLOW__WEBSERVER__PROXY_FIX_X_PREFIX: "1"
     config:
       logging:
         enableVectorAgent: false

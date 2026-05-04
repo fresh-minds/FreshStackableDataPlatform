@@ -4,8 +4,19 @@
 # Hergebruikt de gedeelde Postgres (uwv-data) en deelt het OpenSearch-
 # cluster met Vector (uwv-meta).
 #
-# Chart: open-metadata/openmetadata
-# Zie ook: infrastructure/helm/openmetadata/dependencies.md (TODO fase 8)
+# Chart: open-metadata/openmetadata (chart 1.5+)
+#
+# OIDC / SSO koppeling
+# --------------------
+# OpenMetadata 1.3+ verwacht de Pac4j OIDC-flow met `clientType: confidential`
+# en het complete `oidcConfiguration` block. De client `openmetadata` staat
+# in realm-uwv.json (clientId/secret + redirectUris); het secret wordt hier
+# uit Kubernetes-secret openmetadata-oidc-client gelezen.
+#
+# Browser-redirects gaan naar de externe URL (https://keycloak.uwv-platform.local:8443),
+# server-side token-exchange ook — daarom mountt de pod het uwv-ca-bundle
+# (zelf-signed CA van ingress-nginx) in zijn Java truststore via een
+# initContainer (zie `extraInitContainers` onderaan).
 
 # Chart 1.5: alle config zit onder `openmetadata.config.*`, niet `global.*`.
 openmetadata:
@@ -35,26 +46,103 @@ openmetadata:
       scheme: http
       searchType: opensearch
 
-    # OIDC via Keycloak
+    # OIDC via Keycloak — confidential client met server-side token-exchange.
     authentication:
+      clientType: confidential
       provider: custom-oidc
+      providerName: Keycloak
       publicKeys:
-        - http://openmetadata.uwv-platform.local/api/v1/system/config/jwks
-        - http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/certs
-      authority: http://keycloak.uwv-auth.svc.cluster.local/realms/uwv
+        - http://openmetadata.uwv-meta.svc.cluster.local:8585/api/v1/system/config/jwks
+        - https://keycloak.uwv-platform.local:8443/realms/uwv/protocol/openid-connect/certs
+      authority: https://keycloak.uwv-platform.local:8443/realms/uwv
       clientId: openmetadata
-      callbackUrl: http://openmetadata.uwv-platform.local/callback
+      callbackUrl: https://openmetadata.uwv-platform.local:8443/callback
+      enableSelfSignup: false
+
+      # Pac4j-config voor confidential client (OM 1.3+).
+      oidcConfiguration:
+        enabled: true
+        type: Keycloak
+        id: openmetadata
+        secret:
+          secretRef: openmetadata-oidc-client
+          secretKey: clientSecret
+        callbackUrl: https://openmetadata.uwv-platform.local:8443/callback
+        serverUrl: https://openmetadata.uwv-platform.local:8443
+        # Discovery via externe URL → discovery-doc bevat dan consistent
+        # https://keycloak.uwv-platform.local:8443/... endpoints, zodat
+        # auth-redirect (browser) én token-exchange (server) dezelfde
+        # issuer-claim respecteren. uwv-ca-bundle moet dus in de pod's
+        # Java truststore zitten (zie extraInitContainers verderop).
+        discoveryUri: https://keycloak.uwv-platform.local:8443/realms/uwv/.well-known/openid-configuration
+        scope: "openid email profile"
+        useNonce: "true"
+        preferredJwsAlgorithm: RS256
+        responseType: code
+        disablePkce: false
+        maxClockSkew: "0"
+        tokenValidity: "3600"
+        prompt: ""
+        sessionExpiry: "604800"
 
     authorizer:
       className: org.openmetadata.service.security.DefaultAuthorizer
+      containerRequestFilter: org.openmetadata.service.security.JwtFilter
       initialAdmins:
         - data.steward
         - platform.admin
       principalDomain: uwv-platform.local
+      enforcePrincipalDomain: false
+      enableSecureSocketConnection: false
 
     # Airflow-pipelinesserver — geen Airflow geconfigureerd; uit
     pipelineServiceClientConfig:
       enabled: false
+
+# Java truststore-uitbreiding: voeg uwv-platform CA toe zodat OM-pod TLS
+# van ingress-nginx (waarachter Keycloak draait) kan verifieren bij de
+# server-side token-exchange. Truststore wordt in een emptyDir geschreven
+# door een initContainer en daarna door de OM-container ingelezen via
+# JAVA_OPTS_APPEND (key/store-pass = changeit; alleen dev).
+extraInitContainers:
+  - name: import-uwv-ca
+    image: eclipse-temurin:17-jre-jammy
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        cp "$JAVA_HOME/lib/security/cacerts" /shared-truststore/cacerts
+        chmod u+w /shared-truststore/cacerts
+        keytool -importcert -noprompt -trustcacerts \
+          -keystore /shared-truststore/cacerts \
+          -storepass changeit \
+          -alias uwv-platform-ca \
+          -file /uwv-ca/ca.crt
+        echo "uwv-platform CA imported into truststore"
+    volumeMounts:
+      - name: uwv-ca
+        mountPath: /uwv-ca
+        readOnly: true
+      - name: shared-truststore
+        mountPath: /shared-truststore
+
+extraVolumes:
+  - name: uwv-ca
+    configMap:
+      name: uwv-ca-bundle
+  - name: shared-truststore
+    emptyDir: {}
+
+extraVolumeMounts:
+  - name: shared-truststore
+    mountPath: /shared-truststore
+    readOnly: true
+
+extraEnvs:
+  # OpenMetadata's image picks up extra Java args via JAVA_OPTS_APPEND.
+  - name: JAVA_OPTS_APPEND
+    value: "-Djavax.net.ssl.trustStore=/shared-truststore/cacerts -Djavax.net.ssl.trustStorePassword=changeit"
 
 resources:
   requests:

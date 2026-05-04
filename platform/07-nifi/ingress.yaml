@@ -27,9 +27,24 @@ metadata:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
     nginx.ingress.kubernetes.io/backend-protocol: HTTPS
     nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
-    # Zie superset/ingress.yaml — :8443 in OAuth redirect_uri.
+    # k3d mapt host:8443 → ingress :443. ingress-nginx emit van zichzelf
+    # `proxy_set_header X-Forwarded-Port $pass_port`, met
+    # `set $pass_port $pass_server_port;` en `set $pass_server_port
+    # $server_port;` — dus default = 443. NiFi's WebUtils prefereert
+    # X-Forwarded-Port boven de poort uit X-Forwarded-Host (8443) en
+    # logt "Forwarded Host Port [8443] replaced with Forwarded Port
+    # [443]" → de redirect_uri richting Keycloak verliest dan z'n
+    # :8443 en Keycloak probeert callback op poort 443 (niets luistert
+    # daar in k3d).
+    #
+    # nginx-variabelen zijn lazy: `$pass_port` is een binding naar
+    # `$pass_server_port`, geen kopie. Alleen de wortel hier
+    # overschrijven volstaat — `$pass_port` re-evalueert in de proxy-
+    # phase en geeft dan 8443. Empirisch geverifieerd: alleen
+    # `set $pass_port` óf `more_set_input_headers` werkt niet, want
+    # de auto-emit van proxy_set_header X-Forwarded-Port wint dan.
     nginx.ingress.kubernetes.io/configuration-snippet: |
-      proxy_set_header X-Forwarded-Port 8443;
+      set $pass_server_port 8443;
 spec:
   ingressClassName: nginx
   tls:

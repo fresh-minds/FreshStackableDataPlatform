@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: uwv-platform
 
 resources:
+  - extra-config.yaml
   - supersetcluster.yaml
   - init-job.yaml
   - dashboards-init-job.yaml

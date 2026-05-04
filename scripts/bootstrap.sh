@@ -86,6 +86,7 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx --create-namespace \
   --version "${INGRESS_NGINX_VERSION}" \
   --values "${ROOT}/infrastructure/helm/ingress-nginx/values.yaml" \
+  $(chart_override_args ingress-nginx) \
   --wait --timeout 5m
 
 # 4. PostgreSQL (shared)
@@ -206,6 +207,17 @@ helm upgrade --install opensearch-uwv opensearch/opensearch \
   --atomic --wait --timeout 10m
 
 # 10. OpenMetadata
+# Voor de OIDC-koppeling met Keycloak doet de OM-pod server-side een
+# token-exchange tegen https://keycloak.uwv-platform.local:8443 (zelf-signed
+# CA via uwv-platform-issuer). De pod's Java truststore krijgt die CA via
+# een initContainer; daarvoor moet de uwv-ca-bundle ConfigMap óók in de
+# uwv-meta namespace bestaan.
+log "uwv-ca-bundle ConfigMap kopiëren naar uwv-meta (voor OM Java truststore)"
+kubectl -n uwv-platform get configmap uwv-ca-bundle -o yaml \
+  | sed -e 's/namespace: uwv-platform/namespace: uwv-meta/' \
+        -e '/resourceVersion:/d' -e '/uid:/d' -e '/creationTimestamp:/d' \
+  | kubectl apply -f - >/dev/null
+
 log "Install OpenMetadata ${OPENMETADATA_VERSION}"
 helm upgrade --install openmetadata open-metadata/openmetadata \
   --namespace uwv-meta \

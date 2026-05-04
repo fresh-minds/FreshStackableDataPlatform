@@ -1,0 +1,26 @@
+# Extra Python-module voor Superset, gemount op PYTHONPATH naast superset_config.py.
+#
+# Waarom: FAB's default load_user() crasht met
+#   AttributeError: 'NoneType' object has no attribute 'is_active'
+# wanneer een browser-session-cookie verwijst naar een user_id dat niet
+# meer in de DB bestaat (bv. na een DB-reset / her-seed). Resultaat: 500
+# Internal Server Error op /superset/welcome/ tot de gebruiker handmatig
+# z'n cookies wist. Onze override geeft None terug → Flask-Login redirect
+# netjes naar /login/.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: superset-extra-config
+  namespace: uwv-platform
+data:
+  uwv_security.py: |
+    from superset.security import SupersetSecurityManager
+
+
+    class UWVSecurityManager(SupersetSecurityManager):
+        def load_user(self, pk):
+            user = self.get_user_by_id(int(pk))
+            if user is not None and user.is_active:
+                return user
+            return None

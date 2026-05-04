@@ -1,0 +1,46 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+<Layout title="MinIO Console — SSO redirect">
+  <section class="panel">
+    <h1>Doorsturen naar MinIO Console…</h1>
+    <p id="status">Bezig met inloggen via Keycloak SSO…</p>
+    <p id="fallback" hidden>
+      Automatisch doorsturen mislukte. Open
+      <a href="https://minio-console.uwv-platform.local:8443" rel="noreferrer">
+        MinIO Console
+      </a>
+      direct (root-account: <code>uwvadmin</code>).
+    </p>
+  </section>
+
+  <script>
+    // Embedded MinIO Console (RELEASE.2024-04-18) returnt redirectRules:null
+    // wanneer /api/v1/login via de externe ingress wordt aangeroepen — geen
+    // SSO-knop dus. Via in-cluster Service-DNS werkt het wél; portal nginx
+    // proxyt deze ene endpoint zodat we het Keycloak auth-URL kunnen lezen
+    // en de browser door-302'en. State is HMAC-signed door MinIO Console
+    // zelf, dus de callback validation slaagt.
+    async function go() {
+      const status = document.getElementById('status') as HTMLElement | null;
+      const fallback = document.getElementById('fallback') as HTMLElement | null;
+      try {
+        const r = await fetch('/api/minio-sso/login', { credentials: 'include' });
+        if (!r.ok) throw new Error('login API ' + r.status);
+        const j = await r.json();
+        const url = j?.redirectRules?.[0]?.redirect;
+        if (typeof url !== 'string' || !url.startsWith('https://')) {
+          throw new Error('geen redirect-URL gevonden');
+        }
+        if (status) status.textContent = 'Doorsturen naar Keycloak…';
+        window.location.replace(url);
+      } catch (e) {
+        if (status) status.textContent = 'SSO niet beschikbaar.';
+        if (fallback) fallback.hidden = false;
+        // eslint-disable-next-line no-console
+        console.warn('MinIO SSO redirect mislukt:', e);
+      }
+    }
+    go();
+  </script>
+</Layout>

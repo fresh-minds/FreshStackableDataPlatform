@@ -27,12 +27,34 @@ spec:
       - authenticationClass: keycloak-uwv
         oidc:
           clientCredentialsSecret: nifi-oidc-client
+    # Reverse-proxy aware: ingress-nginx stuurt X-Forwarded-Port 8443
+    # mee (zie ingress.yaml), maar default `allowAll: true` zet
+    # `nifi.web.proxy.host=*`. Met die wildcard kiest NiFi zelf welke
+    # host:port hij in absolute redirect-URL's zet, en in k3d (waar
+    # ingress intern op :443 draait) verliest hij de :8443. Door de
+    # externe host expliciet op de whitelist te zetten gebruikt NiFi
+    # die als publieke URL → /nifi-api/.../authorization/<id> blijft
+    # netjes :8443 houden.
+    hostHeaderCheck:
+      allowAll: false
+      additionalAllowedHosts:
+        - "nifi.uwv-platform.local:8443"
   nodes:
     roleConfig:
       listenerClass: cluster-internal
     config:
       logging:
         enableVectorAgent: false
+    # NiFi's Spring-Security backport doet de OAuth2 token-exchange
+    # server-side naar https://keycloak.uwv-platform.local:8443/.../token.
+    # Die cert is door cert-manager (uwv-platform-issuer) ondertekend en
+    # zit niet in de JDK-default truststore → PKIX-fout. JAVA_TOOL_OPTIONS
+    # wijst Java naar een cacerts die door de init-container is gebouwd
+    # (JDK-default + uwv-platform-CA). NiFi's eigen mTLS-clustering
+    # gebruikt nifi.security.truststore (separate file), dus dit raakt
+    # die niet.
+    envOverrides:
+      JAVA_TOOL_OPTIONS: "-Djavax.net.ssl.trustStore=/etc/uwv-truststore/cacerts -Djavax.net.ssl.trustStorePassword=changeit"
     roleGroups:
       default:
         replicas: 1
@@ -42,6 +64,25 @@ spec:
         # ("more than 1 handler" error) en STS kan geen pod maken.
         podOverrides:
           spec:
+            initContainers:
+              - name: import-uwv-ca
+                image: oci.stackable.tech/sdp/nifi:1.28.1-stackable26.3.0
+                command: ["/bin/bash", "-c"]
+                args:
+                  - |
+                    set -e
+                    cp /etc/pki/ca-trust/extracted/java/cacerts /shared/cacerts
+                    chmod 644 /shared/cacerts
+                    keytool -import -noprompt -alias uwv-platform-ca \
+                      -keystore /shared/cacerts -storepass changeit \
+                      -file /uwv-ca/ca.crt
+                    echo "imported uwv-platform-ca"
+                volumeMounts:
+                  - name: uwv-ca-source
+                    mountPath: /uwv-ca
+                    readOnly: true
+                  - name: uwv-truststore
+                    mountPath: /shared
             containers:
               - name: nifi
                 startupProbe:
@@ -55,6 +96,16 @@ spec:
                     port: 8443
                   periodSeconds: 30
                   failureThreshold: 6
+                volumeMounts:
+                  - name: uwv-truststore
+                    mountPath: /etc/uwv-truststore
+                    readOnly: true
+            volumes:
+              - name: uwv-ca-source
+                configMap:
+                  name: uwv-ca-bundle
+              - name: uwv-truststore
+                emptyDir: {}
         config:
           resources:
             cpu:

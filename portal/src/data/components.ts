@@ -56,7 +56,10 @@ export const components: PlatformComponent[] = [
     name: 'MinIO',
     layer: 'storage',
     short: 'S3-compatible object store met buckets bronze/silver/gold/sensitive.',
-    url: 'https://minio-console.uwv-platform.local:8443',
+    // /go/minio/ is een portal-redirect die de Keycloak SSO-flow start;
+    // zie portal/nginx.conf + portal/src/pages/go/minio.astro voor de
+    // workaround voor de embedded MinIO Console-quirk via de externe ingress.
+    url: '/go/minio/',
     prometheusJob: 'minio',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
