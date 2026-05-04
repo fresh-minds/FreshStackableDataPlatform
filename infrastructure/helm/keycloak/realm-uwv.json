@@ -311,7 +311,9 @@
       "serviceAccountsEnabled": true,
       "redirectUris": [
         "https://trino.uwv-platform.local:8443/*",
-        "https://trino.uwv-platform.local/*"
+        "https://trino.uwv-platform.local/*",
+        "http://trino.uwv-platform.local:8443/*",
+        "http://trino.uwv-platform.local/*"
       ],
       "webOrigins": [
         "+"
@@ -337,12 +339,20 @@
       "standardFlowEnabled": true,
       "redirectUris": [
         "https://superset.uwv-platform.local:8443/*",
-        "https://superset.uwv-platform.local/*"
+        "https://superset.uwv-platform.local/*",
+        "http://superset.uwv-platform.local:8443/*",
+        "http://superset.uwv-platform.local/*"
       ],
       "webOrigins": [
         "+"
       ],
-      "fullScopeAllowed": true
+      "fullScopeAllowed": true,
+      "defaultClientScopes": [
+        "profile",
+        "email",
+        "roles",
+        "web-origins"
+      ]
     },
     {
       "clientId": "airflow",
@@ -354,12 +364,20 @@
       "standardFlowEnabled": true,
       "redirectUris": [
         "https://airflow.uwv-platform.local:8443/*",
-        "https://airflow.uwv-platform.local/*"
+        "https://airflow.uwv-platform.local/*",
+        "http://airflow.uwv-platform.local:8443/*",
+        "http://airflow.uwv-platform.local/*"
       ],
       "webOrigins": [
         "+"
       ],
-      "fullScopeAllowed": true
+      "fullScopeAllowed": true,
+      "defaultClientScopes": [
+        "profile",
+        "email",
+        "roles",
+        "web-origins"
+      ]
     },
     {
       "clientId": "nifi",
@@ -371,12 +389,20 @@
       "standardFlowEnabled": true,
       "redirectUris": [
         "https://nifi.uwv-platform.local:8443/*",
-        "https://nifi.uwv-platform.local/*"
+        "https://nifi.uwv-platform.local/*",
+        "http://nifi.uwv-platform.local:8443/*",
+        "http://nifi.uwv-platform.local/*"
       ],
       "webOrigins": [
         "+"
       ],
-      "fullScopeAllowed": true
+      "fullScopeAllowed": true,
+      "defaultClientScopes": [
+        "profile",
+        "email",
+        "roles",
+        "web-origins"
+      ]
     },
     {
       "clientId": "openmetadata",
@@ -387,13 +413,21 @@
       "secret": "uwv-dev-only-CHANGE-ME-openmetadata-secret",
       "standardFlowEnabled": true,
       "redirectUris": [
-        "http://openmetadata.uwv-platform.local/*",
-        "https://openmetadata.uwv-platform.local/*"
+        "https://openmetadata.uwv-platform.local:8443/*",
+        "https://openmetadata.uwv-platform.local/*",
+        "http://openmetadata.uwv-platform.local:8443/*",
+        "http://openmetadata.uwv-platform.local/*"
       ],
       "webOrigins": [
         "+"
       ],
-      "fullScopeAllowed": true
+      "fullScopeAllowed": true,
+      "defaultClientScopes": [
+        "profile",
+        "email",
+        "roles",
+        "web-origins"
+      ]
     },
     {
       "clientId": "portal",
