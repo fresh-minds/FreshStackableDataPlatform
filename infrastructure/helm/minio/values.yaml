@@ -62,11 +62,16 @@ consoleService:
   port: 9001
 
 # Ingress voor MinIO Console (UI)
+# backend-protocol HTTPS + ssl-verify off omdat tls.enabled=true (zie
+# onder) — zonder deze annotaties spreekt nginx-ingress HTTP naar de
+# TLS-luisterende MinIO pod = timeout.
 ingress:
   enabled: true
   ingressClassName: nginx
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
   hosts:
     - minio.uwv-platform.local
   tls:
@@ -78,6 +83,8 @@ consoleIngress:
   ingressClassName: nginx
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
   hosts:
     - minio-console.uwv-platform.local
   tls:
