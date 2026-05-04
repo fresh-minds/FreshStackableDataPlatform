@@ -103,6 +103,32 @@ tls:
   publicCrt: public.crt
   privateKey: private.key
 
+# OIDC SSO via Keycloak voor de MinIO Console.
+# Browser-flow: console redirect naar https://keycloak.uwv-platform.local:8443
+# (via KC_HOSTNAME). Backend MinIO doet OIDC discovery via dezelfde URL —
+# vereist dat de pod keycloak.uwv-platform.local in-cluster kan resolveren
+# (zie platform/02-authentication/keycloak-external-svc.yaml + CoreDNS).
+# Cert-manager CA is nodig voor TLS-verify; mount via extraVolumes.
+environment:
+  MINIO_IDENTITY_OPENID_CONFIG_URL: "https://keycloak.uwv-platform.local:8443/realms/uwv/.well-known/openid-configuration"
+  MINIO_IDENTITY_OPENID_CLIENT_ID: "minio"
+  MINIO_IDENTITY_OPENID_CLIENT_SECRET: "uwv-dev-only-CHANGE-ME-minio-secret"
+  MINIO_IDENTITY_OPENID_DISPLAY_NAME: "Keycloak (UWV)"
+  MINIO_IDENTITY_OPENID_CLAIM_NAME: "policy"
+  MINIO_IDENTITY_OPENID_REDIRECT_URI: "https://minio-console.uwv-platform.local:8443/oauth_callback"
+  MINIO_IDENTITY_OPENID_SCOPES: "openid,profile,email,roles"
+  SSL_CERT_FILE: "/etc/uwv-ca/ca.crt"
+  CURL_CA_BUNDLE: "/etc/uwv-ca/ca.crt"
+
+extraVolumes:
+  - name: uwv-ca
+    configMap:
+      name: uwv-ca-bundle
+extraVolumeMounts:
+  - name: uwv-ca
+    mountPath: /etc/uwv-ca
+    readOnly: true
+
 # Disable Bitnami-style metrics (chart heeft eigen metrics endpoint)
 metrics:
   serviceMonitor:
