@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - secretclass-tls-internal.yaml
   - authenticationclass-keycloak.yaml
+  - keycloak-external-svc.yaml

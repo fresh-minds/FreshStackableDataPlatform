@@ -1,0 +1,46 @@
+# In-cluster route voor https://keycloak.uwv-platform.local:8443
+#
+# Pods (Superset/Airflow/NiFi) doen na OIDC-discovery een server-side
+# token-exchange via de externe URL die Keycloak adverteert
+# (KC_HOSTNAME=https://keycloak.uwv-platform.local:8443). Maar k3d's
+# host-port 8443 is host-only — pods kunnen daar niet bij.
+#
+# Dit Service+Endpoints-paar maakt `keycloak.uwv-platform.local:8443`
+# in-cluster routeerbaar door TCP te forwarden naar de ingress-nginx
+# DaemonSet (luistert hostNetwork op nodes :443). Ingress-nginx
+# routeert de Host-header naar de Keycloak-service.
+#
+# CoreDNS NodeHosts pinnt `keycloak.uwv-platform.local` op de
+# ClusterIP van deze Service (zie scripts/cluster.sh of patch-coredns.sh
+# voor automation, of doe het handmatig na cluster-create).
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak-external
+  namespace: uwv-auth
+spec:
+  type: ClusterIP
+  ports:
+    - name: https
+      port: 8443
+      targetPort: 443
+      protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: keycloak-external
+  namespace: uwv-auth
+subsets:
+  - addresses:
+      # k3d worker/server node-IPs in de Docker bridge `k3d-uwv-platform`
+      # (172.25.0.0/24). Ingress-nginx draait hostNetwork op port 443.
+      # Productie-cluster gebruikt natuurlijk gewoon DNS.
+      - ip: 172.25.0.2
+      - ip: 172.25.0.4
+      - ip: 172.25.0.5
+    ports:
+      - name: https
+        port: 443
+        protocol: TCP
