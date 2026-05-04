@@ -44,6 +44,25 @@ spec:
       superset_config.py:
         ENABLE_PROXY_FIX: "True"
         WEBSERVER_BASE_URL: '"https://superset.uwv-platform.local:8443"'
+    envOverrides:
+      # Pad naar uwv-platform-CA bundle (zie podOverrides volume mount).
+      # Python's requests-lib (gebruikt door Authlib voor OAuth token-
+      # exchange) leest deze om de cert-manager self-signed CA te
+      # vertrouwen voor https://keycloak.uwv-platform.local:8443.
+      REQUESTS_CA_BUNDLE: "/etc/uwv-ca/ca.crt"
+      SSL_CERT_FILE: "/etc/uwv-ca/ca.crt"
     roleGroups:
       default:
         replicas: 1
+        podOverrides:
+          spec:
+            containers:
+              - name: superset
+                volumeMounts:
+                  - name: uwv-ca
+                    mountPath: /etc/uwv-ca
+                    readOnly: true
+            volumes:
+              - name: uwv-ca
+                configMap:
+                  name: uwv-ca-bundle
