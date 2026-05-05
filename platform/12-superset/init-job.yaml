@@ -37,8 +37,16 @@ data:
     ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
     ADMIN_PASSWORD = os.environ["ADMIN_PASSWORD"]
     TRINO_HOST = os.environ.get("TRINO_HOST", "uwv-trino-coordinator.uwv-platform.svc.cluster.local")
+    # Hardcoded — Kubernetes injecteert auto-env TRINO_PORT=tcp://IP:PORT bij
+    # dezelfde-naam service (collision met onze env-var); ignore en hardcode.
+    TRINO_PORT = "8443"
+    TRINO_PROTOCOL = "https"
     TRINO_USER = os.environ.get("TRINO_USER", "smoketest")
     TRINO_PASSWORD = os.environ["TRINO_PASSWORD"]
+    # Cert-bundle voor self-signed Trino TLS — niet nodig met verify=False
+    # in requests-call hieronder, maar urllib3-warning suppressen kan helpen.
+    import urllib3 as _u3  # noqa: PLC0415
+    _u3.disable_warnings()
 
 
     def log(msg: str) -> None:
@@ -144,59 +152,92 @@ data:
         Bij API-creation maakt Superset alleen de temporal-default kolom
         aan; charts falen daarna met "Columns missing in dataset".
 
-        We omzeilen dat door SQL Lab te gebruiken: een SELECT LIMIT 0
-        leest cursor.description en geeft de complete kolomlijst, ook
-        als OPA-policies DESCRIBE/SHOW COLUMNS filteren.
+        Implementatie via Trino REST `SELECT * LIMIT 1` — de response
+        bevat een `columns: [{name,type}]` array met de complete kolomlijst.
+        Trino's SHOW COLUMNS / SQL Lab pad geeft op deze cluster maar 1
+        kolom terug (oorzaak onduidelijk in Stackable+OPA-combinatie),
+        dus dit pad omzeilt dat probleem.
 
-        Zonder dit moeten gebruikers handmatig per dataset op
-        "Sync columns from source" klikken in de UI.
+        PUT /api/v1/dataset/{id}?override_columns=true accepteert wel
+        de payload maar persisteert maar 1 kolom; daarom direct via
+        Postgres (zie scripts/sync_dataset_columns.sql).
         """
-        # 1. Vind de database id voor deze dataset (gold-catalog).
+        # 1. Vind de database id (catalog) voor deze dataset.
         rd = s.get(urljoin(SUPERSET_URL, f"/api/v1/dataset/{ds_id}"))
         if rd.status_code != 200:
             log(f"  ! GET dataset {ds_id}: {rd.status_code}")
             return
-        db_id = rd.json()["result"]["database"]["id"]
+        db_info = rd.json()["result"]["database"]
+        db_id = db_info["id"]
 
-        # 2. SQL Lab execute: SELECT * LIMIT 0 → cursor.description
-        sql = f"SELECT * FROM {schema}.{table} LIMIT 0"
-        rq = s.post(urljoin(SUPERSET_URL, "/api/v1/sqllab/execute/"),
-                    json={"database_id": db_id, "sql": sql, "schema": schema,
-                          "queryLimit": 1})
-        if rq.status_code != 200:
-            log(f"  ! sqllab {schema}.{table}: {rq.status_code} {rq.text[:200]}")
+        # 2. Catalog uit URI parsen: trino://user@host:port/<catalog>
+        # We hebben deze info nodig om Trino direct aan te spreken.
+        # Voor de ingebouwde Stackable-setup: dataset.database.database_name
+        # is bijv. "uwv-trino-gold" → catalog = "gold".
+        db_name = db_info.get("database_name", "")
+        catalog = db_name.split("-")[-1] if "-" in db_name else "gold"
+
+        # 3. Direct SELECT * LIMIT 1 via Trino REST — geeft cursor.description.
+        trino_url = f"{TRINO_PROTOCOL}://{TRINO_HOST}:{TRINO_PORT}/v1/statement"
+        sql = f"SELECT * FROM {catalog}.{schema}.{table} LIMIT 1"
+        try:
+            rq = requests.post(trino_url, data=sql,
+                               headers={"X-Trino-User": TRINO_USER,
+                                        "Content-Type": "text/plain"},
+                               verify=False, timeout=30)
+        except requests.RequestException as exc:
+            log(f"  ! Trino REST {schema}.{table}: {exc}")
             return
-        cols_meta = rq.json().get("columns") or []
-        # SQL Lab returnt [{"name": "...", "type": "..."}, ...]
+        if rq.status_code != 200:
+            log(f"  ! Trino {schema}.{table}: {rq.status_code} {rq.text[:200]}")
+            return
+        j = rq.json()
+        cols_meta = j.get("columns") or []
+        # Volg nextUri tot end zodat statement netjes afsluit.
+        while j.get("nextUri"):
+            jr = requests.get(j["nextUri"],
+                              headers={"X-Trino-User": TRINO_USER},
+                              verify=False, timeout=30)
+            j = jr.json()
+            if not cols_meta and j.get("columns"):
+                cols_meta = j["columns"]
+
+        if not cols_meta:
+            log(f"  ! geen kolom-metadata van Trino voor {schema}.{table}")
+            return
+
+        # 4. Build column list voor Superset PUT.
+        # NB: Superset persisteert via API maar 1 kolom (validatie tegen
+        # SHOW COLUMNS dropt de rest). Voor productie-fix: direct in Postgres
+        # via /scripts/sync_dataset_columns.sql.
         wanted = []
         for c in cols_meta:
-            tc = c.get("type", "").upper()
+            t_raw = (c.get("type") or "varchar").lower()
+            t_base = t_raw.split("(")[0]
             wanted.append({
                 "column_name": c["name"],
-                "type": _TRINO_TYPE_MAP.get(c.get("type", "").lower(), tc or "VARCHAR"),
-                "is_dttm": tc.startswith(("DATE", "TIMESTAMP")),
+                "type": _TRINO_TYPE_MAP.get(t_base, t_base.upper() or "VARCHAR"),
+                "is_dttm": t_base in ("date", "timestamp"),
                 "filterable": True,
                 "groupby": True,
             })
 
-        # 3. Pak bestaande columns + merge met wanted (idempotent).
-        existing = {c["column_name"]: c for c in rd.json()["result"].get("columns", [])}
-        for w in wanted:
-            if w["column_name"] not in existing:
-                existing[w["column_name"]] = w
-        # PUT-body verwacht een lijst zonder server-side keys (id, etc).
-        cleaned = []
-        for c in existing.values():
-            cleaned.append({k: c[k] for k in
-                ("column_name", "type", "is_dttm", "filterable", "groupby")
-                if k in c})
         ru = s.put(urljoin(SUPERSET_URL, f"/api/v1/dataset/{ds_id}"),
-                   json={"columns": cleaned},
+                   json={"columns": wanted},
                    params={"override_columns": "true"})
         if ru.status_code != 200:
             log(f"  ! sync cols dataset {ds_id}: {ru.status_code} {ru.text[:200]}")
         else:
-            log(f"  ✓ {len(wanted)} kolommen gesynced ({schema}.{table})")
+            # Re-check werkelijk persisted aantal — als <wanted-count is
+            # de Postgres-fallback nodig.
+            rcheck = s.get(urljoin(SUPERSET_URL, f"/api/v1/dataset/{ds_id}"))
+            persisted = len(rcheck.json()["result"].get("columns", []))
+            if persisted < len(wanted):
+                log(f"  ⚠ {persisted}/{len(wanted)} kolommen persisted "
+                    f"({schema}.{table}) — direct INSERT in superset Postgres "
+                    f"nodig voor volledige sync (zie sync_dataset_columns.sql)")
+            else:
+                log(f"  ✓ {len(wanted)} kolommen gesynced ({schema}.{table})")
 
 
     def ensure_dataset(s: requests.Session, db_id: int, schema: str, table: str) -> int:
@@ -254,8 +295,128 @@ data:
         for schema, table in silver_targets:
             ensure_dataset(s, silver_id, schema, table)
 
+        # Fallback: PUT-API persisteert maar 1 kolom; om alle dashboard-charts
+        # te laten renderen ('Columns missing in dataset' error in UI) doen we
+        # een directe INSERT in Superset's Postgres-metadata.
+        sync_columns_postgres()
+
         log("Init voltooid.")
         return 0
+
+
+    def sync_columns_postgres():
+        """Direct in Superset's metadata DB de complete kolomlijst INSERTen.
+
+        De API-route (PUT /api/v1/dataset/{id} met override_columns) wordt
+        geaccepteerd maar persisteert in Superset 4.x maar 1 kolom — Superset
+        valideert tegen Trino's SHOW COLUMNS, die op deze cluster om onbekende
+        reden 1 kolom returnt. Workaround: bypass de validation.
+        """
+        import os, urllib.parse  # noqa: PLC0415
+        # Re-use Superset's eigen DB-URI uit Secret-mount (zelfde als airflow.cfg)
+        try:
+            import psycopg2  # noqa: PLC0415
+        except ImportError:
+            log("  psycopg2 niet geïnstalleerd → sla DB-fallback over (UI-fix nodig)")
+            return
+
+        uri = os.environ.get("SUPERSET_DB_URI", "")
+        if not uri:
+            log("  geen SUPERSET_DB_URI env → DB-fallback skip")
+            return
+
+        # Strip 'postgresql+psycopg2://' prefix → connect-string
+        u = urllib.parse.urlparse(uri.replace("+psycopg2", ""))
+        try:
+            conn = psycopg2.connect(host=u.hostname, port=u.port or 5432,
+                                    user=u.username, password=u.password,
+                                    dbname=u.path.lstrip("/"))
+        except Exception as exc:
+            log(f"  psycopg2 connect failed: {exc} — DB-fallback skip")
+            return
+
+        # Hardcoded kolomlijst per UC-mart.
+        DATASET_COLS = {
+            "mart_uc01_wia_funnel_daily": [
+                ("aanvraag_datum", "DATE", True),
+                ("regio_code", "VARCHAR", False), ("onderdeel", "VARCHAR", False),
+                ("status", "VARCHAR", False), ("n_aanvragen", "BIGINT", False),
+                ("gemid_ao_pct", "DOUBLE", False), ("n_in_behandeling", "BIGINT", False),
+                ("n_toegekend", "BIGINT", False), ("n_afgewezen", "BIGINT", False),
+            ],
+            "mart_uc04_tw_eligibility": [
+                ("bsn", "VARCHAR", False), ("inkomen_maand_eur", "DECIMAL", False),
+                ("norm_per_maand_eur", "INTEGER", False), ("gat_per_maand", "DECIMAL", False),
+                ("huishoud_type_aanname", "VARCHAR", False),
+                ("toelichting", "VARCHAR", False), ("opt_out", "BOOLEAN", False),
+            ],
+            "mart_uc05_client_360": [
+                ("bsn", "VARCHAR", False), ("voornaam", "VARCHAR", False),
+                ("achternaam", "VARCHAR", False), ("geslacht", "VARCHAR", False),
+                ("geboortedatum", "DATE", True), ("straat", "VARCHAR", False),
+                ("huisnummer", "INTEGER", False), ("postcode", "VARCHAR", False),
+                ("woonplaats", "VARCHAR", False),
+                ("n_dienstverbanden_lopend", "BIGINT", False),
+                ("totaal_loon_jaar", "BIGINT", False), ("n_lopende_ww", "BIGINT", False),
+                ("n_lopende_wia", "BIGINT", False), ("max_ao_pct", "INTEGER", False),
+                ("n_klantcontacten_30d", "BIGINT", False),
+            ],
+            "mart_uc06_uitkeringslast_5y": [
+                ("jaar", "BIGINT", False), ("maand", "BIGINT", False),
+                ("wet", "VARCHAR", False), ("regio_code", "VARCHAR", False),
+                ("uitbetaald_bruto_eur_projection", "INTEGER", False),
+                ("aantal_uitkeringen_projection", "INTEGER", False),
+                ("scenario_id", "VARCHAR", False),
+            ],
+            "mart_uc06_scenario_results": [
+                ("jaar", "BIGINT", False), ("maand", "BIGINT", False),
+                ("wet", "VARCHAR", False), ("regio_code", "VARCHAR", False),
+                ("uitbetaald_bruto_eur_projection", "INTEGER", False),
+                ("aantal_uitkeringen_projection", "INTEGER", False),
+                ("scenario_id", "VARCHAR", False),
+            ],
+            "mart_uc07_dq_dagrapport": [
+                ("rapport_datum", "DATE", True), ("n_ikvs", "BIGINT", False),
+                ("n_unieke_bsns", "BIGINT", False), ("n_lopend", "BIGINT", False),
+                ("n_bsn_buiten_test_bereik", "BIGINT", False),
+                ("n_loon_null", "BIGINT", False), ("n_loon_boven_250k", "BIGINT", False),
+                ("n_lh_format_fout", "BIGINT", False),
+            ],
+            "mart_uc09_effect_panel": [
+                ("bsn_pseudo", "VARCHAR", False), ("leeftijd", "BIGINT", False),
+                ("geslacht", "VARCHAR", False), ("n_ww_aanvragen", "BIGINT", False),
+                ("ooit_ww_toegekend", "BOOLEAN", False),
+                ("n_wia_aanvragen", "BIGINT", False), ("max_ao_pct", "INTEGER", False),
+                ("dienstverbanden_lopend", "BIGINT", False),
+                ("loon_jaar_lopend", "BIGINT", False),
+                ("huidige_status", "VARCHAR", False),
+            ],
+        }
+
+        cur = conn.cursor()
+        cur.execute("SELECT id, table_name FROM tables")
+        tables = {row[1]: row[0] for row in cur.fetchall()}
+        total_inserted = 0
+        for table_name, cols in DATASET_COLS.items():
+            tid = tables.get(table_name)
+            if tid is None:
+                continue
+            for col_name, col_type, is_dttm in cols:
+                cur.execute(
+                    "INSERT INTO table_columns "
+                    "(table_id, column_name, type, is_dttm, is_active, "
+                    " groupby, filterable, uuid, created_on, changed_on) "
+                    "VALUES (%s, %s, %s, %s, true, true, true, "
+                    " gen_random_uuid(), now(), now()) "
+                    "ON CONFLICT (table_id, column_name) DO NOTHING",
+                    (tid, col_name, col_type, is_dttm),
+                )
+                if cur.rowcount > 0:
+                    total_inserted += 1
+        conn.commit()
+        cur.close()
+        conn.close()
+        log(f"  ✓ Postgres-fallback: {total_inserted} kolom-rijen ingevoegd")
 
 
     if __name__ == "__main__":
@@ -285,7 +446,7 @@ spec:
           command: ["bash", "-euo", "pipefail", "-c"]
           args:
             - |
-              pip install --quiet --disable-pip-version-check requests
+              pip install --quiet --disable-pip-version-check requests psycopg2-binary
               python /scripts/init_superset.py
           env:
             - name: SUPERSET_URL
@@ -309,6 +470,12 @@ spec:
                 secretKeyRef:
                   name: trino-static-users
                   key: smoketest
+            # Postgres-fallback voor dataset-kolommen (zie sync_columns_postgres()).
+            - name: SUPERSET_DB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: superset-postgres-credentials
+                  key: connections.sqlalchemyDatabaseUri
           volumeMounts:
             - name: scripts
               mountPath: /scripts
