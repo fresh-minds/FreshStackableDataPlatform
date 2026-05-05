@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Prometheus">
+  <rect width="24" height="24" rx="5" fill="#E6522C"/>
+  <path d="M12 3c0 3-3 4-3 7 0 1.5 1 2.5 1 4-2 0-3-2-3-4 0 4 2 8 5 8s5-4 5-8c0-4-3-5-3-7s-2-2-2 0z" fill="#fff"/>
+  <rect x="7.5" y="16" width="9" height="1.6" rx=".6" fill="#fff"/>
+  <path d="M9.5 18.6c0 1.4 1.1 2.4 2.5 2.4s2.5-1 2.5-2.4z" fill="#fff"/>
+</svg>

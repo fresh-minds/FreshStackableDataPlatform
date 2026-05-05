@@ -13,8 +13,7 @@
     "astro": "astro"
   },
   "dependencies": {
-    "astro": "^4.16.18",
-    "mermaid": "^11.4.1"
+    "astro": "^4.16.18"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

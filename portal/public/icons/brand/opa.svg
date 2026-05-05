@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Open Policy Agent">
+  <rect width="24" height="24" rx="5" fill="#7D9199"/>
+  <path d="M12 3.5 5 6v5.5c0 4.5 3 8.5 7 9.5 4-1 7-5 7-9.5V6l-7-2.5z" fill="#fff"/>
+  <path d="m8.5 12 2.5 2.5L16 9.5" fill="none" stroke="#7D9199" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

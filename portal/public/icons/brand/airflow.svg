@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Apache Airflow">
+  <rect width="24" height="24" rx="5" fill="#017CEE"/>
+  <path d="M12 4c0 4.5-3.5 8-8 8 4.5 0 8 3.5 8 8 0-4.5 3.5-8 8-8-4.5 0-8-3.5-8-8z" fill="#fff"/>
+  <circle cx="12" cy="12" r="1.6" fill="#017CEE"/>
+</svg>

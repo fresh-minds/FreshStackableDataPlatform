@@ -1,104 +1,62 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import Mermaid from '../components/Mermaid.astro';
-import ComponentCard from '../components/ComponentCard.astro';
-import { components } from '../data/components';
+import ReferenceArchitecture from '../components/ReferenceArchitecture.astro';
+import StageSection from '../components/StageSection.astro';
+import { components, stages, type ComponentStage } from '../data/components';
 
-const chart = `flowchart LR
-  subgraph SRC["Bronsystemen"]
-    BRON["UWV-bronnen<br/>(synthetisch)"]
-  end
-
-  subgraph AUTH["Identiteit"]
-    KC["Keycloak<br/>(OIDC + MFA)"]
-  end
-
-  subgraph INGEST["Ingestion"]
-    NIFI["Apache NiFi"]
-    KAFKA["Kafka"]
-  end
-
-  subgraph COMPUTE["Compute"]
-    SPARK["Spark<br/>Streaming + Batch"]
-  end
-
-  subgraph LAKE["Lakehouse"]
-    MINIO[("MinIO<br/>bronze · silver · gold · sensitive")]
-    HIVE["Hive Metastore"]
-  end
-
-  subgraph QUERY["Query"]
-    TRINO["Trino"]
-    OPA["OPA<br/>doelbinding · rij-filter · masker"]
-  end
-
-  subgraph ORCH["Orkestratie"]
-    AIR["Airflow"]
-  end
-
-  subgraph CONS["Consumptie"]
-    SUP["Superset"]
-    OM["OpenMetadata"]
-  end
-
-  subgraph OBS["Observability"]
-    PROM["Prometheus"]
-    OS["OpenSearch"]
-  end
-
-  BRON --> NIFI --> KAFKA --> SPARK --> MINIO
-  HIVE -.-> TRINO
-  HIVE -.-> SPARK
-  MINIO --> TRINO
-  TRINO -. "policy check" .- OPA
-  TRINO --> SUP
-  AIR --> SPARK
-  AIR -. "dbt run" .- TRINO
-  OM -. "lineage / DQ" .- TRINO
-  OM -. "ingestion hooks" .- NIFI
-  KC -. "SSO" .- SUP
-  KC -. "SSO" .- TRINO
-  KC -. "SSO" .- AIR
-  KC -. "SSO" .- NIFI
-  KC -. "SSO" .- OM
-  PROM -. "scrape" .- TRINO
-  PROM -. "scrape" .- KAFKA
-  PROM -. "scrape" .- SPARK
-  OS -. "logs" .- TRINO
-
-  click KC "https://keycloak.uwv-platform.local:8443" "Open Keycloak" _blank
-  click MINIO "/go/minio/" "Open MinIO (via Keycloak SSO)" _blank
-  click NIFI "https://nifi.uwv-platform.local:8443" "Open NiFi" _blank
-  click TRINO "https://trino.uwv-platform.local:8443" "Open Trino" _blank
-  click AIR "https://airflow.uwv-platform.local:8443" "Open Airflow" _blank
-  click SUP "https://superset.uwv-platform.local:8443" "Open Superset" _blank
-  click OM "https://openmetadata.uwv-platform.local:8443" "Open OpenMetadata" _blank
-
-  classDef ext fill:#1a1206,stroke:#f59e0b,color:#fbbf24;
-  class KC,NIFI,TRINO,SUP,AIR,OM,MINIO ext;
-`;
+// Volgorde voor de gegroepeerde cards onder het diagram.
+const cardStages: ComponentStage[] = [
+  'identity',
+  'ingestion',
+  'storage',
+  'transformation',
+  'consumption',
+  'discovery',
+  'pipeline',
+  'observability',
+];
 ---
 <Layout title="Architectuur">
-  <section class="panel">
-    <h1>Architectuurkaart</h1>
+  <section class="panel hero">
+    <h1>Architectuur — referentie data-platform</h1>
     <p>
-      De boxen met oranje rand zijn klikbaar — ze openen de UI van die
-      component. Stippellijnen zijn control-paden (auth, lineage, scrape),
-      doorgetrokken lijnen zijn dataflow.
+      Een data-platform bestaat uit een keten van lagen: data komt binnen
+      (<em>ingestie</em>), wordt opgeslagen (<em>lakehouse</em>), bewerkt en
+      gemodelleerd (<em>transformatie</em>) en uiteindelijk geconsumeerd in
+      dashboards en data-producten. Daaroverheen liggen drie horizontale lagen:
+      <strong>discovery</strong> (wat hebben we), <strong>pipeline</strong>
+      (wat draait wanneer) en <strong>observability</strong> (gaat het goed).
+    </p>
+    <p class="note">
+      Klik op een component om de UI te openen — SSO regelt dat je niet opnieuw
+      hoeft in te loggen. De stip toont live <code>up{`{job=…}`}</code> uit
+      Prometheus. Geïnspireerd op het
+      <a href="https://www.montecarlodata.com/blog-what-is-a-data-platform-and-how-to-build-one/" target="_blank" rel="noopener noreferrer">Monte Carlo data-platform-model</a>.
     </p>
   </section>
 
-  <Mermaid chart={chart} />
+  <ReferenceArchitecture />
 
   <section class="panel" style="margin-top:1.5rem">
-    <h2>Status van alle componenten</h2>
+    <h2>Componenten per laag</h2>
     <p>
       Live <code>up{`{job=...}`}</code> uit Prometheus. Stip wordt na een
       seconde groen/rood; blijft hij grijs, dan is Prometheus zelf niet
       bereikbaar of staat de portal in lokale dev.
     </p>
-    <div class="grid-3">
-      {components.map((c) => <ComponentCard component={c} />)}
+
+    <div class="comp-toolbar">
+      <input id="comp-search" type="search" placeholder="Zoek component, laag of doel…"
+             autocomplete="off" aria-label="Zoek componenten" />
+      <span class="comp-counter" data-comp-counter></span>
+    </div>
+
+    <div id="stage-sections">
+      {cardStages.map((id) => {
+        const stage = stages.find((s) => s.id === id)!;
+        const stageComps = components.filter((c) => c.stage === id);
+        return <StageSection stage={stage} components={stageComps} />;
+      })}
     </div>
   </section>
 
@@ -131,7 +89,6 @@ const chart = `flowchart LR
             continue;
           }
           const j = await r.json();
-          // Verwacht: { status: "ok", up: <0|1> }
           const up = j?.up;
           el.classList.remove('ok', 'warn', 'bad');
           if (up === 1) {
@@ -151,7 +108,57 @@ const chart = `flowchart LR
     }
 
     refreshStatus();
-    // Iedere 30s opnieuw — kost weinig en vangt herstart-pieken.
     setInterval(refreshStatus, 30_000);
+
+    // ─── Eenvoudige zoek/filter over de component-cards ───
+    const search = document.getElementById('comp-search') as HTMLInputElement | null;
+    const counter = document.querySelector<HTMLElement>('[data-comp-counter]');
+    function applyFilter() {
+      const q = (search?.value ?? '').trim().toLowerCase();
+      const sections = document.querySelectorAll<HTMLElement>('.stage-section');
+      let totalVisible = 0;
+      sections.forEach((sec) => {
+        let visibleInSection = 0;
+        sec.querySelectorAll<HTMLElement>('.comp').forEach((card) => {
+          const text = card.textContent?.toLowerCase() ?? '';
+          const match = q.length === 0 || text.includes(q);
+          card.style.display = match ? '' : 'none';
+          if (match) visibleInSection++;
+        });
+        sec.style.display = visibleInSection > 0 ? '' : 'none';
+        totalVisible += visibleInSection;
+      });
+      if (counter) {
+        counter.textContent = q
+          ? `${totalVisible} van ${document.querySelectorAll('.comp').length} componenten`
+          : '';
+      }
+    }
+    search?.addEventListener('input', applyFilter);
+    applyFilter();
   </script>
+
+  <style>
+    .hero h1 { margin-bottom: .75rem; }
+    .hero em { color: var(--c-accent-2); font-style: normal; font-weight: 600; }
+    .hero strong { color: var(--c-text); }
+    .note { font-size: .82rem; color: var(--c-muted); margin-top: .75rem; }
+
+    .comp-toolbar {
+      display: flex; align-items: center; gap: .75rem;
+      margin: .5rem 0 .25rem;
+      flex-wrap: wrap;
+    }
+    .comp-toolbar input {
+      flex: 1; min-width: 220px;
+      background: var(--c-panel-2);
+      color: var(--c-text);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius);
+      padding: .5rem .75rem;
+      font: inherit;
+    }
+    .comp-toolbar input:focus { outline: none; border-color: var(--c-accent); }
+    .comp-counter { color: var(--c-muted); font-size: .82rem; }
+  </style>
 </Layout>

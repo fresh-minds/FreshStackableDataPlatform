@@ -1,10 +1,11 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import ReferenceArchitecture from '../components/ReferenceArchitecture.astro';
 import { roles } from '../data/roles';
-import { components } from '../data/components';
+import { components, stages } from '../data/components';
 ---
 <Layout title="Home">
-  <section class="panel">
+  <section class="panel hero">
     <h1>UWV Reference Data Platform</h1>
     <p>
       Eén plek om <strong>te zien hoe het platform werkt</strong> en om naar
@@ -22,14 +23,36 @@ import { components } from '../data/components';
   </section>
 
   <section class="panel">
+    <h2>Hoe het platform in elkaar zit</h2>
+    <p class="muted">
+      Klik op een component om de UI te openen. Voor een uitgebreide uitleg:
+      <a href="/architecture/">→ architectuurkaart</a>.
+    </p>
+    <ReferenceArchitecture />
+  </section>
+
+  <section class="panel">
+    <h2>De {stages.length} lagen op een rij</h2>
+    <div class="stage-grid">
+      {stages.map((s) => (
+        <a class="stage-card" href={`/architecture/#${s.id}`} data-stage={s.id}>
+          <img src={s.icon} alt="" width="32" height="32" />
+          <strong>{s.title}</strong>
+          <span>{s.blurb}</span>
+        </a>
+      ))}
+    </div>
+  </section>
+
+  <section class="panel">
     <h2>Twee manieren om te navigeren</h2>
     <div class="grid-2">
       <div>
         <h3>1. Architectuur</h3>
         <p>
           Klikbare landkaart van alle <strong>{components.length} componenten</strong>:
-          ingestion (NiFi → Kafka → Spark), opslag (Delta op MinIO),
-          query (Trino + OPA), BI (Superset), governance (OpenMetadata),
+          ingestion (NiFi → Kafka), opslag (MinIO + Hive),
+          transformatie (Spark + Trino + OPA), BI (Superset), governance (OpenMetadata),
           observability (Prometheus + OpenSearch). Hover voor uitleg, klik
           om de UI te openen, kleur-stip toont live status.
         </p>
@@ -65,6 +88,7 @@ import { components } from '../data/components';
 </Layout>
 
 <style>
+  .hero h1 { margin-bottom: .75rem; }
   .cta { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: 1rem; }
   .btn {
     display: inline-block; padding: .55rem 1rem; border-radius: var(--radius);
@@ -73,6 +97,27 @@ import { components } from '../data/components';
   .btn:hover { border-color: var(--c-accent); text-decoration: none; }
   .btn-primary { background: var(--c-accent); color: #1a1206; border-color: var(--c-accent); font-weight: 600; }
   .note { font-size: .8rem; color: var(--c-muted); margin-top: 1rem; }
+  .muted { color: var(--c-muted); font-size: .85rem; }
+
+  .stage-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: .75rem;
+  }
+  .stage-card {
+    display: flex; flex-direction: column; gap: .25rem;
+    padding: .85rem 1rem;
+    background: var(--c-panel-2);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    color: var(--c-text);
+    transition: border-color .15s, transform .15s;
+  }
+  .stage-card:hover { border-color: var(--c-accent); transform: translateY(-1px); text-decoration: none; }
+  .stage-card img { opacity: .8; margin-bottom: .15rem; }
+  .stage-card strong { font-size: .95rem; }
+  .stage-card span { font-size: .8rem; color: var(--c-muted); line-height: 1.35; }
+
   .role-card {
     display: flex; flex-direction: column; gap: .15rem;
     padding: .75rem .9rem;
@@ -90,3 +135,27 @@ import { components } from '../data/components';
     background: var(--c-panel); padding: .1rem .4rem; border-radius: 999px;
   }
 </style>
+
+<script>
+  // Status-dots ook op homepage actief zetten — zelfde patroon als
+  // /architecture, alleen draaien we het hier ook 1× bij load.
+  async function refreshStatus() {
+    const els = document.querySelectorAll<HTMLElement>('[data-status-job]');
+    for (const el of els) {
+      const job = el.dataset.statusJob!;
+      try {
+        const r = await fetch(`/api/status/up?job=${encodeURIComponent(job)}`, {
+          credentials: 'include',
+        });
+        if (!r.ok) { el.classList.add('warn'); continue; }
+        const j = await r.json();
+        el.classList.remove('ok', 'warn', 'bad');
+        if (j?.up === 1) el.classList.add('ok');
+        else if (j?.up === 0) el.classList.add('bad');
+        else el.classList.add('warn');
+      } catch { el.classList.add('warn'); }
+    }
+  }
+  refreshStatus();
+  setInterval(refreshStatus, 30_000);
+</script>

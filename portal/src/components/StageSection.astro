@@ -1,0 +1,49 @@
+---
+// Sectie-header voor een stage met de bijbehorende componenten in een grid.
+// Gebruikt op /architecture en als "tools" op /me.
+
+import type { PlatformComponent, StageMeta } from '../data/components';
+import ComponentCard from './ComponentCard.astro';
+
+interface Props {
+  stage: StageMeta;
+  components: PlatformComponent[];
+  emphasizeIds?: string[];
+}
+
+const { stage, components, emphasizeIds = [] } = Astro.props;
+---
+<section class="stage-section" id={stage.id} data-stage={stage.id}>
+  <header class="stage-section-head">
+    <img class="stage-section-icon" src={stage.icon} alt="" width="28" height="28" />
+    <div>
+      <h3>{stage.title}</h3>
+      <p>{stage.blurb}</p>
+    </div>
+  </header>
+  <div class="grid-3">
+    {components.map((c) => (
+      <ComponentCard component={c} emphasis={emphasizeIds.includes(c.id)} />
+    ))}
+  </div>
+</section>
+
+<style>
+  .stage-section { margin-top: 1.25rem; }
+  .stage-section-head {
+    display: flex;
+    gap: .75rem;
+    align-items: flex-start;
+    padding: .5rem .25rem .75rem;
+    border-bottom: 1px solid var(--c-border);
+    margin-bottom: .85rem;
+  }
+  .stage-section-icon {
+    display: block;
+    flex-shrink: 0;
+    color: var(--c-accent);
+    margin-top: .15rem;
+  }
+  .stage-section-head h3 { margin: 0 0 .15rem; font-size: 1.05rem; }
+  .stage-section-head p { margin: 0; color: var(--c-muted); font-size: .85rem; }
+</style>

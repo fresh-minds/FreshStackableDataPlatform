@@ -21,6 +21,13 @@
 # Chart 1.5: alle config zit onder `openmetadata.config.*`, niet `global.*`.
 openmetadata:
   config:
+    # Chart-default `host: openmetadata` DNS-resolveert naar de Service
+    # ClusterIP — een pod kan daar niet aan binden (alleen aan z'n eigen
+    # IP of 0.0.0.0). Zonder deze override crasht de container met
+    # `BindException: Address not available`.
+    openmetadata:
+      host: 0.0.0.0
+
     upgradeMigrationConfigs:
       debug: false
 
@@ -47,28 +54,34 @@ openmetadata:
       searchType: opensearch
 
     # OIDC via Keycloak — confidential client met server-side token-exchange.
+    # Veld-namen volgen het chart-1.5 schema (schema is strict; oidcType/
+    # clientId/clientSecret onder oidcConfiguration mogen niet anders heten).
     authentication:
       clientType: confidential
       provider: custom-oidc
-      providerName: Keycloak
       publicKeys:
         - http://openmetadata.uwv-meta.svc.cluster.local:8585/api/v1/system/config/jwks
         - https://keycloak.uwv-platform.local:8443/realms/uwv/protocol/openid-connect/certs
       authority: https://keycloak.uwv-platform.local:8443/realms/uwv
       clientId: openmetadata
       callbackUrl: https://openmetadata.uwv-platform.local:8443/callback
+      responseType: code
+      jwtPrincipalClaims:
+        - preferred_username
+        - email
+        - sub
       enableSelfSignup: false
 
-      # Pac4j-config voor confidential client (OM 1.3+).
+      # Pac4j-config voor confidential client.
       oidcConfiguration:
         enabled: true
-        type: Keycloak
-        id: openmetadata
-        secret:
+        oidcType: Keycloak
+        clientId:
+          secretRef: openmetadata-oidc-client
+          secretKey: clientId
+        clientSecret:
           secretRef: openmetadata-oidc-client
           secretKey: clientSecret
-        callbackUrl: https://openmetadata.uwv-platform.local:8443/callback
-        serverUrl: https://openmetadata.uwv-platform.local:8443
         # Discovery via externe URL → discovery-doc bevat dan consistent
         # https://keycloak.uwv-platform.local:8443/... endpoints, zodat
         # auth-redirect (browser) én token-exchange (server) dezelfde
@@ -76,14 +89,20 @@ openmetadata:
         # Java truststore zitten (zie extraInitContainers verderop).
         discoveryUri: https://keycloak.uwv-platform.local:8443/realms/uwv/.well-known/openid-configuration
         scope: "openid email profile"
-        useNonce: "true"
+        useNonce: true
         preferredJwsAlgorithm: RS256
         responseType: code
         disablePkce: false
-        maxClockSkew: "0"
+        callbackUrl: https://openmetadata.uwv-platform.local:8443/callback
+        serverUrl: https://openmetadata.uwv-platform.local:8443
+        clientAuthenticationMethod: client_secret_post
+        tenant: ""
+        maxClockSkew: ""
         tokenValidity: "3600"
-        prompt: ""
-        sessionExpiry: "604800"
+        # customParams: chart-schema vraagt string, OM-config-class vraagt
+        # LinkedHashMap. `""` faalt de Jackson-coerce; `"{}"` is een geldige
+        # JSON-Map-as-string die Jackson wel naar LinkedHashMap omzet.
+        customParams: "{}"
 
     authorizer:
       className: org.openmetadata.service.security.DefaultAuthorizer
@@ -140,8 +159,11 @@ extraVolumeMounts:
     readOnly: true
 
 extraEnvs:
-  # OpenMetadata's image picks up extra Java args via JAVA_OPTS_APPEND.
-  - name: JAVA_OPTS_APPEND
+  # JAVA_TOOL_OPTIONS wordt door élk java-proces (incl. Dropwizard's
+  # entrypoint /openmetadata-start.sh) automatisch toegepast — dit is
+  # de standaard manier om extra JVM-args mee te geven zonder image-
+  # specifieke env-vars als JAVA_OPTS / JAVA_OPTS_APPEND te gebruiken.
+  - name: JAVA_TOOL_OPTIONS
     value: "-Djavax.net.ssl.trustStore=/shared-truststore/cacerts -Djavax.net.ssl.trustStorePassword=changeit"
 
 resources:

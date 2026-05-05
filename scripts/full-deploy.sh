@@ -163,11 +163,12 @@ T=\$(curl -fsS -d 'client_id=admin-cli' -d 'username=kcadmin' -d 'password=uwv-d
 KC=http://localhost:8080
 A='Authorization: Bearer '\"\$T\"
 
-# 1. TOTP clearen voor demo-admins
+# 1. TOTP clearen voor demo-admins. NB: PUT moet username + email + enabled
+#    MEEsturen — partial body wist andere velden in Keycloak 24+.
 for u in platform.admin wajong.arbeidsdeskundige data.engineer; do
   KCUID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/users?username=\$u\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
   [ -z \"\$KCUID\" ] && continue
-  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/\$KCUID\" -d '{\"requiredActions\":[]}' -o /dev/null
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/\$KCUID\" -d \"{\\\"username\\\":\\\"\$u\\\",\\\"email\\\":\\\"\$u@uwv-platform.local\\\",\\\"emailVerified\\\":true,\\\"enabled\\\":true,\\\"requiredActions\\\":[]}\" -o /dev/null
   curl -sS -X DELETE -H \"\$A\" \"\$KC/admin/realms/uwv/attack-detection/brute-force/users/\$KCUID\" -o /dev/null
 done
 
@@ -190,11 +191,22 @@ for c in superset airflow nifi openmetadata minio; do
   done
 done
 
-# 4. policy attribute voor MinIO consoleAdmin
+# 4. Unmanaged-attribute-policy enablen — Keycloak 24+ heeft Declarative
+#    User Profile met unmanaged-attributes standaard UIT, waardoor de
+#    \\\"policy\\\" custom attribute silently genegeerd wordt.
+PROFILE_CFG=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/users/profile\" 2>/dev/null)
+if ! echo \"\$PROFILE_CFG\" | grep -q '\"unmanagedAttributePolicy\":\"ADMIN_EDIT\"'; then
+  echo \"\$PROFILE_CFG\" | sed -e 's/}\$/,\"unmanagedAttributePolicy\":\"ADMIN_EDIT\"}/' > /tmp/up.json
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/profile\" --data @/tmp/up.json -o /dev/null
+fi
+
+# 5. policy attribute voor MinIO consoleAdmin op demo-admins. NB: PUT
+#    moet email + enabled MEEsturen om partial-body wipe te voorkomen.
 for u in wia.beoordelaar platform.admin; do
   KCUID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/users?username=\$u\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
   [ -z \"\$KCUID\" ] && continue
-  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/\$KCUID\" -d '{\"attributes\":{\"policy\":[\"consoleAdmin\"]}}' -o /dev/null
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/\$KCUID\" \\
+    -d \"{\\\"username\\\":\\\"\$u\\\",\\\"email\\\":\\\"\$u@uwv-platform.local\\\",\\\"emailVerified\\\":true,\\\"enabled\\\":true,\\\"attributes\\\":{\\\"policy\\\":[\\\"consoleAdmin\\\"]}}\" -o /dev/null
 done
 " 2>&1 | tail -3
   ok "Keycloak runtime patches applied"

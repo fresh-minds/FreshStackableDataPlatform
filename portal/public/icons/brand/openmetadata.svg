@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="OpenMetadata">
+  <rect width="24" height="24" rx="5" fill="#7C26B5"/>
+  <path d="M5 6.5c2.5-1 5-1 7 .5 2-1.5 4.5-1.5 7-.5v11c-2.5-1-5-1-7 .5-2-1.5-4.5-1.5-7-.5z" fill="#fff"/>
+  <path d="M12 7v11" stroke="#7C26B5" stroke-width="1.4"/>
+  <path d="M7 9h3M7 11h3M14 9h3M14 11h3M7 13h3M14 13h3" stroke="#7C26B5" stroke-width="1" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Ingestie">
+  <path d="M3 7h12"/>
+  <path d="M3 12h14"/>
+  <path d="M3 17h12"/>
+  <path d="m17 4 4 3-4 3"/>
+  <path d="m15 14 4 3-4 3"/>
+  <path d="m13 9 4 3-4 3" opacity=".5"/>
+</svg>

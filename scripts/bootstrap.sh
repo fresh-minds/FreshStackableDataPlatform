@@ -218,6 +218,15 @@ kubectl -n uwv-platform get configmap uwv-ca-bundle -o yaml \
         -e '/resourceVersion:/d' -e '/uid:/d' -e '/creationTimestamp:/d' \
   | kubectl apply -f - >/dev/null
 
+# OpenMetadata helm-chart hardcodes db-credential secret naam `mysql-secrets`
+# met key `openmetadata-mysql-password`, ook bij Postgres. Aanmaken vóór
+# install zodat het Deployment niet faalt op missing secret-key.
+log "OpenMetadata mysql-secrets (chart-quirk, ook voor Postgres-deploy)"
+PG_PW=$(kubectl -n uwv-data get secret postgres-postgresql -o jsonpath='{.data.password}' | base64 -d)
+kubectl -n uwv-meta create secret generic mysql-secrets \
+  --from-literal=openmetadata-mysql-password="${PG_PW}" \
+  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
 log "Install OpenMetadata ${OPENMETADATA_VERSION}"
 helm upgrade --install openmetadata open-metadata/openmetadata \
   --namespace uwv-meta \
@@ -225,6 +234,22 @@ helm upgrade --install openmetadata open-metadata/openmetadata \
   --values "${ROOT}/infrastructure/helm/openmetadata/values.yaml" \
   $(chart_override_args openmetadata) \
   --wait --timeout 15m || warn "OpenMetadata install timing out — continue (init-Job kan later draaien)"
+
+# Chart-bug workaround: OIDC_CUSTOM_PARAMS wordt door templates/secrets.yaml
+# als `{{ .customParams | quote | b64enc }}` gerenderd. De `quote`-filter
+# wraps `{}` in dubbele quotes → in openmetadata.yaml staat dan
+# `customParams: "{}"` (een string), terwijl Java's Jackson een Map verwacht.
+# Patch de auth-secret zodat `OIDC_CUSTOM_PARAMS` letterlijk `{}` is, en
+# herstart de pod zodat envFrom de nieuwe waarde leest.
+log "Patch OIDC_CUSTOM_PARAMS (chart-quote-bug workaround) + restart pod"
+PATCH_VAL=$(printf '{}' | base64)
+kubectl -n uwv-meta patch secret openmetadata-authentication-secret \
+  --type='json' \
+  -p="[{\"op\":\"replace\",\"path\":\"/data/OIDC_CUSTOM_PARAMS\",\"value\":\"${PATCH_VAL}\"}]" \
+  >/dev/null 2>&1 || warn "patch OIDC_CUSTOM_PARAMS faalde — check helm release"
+kubectl -n uwv-meta delete pod -l app.kubernetes.io/name=openmetadata >/dev/null 2>&1 || true
+kubectl -n uwv-meta rollout status deploy/openmetadata --timeout=10m >/dev/null \
+  || warn "OpenMetadata pod niet ready binnen 10m — check 'kubectl -n uwv-meta logs ...'"
 
 # 11. Vector (logs collector → OpenSearch)
 log "Install Vector ${VECTOR_VERSION} (Agent-mode op alle nodes)"

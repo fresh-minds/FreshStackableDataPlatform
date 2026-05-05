@@ -55,8 +55,27 @@ De OM-pod doet server-side een token-exchange tegen het ingress-nginx
 TLS-endpoint (zelf-signed CA via cert-manager). Een initContainer mountt
 [`uwv-ca-bundle`](../../scripts/bootstrap.sh) (kopie uit `uwv-platform` NS) en
 importeert `ca.crt` in een fresh JKS truststore op `/shared-truststore/cacerts`,
-die de OM-container via `JAVA_OPTS_APPEND` activeert. Op AKS is dit niet nodig
+die de OM-container via `JAVA_TOOL_OPTIONS` activeert. Op AKS is dit niet nodig
 (zie [`infrastructure/azure/helm-overrides/openmetadata-values-aks.yaml`](../../infrastructure/azure/helm-overrides/openmetadata-values-aks.yaml) — de CA is van een echte CA).
+
+### Chart-quirks die we werken om
+
+Drie issues in de upstream `open-metadata/openmetadata` 1.5.0 chart die
+[`scripts/bootstrap.sh`](../../scripts/bootstrap.sh) na de install moet
+opvangen:
+
+1. **`mysql-secrets` hardcoded.** Chart verwacht een Secret met key
+   `openmetadata-mysql-password`, ook als de database `postgres` is. Wordt
+   vóór de helm-install aangemaakt.
+2. **`openmetadata.config.openmetadata.host` default = `openmetadata`.** Dat
+   DNS-resolveert naar de Service ClusterIP en de pod kan daar niet aan
+   binden → `BindException: Address not available`. Override in
+   [`values.yaml`](../../infrastructure/helm/openmetadata/values.yaml) naar `0.0.0.0`.
+3. **`OIDC_CUSTOM_PARAMS` quote-bug.** Chart rendert via `{{ .customParams |
+   quote | b64enc }}`, waardoor `{}` als de string `"{}"` in de env-var
+   belandt en Jackson faalt op cast naar `LinkedHashMap`. Bootstrap patcht
+   het Secret na de install zodat de env-var letterlijk `{}` is en herstart
+   de pod.
 
 ## Apply
 

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Keycloak">
+  <rect width="24" height="24" rx="5" fill="#4D4D4D"/>
+  <path d="M12 4.5 5 7v5.1c0 3.85 2.85 7.4 7 8.4 4.15-1 7-4.55 7-8.4V7l-7-2.5z" fill="#fff"/>
+  <circle cx="9.7" cy="11.6" r="2.1" fill="#E0392F"/>
+  <path d="M11.4 11.6h5.5v1.4h-2.6v1.5h-1.4v-1.5h-1.5z" fill="#E0392F"/>
+</svg>

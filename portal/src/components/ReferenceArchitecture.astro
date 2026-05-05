@@ -1,0 +1,491 @@
+---
+// Visuele reference-architectuur in Monte-Carlo-stijl.
+// Lanes (Discovery / Pipeline / Observability) zijn overlay-banners boven en
+// onder de hoofdketen Sources → Ingestion → Storage → Transformation → Output.
+// Identity (Keycloak) staat als losse strip rechts — conceptueel buiten de
+// pipeline maar overal aanwezig.
+//
+// Elke component-tile is klikbaar (opent UI), heeft een live status-dot en
+// een data-component attribuut zodat /me later "mijn componenten" kan
+// highlighten.
+
+import { components, stages, stageById } from '../data/components';
+
+const compsByStage = (s: string) => components.filter((c) => c.stage === s);
+
+const ingestion      = compsByStage('ingestion');
+const storage        = compsByStage('storage');
+const transformation = compsByStage('transformation');
+const consumption    = compsByStage('consumption');
+const discovery      = compsByStage('discovery');
+const pipeline       = compsByStage('pipeline');
+const observability  = compsByStage('observability');
+const identity       = compsByStage('identity');
+
+const sIngestion      = stageById('ingestion')!;
+const sStorage        = stageById('storage')!;
+const sTransformation = stageById('transformation')!;
+const sConsumption    = stageById('consumption')!;
+const sDiscovery      = stageById('discovery')!;
+const sPipeline       = stageById('pipeline')!;
+const sObservability  = stageById('observability')!;
+const sIdentity       = stageById('identity')!;
+---
+<section class="ref-arch" aria-label="Reference architecture">
+  <!-- ═════════════════════ Top overlay: Discovery ═════════════════════ -->
+  <div class="ref-overlay overlay-top" data-stage="discovery">
+    <span class="overlay-arrow left">◂</span>
+    <div class="overlay-body">
+      <span class="overlay-label">
+        <img class="stage-icon" src={sDiscovery.icon} alt="" width="18" height="18" />
+        {sDiscovery.title}
+      </span>
+      <div class="overlay-comps">
+        {discovery.map((c) => (
+          <a class="comp-chip" href={c.url ?? '#'} target={c.url ? '_blank' : undefined}
+             rel={c.url ? 'noopener noreferrer' : undefined}
+             data-component={c.id}
+             title={c.purpose}>
+            <img src={c.icon} alt="" width="22" height="22" />
+            <span>{c.name}</span>
+            {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
+          </a>
+        ))}
+      </div>
+    </div>
+    <span class="overlay-arrow right">▸</span>
+  </div>
+
+  <!-- ═════════════════════ Hoofdrij ═════════════════════ -->
+  <div class="ref-row">
+    <!-- Sources (links) -->
+    <div class="ref-sources">
+      <span class="source-tag" data-kind="batches">
+        <img src={sIngestion.icon} alt="" width="16" height="16" />
+        Batches
+      </span>
+      <span class="source-tag" data-kind="streams">
+        <img src={sIngestion.icon} alt="" width="16" height="16" />
+        Streams
+      </span>
+    </div>
+
+    <span class="ref-arrow" aria-hidden="true">▶</span>
+
+    <!-- Pipeline-step: Ingestion -->
+    <div class="ref-stage" data-stage="ingestion">
+      <header class="stage-head">
+        <img class="stage-icon" src={sIngestion.icon} alt="" width="20" height="20" />
+        <h3>{sIngestion.title}</h3>
+      </header>
+      <p class="stage-blurb">{sIngestion.blurb}</p>
+      <div class="stage-comps">
+        {ingestion.map((c) => (
+          <a class="comp-tile" href={c.url ?? '#'} target={c.url ? '_blank' : undefined}
+             rel={c.url ? 'noopener noreferrer' : undefined}
+             data-component={c.id}
+             title={c.purpose}>
+            <img src={c.icon} alt="" width="28" height="28" />
+            <span class="tile-name">{c.name}</span>
+            {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
+          </a>
+        ))}
+      </div>
+    </div>
+
+    <span class="ref-arrow" aria-hidden="true">▶</span>
+
+    <!-- Pipeline-step: Storage -->
+    <div class="ref-stage" data-stage="storage">
+      <header class="stage-head">
+        <img class="stage-icon" src={sStorage.icon} alt="" width="20" height="20" />
+        <h3>{sStorage.title}</h3>
+      </header>
+      <p class="stage-blurb">{sStorage.blurb}</p>
+      <div class="stage-comps">
+        {storage.map((c) => (
+          <a class="comp-tile" href={c.url ?? '#'} target={c.url && c.url.startsWith('http') ? '_blank' : undefined}
+             rel={c.url && c.url.startsWith('http') ? 'noopener noreferrer' : undefined}
+             data-component={c.id}
+             title={c.purpose}>
+            <img src={c.icon} alt="" width="28" height="28" />
+            <span class="tile-name">{c.name}</span>
+            {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
+          </a>
+        ))}
+      </div>
+    </div>
+
+    <span class="ref-arrow" aria-hidden="true">▶</span>
+
+    <!-- Pipeline-step: Transformation -->
+    <div class="ref-stage" data-stage="transformation">
+      <header class="stage-head">
+        <img class="stage-icon" src={sTransformation.icon} alt="" width="20" height="20" />
+        <h3>{sTransformation.title}</h3>
+      </header>
+      <p class="stage-blurb">{sTransformation.blurb}</p>
+      <div class="stage-comps">
+        {transformation.map((c) => (
+          <a class="comp-tile" href={c.url ?? '#'} target={c.url ? '_blank' : undefined}
+             rel={c.url ? 'noopener noreferrer' : undefined}
+             data-component={c.id}
+             title={c.purpose}>
+            <img src={c.icon} alt="" width="28" height="28" />
+            <span class="tile-name">{c.name}</span>
+            {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
+          </a>
+        ))}
+      </div>
+    </div>
+
+    <span class="ref-arrow" aria-hidden="true">▶</span>
+
+    <!-- Outputs (rechts) -->
+    <div class="ref-outputs">
+      <header class="stage-head">
+        <img class="stage-icon" src={sConsumption.icon} alt="" width="20" height="20" />
+        <h3>{sConsumption.title}</h3>
+      </header>
+      {consumption.map((c) => (
+        <a class="output-tile" href={c.url ?? '#'} target={c.url ? '_blank' : undefined}
+           rel={c.url ? 'noopener noreferrer' : undefined}
+           data-component={c.id}
+           title={c.purpose}>
+          <img src={c.icon} alt="" width="28" height="28" />
+          <div class="output-text">
+            <strong>BI / Analytics</strong>
+            <small>{c.name}</small>
+          </div>
+          {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
+        </a>
+      ))}
+      <div class="output-tile output-secondary" title="Trino + OPA leveren beleidsgewijze data-producten">
+        <img src="/icons/brand/trino.svg" alt="" width="28" height="28" />
+        <div class="output-text">
+          <strong>Data Products</strong>
+          <small>Trino + OPA</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═════════════════════ Bottom overlay: Pipeline ═════════════════════ -->
+  <div class="ref-overlay overlay-bottom-1" data-stage="pipeline">
+    <span class="overlay-arrow left">◂</span>
+    <div class="overlay-body">
+      <span class="overlay-label">
+        <img class="stage-icon" src={sPipeline.icon} alt="" width="18" height="18" />
+        {sPipeline.title}
+      </span>
+      <div class="overlay-comps">
+        {pipeline.map((c) => (
+          <a class="comp-chip" href={c.url ?? '#'} target={c.url ? '_blank' : undefined}
+             rel={c.url ? 'noopener noreferrer' : undefined}
+             data-component={c.id}
+             title={c.purpose}>
+            <img src={c.icon} alt="" width="22" height="22" />
+            <span>{c.name}</span>
+            {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
+          </a>
+        ))}
+      </div>
+    </div>
+    <span class="overlay-arrow right">▸</span>
+  </div>
+
+  <!-- ═════════════════════ Bottom overlay: Observability ═════════════════════ -->
+  <div class="ref-overlay overlay-bottom-2" data-stage="observability">
+    <span class="overlay-arrow left">◂</span>
+    <div class="overlay-body">
+      <span class="overlay-label">
+        <img class="stage-icon" src={sObservability.icon} alt="" width="18" height="18" />
+        {sObservability.title}
+      </span>
+      <div class="overlay-comps">
+        {observability.map((c) => (
+          <a class="comp-chip" href={c.url ?? '#'} target={c.url ? '_blank' : undefined}
+             rel={c.url ? 'noopener noreferrer' : undefined}
+             data-component={c.id}
+             title={c.purpose}>
+            <img src={c.icon} alt="" width="22" height="22" />
+            <span>{c.name}</span>
+            {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
+          </a>
+        ))}
+      </div>
+    </div>
+    <span class="overlay-arrow right">▸</span>
+  </div>
+
+  <!-- ═════════════════════ Identity strip ═════════════════════ -->
+  <aside class="ref-identity" data-stage="identity">
+    <header class="stage-head">
+      <img class="stage-icon" src={sIdentity.icon} alt="" width="18" height="18" />
+      <h4>{sIdentity.title}</h4>
+    </header>
+    <p class="stage-blurb">{sIdentity.blurb}</p>
+    <div class="overlay-comps">
+      {identity.map((c) => (
+        <a class="comp-chip" href={c.url ?? '#'} target={c.url ? '_blank' : undefined}
+           rel={c.url ? 'noopener noreferrer' : undefined}
+           data-component={c.id}
+           title={c.purpose}>
+          <img src={c.icon} alt="" width="22" height="22" />
+          <span>{c.name}</span>
+          {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
+        </a>
+      ))}
+    </div>
+  </aside>
+</section>
+
+<style>
+  .ref-arch {
+    --c-discovery: #d946ef;     /* paars-roze */
+    --c-pipeline: #8b5cf6;      /* paars */
+    --c-observability: #f59e0b; /* amber, sluit aan op huidige accent */
+    --c-sources: #38bdf8;       /* lichtblauw */
+    --c-stage: var(--c-accent);
+    --c-output: #34d399;        /* groen */
+    --c-identity: #f87171;      /* rood */
+
+    background: var(--c-panel);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: .75rem;
+  }
+
+  /* ─── Overlay-banners (Discovery / Pipeline / Observability) ─── */
+  .ref-overlay {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    border-radius: 999px;
+    padding: .35rem .65rem;
+    background: linear-gradient(90deg, transparent, var(--c-panel-2) 12%, var(--c-panel-2) 88%, transparent);
+    border: 1px solid var(--c-border);
+    position: relative;
+  }
+  .overlay-top { border-color: color-mix(in srgb, var(--c-discovery) 40%, transparent); }
+  .overlay-top .overlay-label { color: var(--c-discovery); }
+  .overlay-bottom-1 { border-color: color-mix(in srgb, var(--c-pipeline) 40%, transparent); }
+  .overlay-bottom-1 .overlay-label { color: var(--c-pipeline); }
+  .overlay-bottom-2 { border-color: color-mix(in srgb, var(--c-observability) 40%, transparent); }
+  .overlay-bottom-2 .overlay-label { color: var(--c-observability); }
+
+  .overlay-arrow {
+    font-size: 1.4rem;
+    line-height: 1;
+    opacity: .55;
+    user-select: none;
+  }
+  .overlay-top .overlay-arrow { color: var(--c-discovery); }
+  .overlay-bottom-1 .overlay-arrow { color: var(--c-pipeline); }
+  .overlay-bottom-2 .overlay-arrow { color: var(--c-observability); }
+
+  .overlay-body {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    flex-wrap: wrap;
+  }
+  .overlay-label {
+    font-weight: 700;
+    font-size: .8rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    white-space: nowrap;
+  }
+  .overlay-comps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+  }
+
+  .comp-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .25rem .55rem .25rem .35rem;
+    background: var(--c-panel);
+    border: 1px solid var(--c-border);
+    border-radius: 999px;
+    color: var(--c-text);
+    font-size: .82rem;
+    transition: border-color .15s, background .15s;
+  }
+  .comp-chip:hover { border-color: var(--c-accent); text-decoration: none; }
+  .comp-chip img { display: block; flex-shrink: 0; }
+
+  /* ─── Hoofdrij ─── */
+  .ref-row {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto 1fr auto 1fr auto auto;
+    gap: .5rem;
+    align-items: stretch;
+  }
+
+  .ref-sources {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: .5rem;
+  }
+  .source-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .35rem .6rem;
+    background: var(--c-panel-2);
+    border: 1px solid color-mix(in srgb, var(--c-sources) 40%, var(--c-border));
+    border-radius: var(--radius);
+    color: var(--c-sources);
+    font-size: .78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    white-space: nowrap;
+  }
+
+  .ref-arrow {
+    align-self: center;
+    color: var(--c-muted);
+    font-size: 1.4rem;
+    line-height: 1;
+    user-select: none;
+  }
+
+  .ref-stage {
+    background: var(--c-panel-2);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    padding: .75rem .9rem;
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    min-width: 0;
+  }
+  .stage-head {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+  }
+  .stage-head h3, .stage-head h4 {
+    margin: 0;
+    font-size: .9rem;
+    color: var(--c-text);
+  }
+  .stage-icon { display: block; flex-shrink: 0; opacity: .85; }
+  .stage-blurb {
+    margin: 0;
+    color: var(--c-muted);
+    font-size: .78rem;
+    line-height: 1.4;
+  }
+  .stage-comps {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+    margin-top: auto;
+  }
+
+  .comp-tile {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: .55rem;
+    padding: .45rem .6rem;
+    background: var(--c-panel);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    color: var(--c-text);
+    transition: border-color .15s, transform .15s;
+  }
+  .comp-tile:hover { border-color: var(--c-accent); text-decoration: none; transform: translateY(-1px); }
+  .comp-tile img { display: block; }
+  .tile-name { font-weight: 500; font-size: .85rem; }
+
+  .ref-outputs {
+    background: var(--c-panel-2);
+    border: 1px solid color-mix(in srgb, var(--c-output) 35%, var(--c-border));
+    border-radius: var(--radius);
+    padding: .75rem .9rem;
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    min-width: 0;
+  }
+  .output-tile {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: .55rem;
+    padding: .55rem .65rem;
+    background: var(--c-panel);
+    border: 1px solid color-mix(in srgb, var(--c-output) 30%, var(--c-border));
+    border-radius: var(--radius);
+    color: var(--c-text);
+    transition: border-color .15s, transform .15s;
+  }
+  .output-tile:hover { border-color: var(--c-output); text-decoration: none; transform: translateY(-1px); }
+  .output-tile.output-secondary { cursor: default; opacity: .85; }
+  .output-tile.output-secondary:hover { transform: none; border-color: color-mix(in srgb, var(--c-output) 30%, var(--c-border)); }
+  .output-text { display: flex; flex-direction: column; line-height: 1.2; }
+  .output-text strong { font-size: .85rem; }
+  .output-text small { color: var(--c-muted); font-size: .72rem; }
+
+  /* ─── Identity strip (rechtsonder, los) ─── */
+  .ref-identity {
+    background: var(--c-panel-2);
+    border: 1px solid color-mix(in srgb, var(--c-identity) 35%, var(--c-border));
+    border-radius: var(--radius);
+    padding: .65rem .85rem;
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+  }
+  .ref-identity h4 { color: var(--c-identity); }
+
+  /* ─── Status-dots ─── */
+  .dot {
+    display: inline-block;
+    width: .55em;
+    height: .55em;
+    border-radius: 50%;
+    background: var(--c-muted);
+  }
+  .dot.ok   { background: var(--c-ok); }
+  .dot.warn { background: var(--c-warn); }
+  .dot.bad  { background: var(--c-bad); }
+
+  /* ─── Per-rol highlight (gebruikt door /me en optionele toggle) ─── */
+  .ref-arch[data-active-role] .comp-tile,
+  .ref-arch[data-active-role] .comp-chip,
+  .ref-arch[data-active-role] .output-tile { opacity: .35; }
+  .ref-arch[data-active-role] .comp-tile.is-mine,
+  .ref-arch[data-active-role] .comp-chip.is-mine,
+  .ref-arch[data-active-role] .output-tile.is-mine {
+    opacity: 1;
+    border-color: var(--c-accent);
+    box-shadow: 0 0 0 1px var(--c-accent);
+  }
+
+  /* ─── Responsive: stapel verticaal onder ~960 px ─── */
+  @media (max-width: 960px) {
+    .ref-row {
+      grid-template-columns: 1fr;
+      gap: .65rem;
+    }
+    .ref-arrow { display: none; }
+    .ref-sources { flex-direction: row; flex-wrap: wrap; }
+    .overlay-arrow { display: none; }
+  }
+</style>

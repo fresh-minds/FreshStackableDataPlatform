@@ -98,19 +98,30 @@ for c in superset airflow nifi openmetadata minio; do
   done
 done
 
-# 3. policy attribute voor MinIO consoleAdmin op demo-admins (zonder dit
-#    krijgt de gebruiker geen MinIO admin rechten via STS).
+# 3. Unmanaged attribute policy enablen — Keycloak 24+ heeft Declarative
+#    User Profile met unmanaged-attributes standaard UIT. Zonder deze
+#    setting wordt de \\\"policy\\\" custom attribute silently genegeerd
+#    (PUT geeft 204 maar er wordt niets opgeslagen).
+PROFILE_CFG=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/users/profile\" 2>/dev/null)
+if ! echo \"\$PROFILE_CFG\" | grep -q '\"unmanagedAttributePolicy\":\"ADMIN_EDIT\"'; then
+  echo \"\$PROFILE_CFG\" | sed -e 's/}\$/,\"unmanagedAttributePolicy\":\"ADMIN_EDIT\"}/' > /tmp/up.json
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/profile\" --data @/tmp/up.json -o /dev/null
+fi
+
+# 4. policy attribute voor MinIO consoleAdmin op demo-admins. NB: PUT
+#    moet email + enabled MEEsturen — partial body wist andere velden.
 for u in wia.beoordelaar platform.admin; do
   KCUID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/users?username=\$u\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
   [ -z \"\$KCUID\" ] && continue
-  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/\$KCUID\" -d '{\"attributes\":{\"policy\":[\"consoleAdmin\"]}}' -o /dev/null
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/\$KCUID\" \\
+    -d \"{\\\"username\\\":\\\"\$u\\\",\\\"email\\\":\\\"\$u@uwv-platform.local\\\",\\\"emailVerified\\\":true,\\\"enabled\\\":true,\\\"attributes\\\":{\\\"policy\\\":[\\\"consoleAdmin\\\"]}}\" -o /dev/null
 done
 
-# 4. TOTP-requirement clearen voor demo-admins zodat eerste login simpel is
+# 5. TOTP-requirement clearen voor demo-admins zodat eerste login simpel is
 for u in platform.admin wajong.arbeidsdeskundige data.engineer; do
   KCUID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/users?username=\$u\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
   [ -z \"\$KCUID\" ] && continue
-  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/\$KCUID\" -d '{\"requiredActions\":[]}' -o /dev/null
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/\$KCUID\" -d \"{\\\"username\\\":\\\"\$u\\\",\\\"email\\\":\\\"\$u@uwv-platform.local\\\",\\\"emailVerified\\\":true,\\\"enabled\\\":true,\\\"requiredActions\\\":[]}\" -o /dev/null
   curl -sS -X DELETE -H \"\$A\" \"\$KC/admin/realms/uwv/attack-detection/brute-force/users/\$KCUID\" -o /dev/null
 done
 " >/dev/null 2>&1
