@@ -244,58 +244,175 @@ data:
             time.sleep(5)
 
         s = login()
-        ds_id = get_dataset_id(s, DATASET_NAME)
-        log(f"Dataset id: {ds_id}")
 
-        # Chart 1: line — aanvragen per dag
-        c1 = create_chart(s, ds_id, "WIA aanvragen per dag", "line", {
-            "datasource": f"{ds_id}__table",
-            "viz_type": "line",
-            "granularity_sqla": "aanvraag_datum",
-            "time_grain_sqla": "P1D",
-            "metrics": [{
+        # Helpers voor metric-spec — vermindert herhaling.
+        def metric(col, agg="SUM", typ="INTEGER", label=None):
+            return {
                 "expressionType": "SIMPLE",
-                "column": {"column_name": "n_aanvragen", "type": "INTEGER"},
-                "aggregate": "SUM",
-                "label": "Aanvragen",
-            }],
-            "groupby": [],
-            "row_limit": 1000,
-        })
+                "column": {"column_name": col, "type": typ},
+                "aggregate": agg,
+                "label": label or f"{agg} {col}",
+            }
 
-        # Chart 2: pie — verdeling per status
-        c2 = create_chart(s, ds_id, "WIA aanvragen per status", "pie", {
-            "datasource": f"{ds_id}__table",
-            "viz_type": "pie",
-            "metrics": [{
-                "expressionType": "SIMPLE",
-                "column": {"column_name": "n_aanvragen", "type": "INTEGER"},
-                "aggregate": "SUM",
-                "label": "Aanvragen",
-            }],
-            "groupby": ["status"],
-            "row_limit": 1000,
-        })
-
-        # Chart 3: big number — totaal aanvragen
-        c3 = create_chart(s, ds_id, "Totaal WIA aanvragen", "big_number_total", {
-            "datasource": f"{ds_id}__table",
-            "viz_type": "big_number_total",
-            "metric": {
-                "expressionType": "SIMPLE",
-                "column": {"column_name": "n_aanvragen", "type": "INTEGER"},
-                "aggregate": "SUM",
-                "label": "Totaal",
+        # 6 dashboards, 1 per actieve use-case. Per dashboard:
+        #   dataset (table_name in Superset)
+        #   charts: list of (slice_name, viz_type, params)
+        #   layout: chart-order top→down in dashboard
+        DASHBOARDS = [
+            # ─────────────── UC-01 WIA Funnel ───────────────
+            {
+                "slug": "wia-funnel",
+                "title": "UC-01 — WIA Funnel",
+                "dataset": "mart_uc01_wia_funnel_daily",
+                "charts": [
+                    ("Totaal WIA aanvragen", "big_number_total", {
+                        "metric": metric("n_aanvragen", "SUM", "INTEGER", "Totaal"),
+                    }),
+                    ("WIA aanvragen per dag", "line", {
+                        "granularity_sqla": "aanvraag_datum",
+                        "time_grain_sqla": "P1D",
+                        "metrics": [metric("n_aanvragen", "SUM", "INTEGER", "Aanvragen")],
+                        "groupby": [],
+                    }),
+                    ("WIA aanvragen per status", "pie", {
+                        "metrics": [metric("n_aanvragen", "SUM", "INTEGER", "Aanvragen")],
+                        "groupby": ["status"],
+                    }),
+                ],
             },
-        })
+            # ─────────────── UC-04 TW Eligibility ───────────────
+            {
+                "slug": "tw-eligibility",
+                "title": "UC-04 — Toeslagenwet eligibility",
+                "dataset": "mart_uc04_tw_eligibility",
+                "charts": [
+                    ("Cliënten met TW-recht", "big_number_total", {
+                        "metric": {"expressionType": "SIMPLE",
+                                   "column": {"column_name": "bsn", "type": "VARCHAR"},
+                                   "aggregate": "COUNT", "label": "Cliënten"},
+                    }),
+                    ("Totaal maandelijks TW-tekort (EUR)", "big_number_total", {
+                        "metric": metric("gat_per_maand", "SUM", "DECIMAL", "Tekort EUR/mnd"),
+                    }),
+                    ("Gemiddeld inkomen vs TW-norm", "big_number_total", {
+                        "metric": metric("inkomen_maand_eur", "AVG", "DECIMAL", "Avg inkomen"),
+                    }),
+                ],
+            },
+            # ─────────────── UC-05 Client 360 ───────────────
+            {
+                "slug": "client-360",
+                "title": "UC-05 — Cliënt 360",
+                "dataset": "mart_uc05_client_360",
+                "charts": [
+                    ("Totaal cliënten in 360", "big_number_total", {
+                        "metric": {"expressionType": "SIMPLE",
+                                   "column": {"column_name": "bsn", "type": "VARCHAR"},
+                                   "aggregate": "COUNT", "label": "Cliënten"},
+                    }),
+                    ("Cliënten per geslacht", "pie", {
+                        "metrics": [{"expressionType": "SIMPLE",
+                                     "column": {"column_name": "bsn", "type": "VARCHAR"},
+                                     "aggregate": "COUNT", "label": "Cliënten"}],
+                        "groupby": ["geslacht"],
+                    }),
+                    ("Cliënten met lopende WIA", "big_number_total", {
+                        "metric": metric("n_lopende_wia", "SUM", "INTEGER", "Lopende WIA"),
+                    }),
+                ],
+            },
+            # ─────────────── UC-06 Lastprognose ───────────────
+            {
+                "slug": "lastprognose",
+                "title": "UC-06 — Uitkeringslast 5-jaar prognose",
+                "dataset": "mart_uc06_uitkeringslast_5y",
+                "charts": [
+                    ("Totaal uitkeringslast 5-jaar (EUR)", "big_number_total", {
+                        "metric": metric("uitbetaald_bruto_eur_projection", "SUM",
+                                         "DECIMAL", "Totaal EUR"),
+                    }),
+                    ("Uitkeringen per wet", "pie", {
+                        "metrics": [metric("uitbetaald_bruto_eur_projection", "SUM",
+                                           "DECIMAL", "EUR")],
+                        "groupby": ["wet"],
+                    }),
+                    ("Aantal uitkeringen per regio", "dist_bar", {
+                        "metrics": [metric("aantal_uitkeringen_projection", "SUM",
+                                           "INTEGER", "Aantal")],
+                        "groupby": ["regio_code"],
+                    }),
+                ],
+            },
+            # ─────────────── UC-07 DQ Polisadministratie ───────────────
+            {
+                "slug": "dq-polisadm",
+                "title": "UC-07 — Datakwaliteit polisadministratie",
+                "dataset": "mart_uc07_dq_dagrapport",
+                "charts": [
+                    ("Totaal IKVs gevalideerd", "big_number_total", {
+                        "metric": metric("n_ikvs", "SUM", "INTEGER", "IKVs"),
+                    }),
+                    ("Unieke BSN's", "big_number_total", {
+                        "metric": metric("n_unieke_bsns", "SUM", "INTEGER", "Unieke BSN"),
+                    }),
+                    ("DQ-fouten BSN buiten test-bereik", "big_number_total", {
+                        "metric": metric("n_bsn_buiten_test_bereik", "SUM", "INTEGER",
+                                         "Fouten"),
+                    }),
+                ],
+            },
+            # ─────────────── UC-09 Re-integratie effect (sandbox) ───────────────
+            {
+                "slug": "reint-effect",
+                "title": "UC-09 — Re-integratie effect (sandbox)",
+                "dataset": "mart_uc09_effect_panel",
+                "charts": [
+                    ("Panel-deelnemers", "big_number_total", {
+                        "metric": {"expressionType": "SIMPLE",
+                                   "column": {"column_name": "bsn_pseudo",
+                                              "type": "VARCHAR"},
+                                   "aggregate": "COUNT", "label": "Deelnemers"},
+                    }),
+                    ("Verdeling huidige status", "pie", {
+                        "metrics": [{"expressionType": "SIMPLE",
+                                     "column": {"column_name": "bsn_pseudo",
+                                                "type": "VARCHAR"},
+                                     "aggregate": "COUNT", "label": "Aantal"}],
+                        "groupby": ["huidige_status"],
+                    }),
+                    ("Verdeling per geslacht", "pie", {
+                        "metrics": [{"expressionType": "SIMPLE",
+                                     "column": {"column_name": "bsn_pseudo",
+                                                "type": "VARCHAR"},
+                                     "aggregate": "COUNT", "label": "Aantal"}],
+                        "groupby": ["geslacht"],
+                    }),
+                ],
+            },
+        ]
 
-        # Volgorde bepaalt de visuele top-naar-onder layout in het dashboard.
-        upsert_dashboard(s, "WIA Funnel", "wia-funnel", [
-            (c3, "Totaal WIA aanvragen"),
-            (c1, "WIA aanvragen per dag"),
-            (c2, "WIA aanvragen per status"),
-        ])
-        log("Klaar.")
+        # Bouw alle dashboards.
+        for dash in DASHBOARDS:
+            log(f"=== {dash['title']} ===")
+            try:
+                ds_id = get_dataset_id(s, dash["dataset"])
+            except SystemExit:
+                log(f"  SKIP — dataset {dash['dataset']!r} niet gevonden")
+                continue
+            log(f"  dataset id: {ds_id}")
+            chart_specs = []
+            for slice_name, viz_type, params in dash["charts"]:
+                full_params = {
+                    "datasource": f"{ds_id}__table",
+                    "viz_type": viz_type,
+                    "row_limit": 1000,
+                    **params,
+                }
+                cid = create_chart(s, ds_id, slice_name, viz_type, full_params)
+                chart_specs.append((cid, slice_name))
+            upsert_dashboard(s, dash["title"], dash["slug"], chart_specs)
+
+        log(f"Klaar — {len(DASHBOARDS)} dashboards gebouwd.")
         return 0
 
 

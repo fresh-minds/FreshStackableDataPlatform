@@ -236,7 +236,7 @@ data:
 
         # Datasets — gold.uc0x_*.mart_uc0x_* (UC-mart-tabellen voor BI).
         # Naam komt uit dbt-modellen in dbt/models/marts/uc0x_*.
-        targets = [
+        gold_targets = [
             ("uc01_wia_funnel", "mart_uc01_wia_funnel_daily"),
             ("uc04_tw_eligibility", "mart_uc04_tw_eligibility"),
             ("uc05_client_360", "mart_uc05_client_360"),
@@ -244,8 +244,15 @@ data:
             ("uc06_lastprognose", "mart_uc06_scenario_results"),
             ("uc07_dq_polisadm", "mart_uc07_dq_dagrapport"),
         ]
-        for schema, table in targets:
+        for schema, table in gold_targets:
             ensure_dataset(s, gold_id, schema, table)
+
+        # UC-09 leeft in silver (sandbox-schema, gepseudonimiseerd).
+        silver_targets = [
+            ("sandbox_uc09", "mart_uc09_effect_panel"),
+        ]
+        for schema, table in silver_targets:
+            ensure_dataset(s, silver_id, schema, table)
 
         log("Init voltooid.")
         return 0
