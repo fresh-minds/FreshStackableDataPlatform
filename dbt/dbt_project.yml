@@ -74,6 +74,8 @@ models:
         +schema: uc06_lastprognose
       uc07_dq_polisadm:
         +schema: uc07_dq_polisadm
+      uc09_reint_effect:
+        +schema: uc09_reint_effect
 
 # ----------------------------------------------------------------------
 # Seeds

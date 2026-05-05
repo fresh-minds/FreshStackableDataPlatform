@@ -3,6 +3,9 @@
 Audit datum: 2026-05-05. Scope: alle bestanden onder `UDP_Stackable/`,
 exclusief `dbt_packages/`, `node_modules/`, `dist/`, `.git/`.
 
+> **Update 2026-05-05 (zelfde sessie):** items A.1, A.2, A.3, A.4, A.6 en B.1
+> zijn opgelost. Zie ✅-markeringen hieronder.
+
 Het platform is over het algemeen **goed gedocumenteerd**: 16/16 platform-
 componenten hebben een README, 6 ADR's leggen kernkeuzes vast, en alle
 10 use-cases hebben een spec. Onderstaande lijst is wat (nog) ontbreekt of
@@ -18,12 +21,12 @@ buurman dat wel heeft. Voor een referentie-implementatie waar lezers vaak
 
 | # | Pad | Wat ontbreekt | Prio |
 |---|---|---|---|
-| A.1 | `platform/README.md` | Index-README voor de 16 genummerde componenten (00–15). Volgorde is opzettelijk maar niet uitgelegd op één plek. | 🟠 hoog |
-| A.2 | `docs/README.md` | Geen index voor `docs/`. De root-README linkt naar individuele docs, maar `docs/` zelf heeft geen overzicht (handleidingen heeft er wel een). | 🟠 hoog |
-| A.3 | `scripts/README.md` | 12 scripts (bootstrap, cluster, deploy-platform, doctor, full-deploy, port-forward, render-trino-catalogs, run-smoke-tests, seed, build-opa-bundle, clean, azure/*) hebben elk een inline header-comment, maar geen overzicht van **welk script wanneer aan te roepen**. | 🟠 hoog |
-| A.4 | `tests/README.md` | Drie sub-mappen (smoke/e2e/integration) zonder uitleg over conventies, hoe ze gerund worden, en wanneer een test waar hoort. `tests/integration/` is bovendien leeg (zie ook improvements #1.13). | 🟠 hoog |
+| A.1 ✅ | `platform/README.md` | ~~Index-README voor de 16 genummerde componenten (00–15).~~ Toegevoegd. | 🟠 hoog |
+| A.2 ✅ | `docs/README.md` | ~~Geen index voor `docs/`.~~ Toegevoegd. | 🟠 hoog |
+| A.3 ✅ | `scripts/README.md` | ~~12 scripts zonder overzicht~~ — overzicht-tabellen + happy-path toegevoegd. | 🟠 hoog |
+| A.4 ✅ | `tests/README.md` | ~~Drie sub-mappen zonder uitleg~~ — smoke/integration/e2e gedocumenteerd, conventies + CI-link toegevoegd. | 🟠 hoog |
 | A.5 | `ci/README.md` | 6 GitHub-Actions workflows + `check-dbt-meta.py` zonder overzicht. Lezers moeten elk YAML-bestand openen om te begrijpen wat de pipeline doet. | 🟡 polish |
-| A.6 | `opa-policies-src/README.md` | Makefile + 5 Rego-policies + tests + `data/uwv_role_mappings.json`, geen README. Geen uitleg van bundle-opbouw, hoe te testen, hoe role-mappings aangepast worden. | 🟠 hoog |
+| A.6 ✅ | `opa-policies-src/README.md` | ~~Geen README ondanks Makefile + 5 policies + tests.~~ Toegevoegd: bundle-opbouw, rol-schema, Trino-spec-link. | 🟠 hoog |
 | A.7 | `nifi-flows/README.md` | Alleen `templates/delta/` en `templates/iceberg/` hebben elk een README; de map daarboven niet — geen link tussen "welke variant gebruik je wanneer". | 🟡 polish |
 | A.8 | `infrastructure/README.md` | Alleen `infrastructure/azure/` heeft een README. `helm/`, `k3d/`, `stackablectl/` zijn niet uitgelegd. | 🟡 polish |
 | A.9 | `CONTRIBUTING.md` | Reeds op roadmap (improvements #1.18). Flow voor "ik wil een UC / generator / policy toevoegen" ontbreekt. | 🟡 polish |
@@ -40,7 +43,7 @@ in elke `_*.yml`). Onderstaande items vormen de openstaande gaten.
 
 | # | Pad | Wat ontbreekt | Prio |
 |---|---|---|---|
-| B.1 | `dbt/dbt_project.yml` | **Config-gat:** `uc09_reint_effect` heeft SQL + `_uc09.yml`, maar wordt niet vermeld in de `models.uwv_data_platform.marts.*` schema-config. uc01/04/05/06/07 staan er wél. Resultaat: uc09-mart belandt in een fallback-schema in plaats van `gold.uc09_reint_effect`. | 🔴 blocker |
+| B.1 ✅ | `dbt/dbt_project.yml` | ~~Config-gat~~ — `uc09_reint_effect` toegevoegd aan `models.uwv_data_platform.marts.*`. | 🔴 blocker |
 | B.2 | `dbt/macros/*.sql` | Geen enkele macro heeft een `{% docs %}` block. De 8 macros (`apply_doelbinding_tag`, `generate_database_name`, `generate_schema_name`, `pseudonymize`, `table_format`, `test_bsn_valid`, `test_iban_valid`, `test_lh_nummer_valid`) verschijnen daardoor leeg in `dbt docs generate`. | 🟠 hoog |
 | B.3 | `dbt/tests/*.sql` | De 2 singular tests hebben header-comments maar geen schema-beschrijving en geen referentie vanuit `compliance-mapping.md`. UC-03-test (R-AI Act-relevant) verdient een expliciete koppeling. | 🟡 polish |
 | B.4 | `dbt/snapshots/` | Lege map. Geen README of `.gitkeep`-uitleg of er bewust geen snapshots zijn (en zo ja, waarom — doelbinding? ARV-bewaartermijnen?). | 🟡 polish |
