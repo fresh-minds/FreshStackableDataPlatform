@@ -862,5 +862,183 @@
       ]
     }
   ],
-  "defaultDefaultClientScopes": ["profile", "email", "roles"]
+  "defaultDefaultClientScopes": ["profile", "email", "roles"],
+  "identityProviders": [
+    {
+      "alias": "entra",
+      "displayName": "Microsoft Entra ID",
+      "providerId": "oidc",
+      "enabled": true,
+      "trustEmail": true,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "authenticateByDefault": false,
+      "linkOnly": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "REPLACE_ME_ENTRA_CLIENT_ID",
+        "clientSecret": "REPLACE_ME_ENTRA_CLIENT_SECRET",
+        "tokenUrl": "https://login.microsoftonline.com/REPLACE_ME_ENTRA_TENANT_ID/oauth2/v2.0/token",
+        "authorizationUrl": "https://login.microsoftonline.com/REPLACE_ME_ENTRA_TENANT_ID/oauth2/v2.0/authorize",
+        "jwksUrl": "https://login.microsoftonline.com/REPLACE_ME_ENTRA_TENANT_ID/discovery/v2.0/keys",
+        "userInfoUrl": "https://graph.microsoft.com/oidc/userinfo",
+        "logoutUrl": "https://login.microsoftonline.com/REPLACE_ME_ENTRA_TENANT_ID/oauth2/v2.0/logout",
+        "issuer": "https://login.microsoftonline.com/REPLACE_ME_ENTRA_TENANT_ID/v2.0",
+        "defaultScope": "openid profile email",
+        "validateSignature": "true",
+        "useJwksUrl": "true",
+        "syncMode": "FORCE",
+        "clientAuthMethod": "client_secret_post",
+        "backchannelSupported": "false",
+        "loginHint": "false",
+        "uiLocales": "false",
+        "pkceEnabled": "true",
+        "pkceMethod": "S256",
+        "guiOrder": "1"
+      }
+    }
+  ],
+  "identityProviderMappers": [
+    {
+      "name": "entra-group-wia-beoordelaar",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "REPLACE_ME_GROUP_GUID_wia_beoordelaar",
+        "role": "wia_beoordelaar"
+      }
+    },
+    {
+      "name": "entra-group-ww-handhaver",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "REPLACE_ME_GROUP_GUID_ww_handhaver",
+        "role": "ww_handhaver"
+      }
+    },
+    {
+      "name": "entra-group-wajong-arbeidsdeskundige",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "REPLACE_ME_GROUP_GUID_wajong_arbeidsdeskundige",
+        "role": "wajong_arbeidsdeskundige"
+      }
+    },
+    {
+      "name": "entra-group-crm-medewerker",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "REPLACE_ME_GROUP_GUID_crm_medewerker",
+        "role": "crm_medewerker"
+      }
+    },
+    {
+      "name": "entra-group-fez-analist",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "REPLACE_ME_GROUP_GUID_fez_analist",
+        "role": "fez_analist"
+      }
+    },
+    {
+      "name": "entra-group-data-steward",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "REPLACE_ME_GROUP_GUID_data_steward",
+        "role": "data_steward"
+      }
+    },
+    {
+      "name": "entra-group-data-engineer",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "REPLACE_ME_GROUP_GUID_data_engineer",
+        "role": "data_engineer"
+      }
+    },
+    {
+      "name": "entra-group-platform-admin",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "REPLACE_ME_GROUP_GUID_platform_admin",
+        "role": "platform_admin"
+      }
+    },
+    {
+      "name": "entra-group-researcher",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "REPLACE_ME_GROUP_GUID_researcher",
+        "role": "researcher"
+      }
+    },
+    {
+      "name": "entra-group-smz-planner",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "REPLACE_ME_GROUP_GUID_smz_planner",
+        "role": "smz_planner"
+      }
+    },
+    {
+      "name": "entra-group-proactief-dienstverlener",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "REPLACE_ME_GROUP_GUID_proactief_dienstverlener",
+        "role": "proactief_dienstverlener"
+      }
+    },
+    {
+      "name": "entra-username-from-email",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "oidc-username-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "template": "${CLAIM.preferred_username}",
+        "target": "LOCAL"
+      }
+    },
+    {
+      "name": "entra-trigger-totp-for-platform-admin",
+      "identityProviderAlias": "entra",
+      "identityProviderMapper": "hardcoded-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute": "kc.notes.required.actions.on.broker.first.login",
+        "attribute.value": "CONFIGURE_TOTP"
+      }
+    }
+  ]
 }

@@ -24,7 +24,7 @@ het bestand of de setting".
 | R-NORA-05 | Vendor lock-in voorkomen | 0 | [ADR-0001](adr/0001-stackable-as-base.md), [ADR-0002](adr/0002-iceberg-vs-delta.md) (table-format-abstractie); alle componenten Apache 2.0 |
 | R-NORA-06 | FAIR via data catalog | 8 | OpenMetadata services (auto-discovery) + [glossary-cgm.yaml](../platform/13-openmetadata-config/glossary-cgm.yaml) (22 termen) |
 | R-NORA-07 | Transparant, proactief, herleidbaar | 8, 9 | OM lineage (Trino + dbt workflows); OPA decision-log naar OpenSearch via Vector |
-| R-NORA-08 | Federatieve identiteit | 1 | [Keycloak realm](../infrastructure/helm/keycloak/realm-uwv.json) met 11 rollen + 5 OIDC-clients; [`AuthenticationClass keycloak-uwv`](../platform/02-authentication/authenticationclass-keycloak.yaml) |
+| R-NORA-08 | Federatieve identiteit | 1 | [Keycloak realm](../infrastructure/helm/keycloak/realm-uwv.json) met 11 rollen + 7 OIDC-clients; [`AuthenticationClass keycloak-uwv`](../platform/02-authentication/authenticationclass-keycloak.yaml); **Entra ID brokering** via [`identityProviders[entra]`](../infrastructure/helm/keycloak/realm-uwv.json) — gebruiker kiest "lokaal UWV-account" of "Microsoft Entra ID" op de loginpagina; zie [ADR-0008](adr/0008-entra-broker-via-keycloak.md) |
 | R-NORA-09 | Semantische interoperabiliteit | 8 | [OM glossary "CGM"](../platform/13-openmetadata-config/glossary-cgm.yaml) gekoppeld aan dbt-mart `meta.cgm_entiteiten` |
 
 ## AVG — Privacy & gegevensbescherming
