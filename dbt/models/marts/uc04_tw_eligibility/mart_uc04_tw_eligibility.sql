@@ -29,7 +29,10 @@ select
     n.norm_per_maand_eur,
     n.norm_per_maand_eur - p.inkomen_maand_eur as gat_per_maand,
     'alleenstaand'                              as huishoud_type_aanname,
-    'demo: huishoud_type via BRP-koppeling in productie' as toelichting
+    'demo: huishoud_type via BRP-koppeling in productie' as toelichting,
+    -- opt_out vlag voor OPA row-filter (rowFilters.rego). Default false;
+    -- in productie gevuld vanuit cliënt-voorkeuren-DB.
+    false                                        as opt_out
 from personen p
 cross join tw_norm n
 where p.inkomen_maand_eur < n.norm_per_maand_eur
