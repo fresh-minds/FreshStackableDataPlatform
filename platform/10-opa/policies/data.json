@@ -185,7 +185,9 @@
         "catalogs": [
           "bronze",
           "silver",
-          "gold"
+          "gold",
+          "system",
+          "system_jdbc"
         ],
         "purposes": [
           "*"

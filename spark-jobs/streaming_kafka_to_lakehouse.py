@@ -35,8 +35,9 @@ TRIGGER_SECONDS = int(os.getenv("TRIGGER_SECONDS", "20"))
 
 
 def topic_to_table(topic: str) -> str | None:
-    """`uwv.persona.created` → `bronze.uwv.persona_created`.
+    """`uwv.persona.created` → `uwv.persona_created` (Hive db=uwv, table=…).
 
+    Trino ziet deze als `bronze.uwv.<table>` via de bronze-catalog.
     Returnt None voor onverwachte topic-naming.
     """
     parts = topic.split(".")
@@ -44,7 +45,7 @@ def topic_to_table(topic: str) -> str | None:
         return None
     domain, *entity_parts = parts[1:]
     entity = "_".join(entity_parts)
-    return f"bronze.uwv.{domain}_{entity}"
+    return f"uwv.{domain}_{entity}"
 
 
 def process_batch(batch_df, batch_id: int) -> None:
@@ -72,15 +73,25 @@ def main() -> int:
 
     ensure_bronze_schema(spark)
 
-    raw = (
-        spark.readStream
-        .format("kafka")
-        .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
-        .option("subscribePattern", TOPIC_PATTERN)
-        .option("startingOffsets", "earliest")
-        .option("failOnDataLoss", "false")
-        .load()
-    )
+    kafka_opts = {
+        "kafka.bootstrap.servers": KAFKA_BOOTSTRAP,
+        "subscribePattern": TOPIC_PATTERN,
+        "startingOffsets": "earliest",
+        "failOnDataLoss": "false",
+    }
+    ssl_cafile = os.environ.get("KAFKA_SSL_CAFILE")
+    if ssl_cafile and os.path.exists(ssl_cafile):
+        print(f"==> Kafka TLS aan: ssl_cafile={ssl_cafile}", flush=True)
+        kafka_opts.update({
+            "kafka.security.protocol": "SSL",
+            "kafka.ssl.truststore.type": "PEM",
+            "kafka.ssl.truststore.location": ssl_cafile,
+            "kafka.ssl.endpoint.identification.algorithm": "",
+        })
+    reader = spark.readStream.format("kafka")
+    for k, v in kafka_opts.items():
+        reader = reader.option(k, v)
+    raw = reader.load()
 
     enriched = (
         raw

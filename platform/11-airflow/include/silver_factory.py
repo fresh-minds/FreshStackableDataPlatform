@@ -51,7 +51,7 @@ DBT_MANIFEST_PATH = Path(
     os.environ.get("UWV_DBT_MANIFEST_PATH", "/opt/uwv/dbt/manifest.json")
 )
 DBT_EXECUTABLE_PATH = os.environ.get("UWV_DBT_EXECUTABLE_PATH", "/usr/local/bin/dbt")
-DBT_IMAGE = os.environ.get("UWV_DBT_IMAGE", "ghcr.io/dbt-labs/dbt-trino:1.9.0")
+DBT_IMAGE = os.environ.get("UWV_DBT_IMAGE", "uwv/dbt-trino:1.9.0")
 
 
 def _profile_config() -> ProfileConfig:

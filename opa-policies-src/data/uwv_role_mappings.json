@@ -6,7 +6,9 @@
         "catalogs": [
           "bronze",
           "silver",
-          "gold"
+          "gold",
+          "system",
+          "system_jdbc"
         ],
         "schemas": null,
         "purposes": [

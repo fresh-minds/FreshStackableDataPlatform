@@ -14,6 +14,7 @@ namespace: uwv-platform
 resources:
   - airflowcluster.yaml
   - ingress.yaml
+  - webserver-config.yaml
   - jobs/dbt-manifest-job.yaml
 
 configMapGenerator:

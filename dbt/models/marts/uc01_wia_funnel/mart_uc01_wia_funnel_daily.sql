@@ -1,6 +1,6 @@
 {{ config(
     materialized='table',
-    properties=table_format_properties(partition_columns=['aanvraag_datum'])
+    properties=table_format_properties()
 ) }}
 
 -- UC-01 — WIA Funnel daily.

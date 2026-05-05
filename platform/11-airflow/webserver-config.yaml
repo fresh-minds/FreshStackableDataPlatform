@@ -1,0 +1,112 @@
+# Custom webserver_config.py voor Airflow.
+#
+# Waarom: Stackable Airflow 26.3 genereert een minimale webserver_config.py
+# zonder role-mapping. `configOverrides.webserver_config.py` op de
+# AirflowCluster CRD wordt geaccepteerd maar door de operator NIET
+# meegerendered (zie kubectl get cm uwv-airflow-webserver-default
+# -o jsonpath='{.data.webserver_config\.py}' — onze keys ontbreken).
+#
+# Bovendien definieert Stackable géén custom get_oauth_user_info() →
+# FAB's default leest het Keycloak `roles` userinfo-claim niet als
+# role_keys, dus AUTH_ROLES_MAPPING zou alsnog leeg blijven.
+#
+# Oplossing: we mounten deze ConfigMap via subPath bovenop
+# /stackable/app/config/webserver_config.py (zie airflowcluster.yaml
+# webservers.roleGroups.default.podOverrides). Houd OAUTH_PROVIDERS
+# in sync met wat de operator zou genereren — dump na een operator-
+# upgrade `cat /stackable/app/config/..data/webserver_config.py` in
+# een verse pod om diff te checken.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-webserver-config
+  namespace: uwv-platform
+data:
+  webserver_config.py: |
+    """UWV-override van Stackable's gegenereerde webserver_config.py.
+
+    Voegt toe:
+      - AUTH_ROLES_MAPPING — Keycloak realm-roles → FAB-rollen
+      - AUTH_ROLES_SYNC_AT_LOGIN — re-sync bij elke login
+      - UWVAirflowSecurityManager — leest `roles` claim uit userinfo
+        en geeft die door als role_keys (FAB's default doet dat niet
+        voor de keycloak-provider).
+    """
+    import os
+
+    from airflow.www.security import AirflowSecurityManager
+    from flask_appbuilder.const import AUTH_OAUTH
+
+    basedir = os.path.abspath(os.path.dirname(__file__))
+    WTF_CSRF_ENABLED = True
+
+    AUTH_TYPE = AUTH_OAUTH
+    AUTH_USER_REGISTRATION = True
+    # Public = geen Airflow-rechten; non-platform users (wia_beoordelaar
+    # etc.) landen hier en kunnen de UI niet gebruiken.
+    AUTH_USER_REGISTRATION_ROLE = "Public"
+    AUTH_ROLES_SYNC_AT_LOGIN = True
+
+    # Keycloak realm-role → FAB-rol. Onbekende rollen vallen terug op
+    # AUTH_USER_REGISTRATION_ROLE (= Public, geen toegang).
+    AUTH_ROLES_MAPPING = {
+        "platform_admin": ["Admin"],
+        "data_engineer": ["Op"],
+        "data_steward": ["User"],
+    }
+
+    # Stackable hashed de AuthenticationClass-config naar deze env-var-
+    # namen (bv. OIDC_1F14E77C7AE19424_CLIENT_ID). Dynamisch scannen
+    # i.p.v. hardcoden zodat een operator-rerender ons niet breekt.
+    _OIDC_CLIENT_ID = next(
+        (v for k, v in os.environ.items()
+         if k.startswith("OIDC_") and k.endswith("_CLIENT_ID")),
+        None,
+    )
+    _OIDC_CLIENT_SECRET = next(
+        (v for k, v in os.environ.items()
+         if k.startswith("OIDC_") and k.endswith("_CLIENT_SECRET")),
+        None,
+    )
+
+    # In-cluster service-DNS naar Keycloak (zie authenticationclass-keycloak.yaml).
+    # Browser-redirects gaan via de externe ingress (issuer in token klopt).
+    OAUTH_PROVIDERS = [
+        {
+            "name": "keycloak",
+            "icon": "fa-key",
+            "token_key": "access_token",
+            "remote_app": {
+                "client_id": _OIDC_CLIENT_ID,
+                "client_secret": _OIDC_CLIENT_SECRET,
+                "client_kwargs": {"scope": "openid profile email roles"},
+                "api_base_url": "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/",
+                "server_metadata_url": "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/.well-known/openid-configuration",
+            },
+        }
+    ]
+
+
+    class UWVAirflowSecurityManager(AirflowSecurityManager):
+        """Leest Keycloak's `roles` userinfo-claim als FAB role_keys.
+
+        FAB's default get_oauth_user_info kent voor de keycloak-provider
+        géén role-mapping. Zonder deze override blijft role_keys leeg en
+        valt elke user terug op AUTH_USER_REGISTRATION_ROLE = Public.
+        """
+
+        def get_oauth_user_info(self, provider, resp):
+            if provider != "keycloak":
+                return super().get_oauth_user_info(provider, resp)
+            me = self.appbuilder.sm.oauth_remotes[provider].userinfo()
+            return {
+                "username": me.get("preferred_username"),
+                "email": me.get("email"),
+                "first_name": me.get("given_name", ""),
+                "last_name": me.get("family_name", ""),
+                "role_keys": me.get("roles", []),
+            }
+
+
+    SECURITY_MANAGER_CLASS = UWVAirflowSecurityManager

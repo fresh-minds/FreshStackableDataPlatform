@@ -12,9 +12,12 @@ uwv_trino:
   outputs:
     dev:
       type: trino
-      method: ldap                    # static-user via Trino's password authenticator
+      # In dev werkt Trino's password-authenticator niet via dbt-trino client
+      # ("Password not allowed for insecure authentication") door TLS-detectie
+      # met http-server.process-forwarded. method=none stuurt alleen
+      # X-Trino-User header, wat Trino accepteert.
+      method: none
       user: "{{ env_var('TRINO_USER', 'smoketest') }}"
-      password: "{{ env_var('TRINO_PASSWORD', 'uwv-dev-only-CHANGE-ME-Smoke2026') }}"
       host: "{{ env_var('TRINO_HOST', 'trino.uwv-platform.local') }}"
       port: "{{ env_var('TRINO_PORT', '8443') | int }}"
       http_scheme: https

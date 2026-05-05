@@ -44,7 +44,9 @@ spec:
             - name: SEED
               value: "2026"
             - name: KAFKA_BOOTSTRAP
-              value: "uwv-kafka-broker-default-bootstrap.uwv-platform.svc.cluster.local:9092"
+              value: "uwv-kafka-broker-default-bootstrap.uwv-platform.svc.cluster.local:9093"
+            - name: KAFKA_SSL_CAFILE
+              value: "/stackable/tls-kafka/ca.crt"
             - name: PYTHONPATH
               value: "/app"
           resources:
@@ -59,6 +61,8 @@ spec:
               mountPath: /app
             - name: generators
               mountPath: /app/generators
+            - name: tls-kafka
+              mountPath: /stackable/tls-kafka
       volumes:
         - name: scripts
           configMap:
@@ -66,3 +70,17 @@ spec:
         - name: generators
           configMap:
             name: data-generation-generators
+        - name: tls-kafka
+          ephemeral:
+            volumeClaimTemplate:
+              metadata:
+                annotations:
+                  secrets.stackable.tech/class: tls
+                  secrets.stackable.tech/scope: pod
+                  secrets.stackable.tech/format: tls-pem
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: secrets.stackable.tech
+                resources:
+                  requests:
+                    storage: "1"

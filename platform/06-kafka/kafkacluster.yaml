@@ -15,12 +15,6 @@ spec:
     productVersion: "3.9.1"
   clusterConfig:
     zookeeperConfigMapName: uwv-zookeeper-znode-kafka
-    # Dev: TLS uit zodat data-generation/streaming/topics-bootstrap
-    # zonder client-cert-config kunnen verbinden op poort 9092.
-    # Productie: vervang door tls.serverSecretClass: tls-stackable.
-    tls:
-      serverSecretClass: null
-      internalSecretClass: null
   brokers:
     # 26.3: listener-classes verplaatst naar brokers.config
     config:

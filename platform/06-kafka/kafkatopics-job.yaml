@@ -55,10 +55,28 @@ spec:
           command: ["bash", "-euo", "pipefail", "-c"]
           args:
             - |
-              BOOTSTRAP="uwv-kafka-broker-default-bootstrap.uwv-platform.svc.cluster.local:9092"
+              # Stackable Kafka 26.3 forceert TLS op 9093. We krijgen een
+              # CA-bundel via een ephemeral-PVC (SecretClass `tls`), bouwen
+              # een truststore.jks en gebruiken die voor kafka-topics.sh.
+              BOOTSTRAP="uwv-kafka-broker-default-bootstrap.uwv-platform.svc.cluster.local:9093"
+              CA_CERT=/stackable/tls-kafka/ca.crt
+              TRUSTSTORE=/tmp/truststore.jks
+              TRUSTSTORE_PASS="uwv-trust-pw"
+
+              echo "Bouwen van JKS-truststore uit $CA_CERT..."
+              keytool -import -trustcacerts -alias kafka-ca -file "$CA_CERT" \
+                      -keystore "$TRUSTSTORE" -storepass "$TRUSTSTORE_PASS" -noprompt
+              cat > /tmp/client.properties <<EOF
+              security.protocol=SSL
+              ssl.truststore.location=$TRUSTSTORE
+              ssl.truststore.password=$TRUSTSTORE_PASS
+              ssl.endpoint.identification.algorithm=
+              EOF
+
               echo "Wachten op Kafka-bootstrap..."
               for i in $(seq 1 60); do
-                if kafka-broker-api-versions.sh --bootstrap-server "$BOOTSTRAP" >/dev/null 2>&1; then
+                if kafka-broker-api-versions.sh --bootstrap-server "$BOOTSTRAP" \
+                     --command-config /tmp/client.properties >/dev/null 2>&1; then
                   break
                 fi
                 sleep 5
@@ -66,10 +84,10 @@ spec:
 
               echo "Topics aanmaken (idempotent)"
               while IFS=: read -r name parts rf retention cleanup; do
-                # Skip lege regels en comments
                 [[ -z "$name" || "$name" =~ ^# ]] && continue
 
                 kafka-topics.sh --bootstrap-server "$BOOTSTRAP" \
+                  --command-config /tmp/client.properties \
                   --create --if-not-exists \
                   --topic "$name" \
                   --partitions "$parts" \
@@ -81,11 +99,28 @@ spec:
               done < /config/topics.txt
 
               echo "Lijst van topics:"
-              kafka-topics.sh --bootstrap-server "$BOOTSTRAP" --list
+              kafka-topics.sh --bootstrap-server "$BOOTSTRAP" \
+                --command-config /tmp/client.properties --list
           volumeMounts:
             - name: topics-config
               mountPath: /config
+            - name: tls-kafka
+              mountPath: /stackable/tls-kafka
       volumes:
         - name: topics-config
           configMap:
             name: kafka-topics-list
+        - name: tls-kafka
+          ephemeral:
+            volumeClaimTemplate:
+              metadata:
+                annotations:
+                  secrets.stackable.tech/class: tls
+                  secrets.stackable.tech/scope: pod
+                  secrets.stackable.tech/format: tls-pem
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: secrets.stackable.tech
+                resources:
+                  requests:
+                    storage: "1"

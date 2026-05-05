@@ -65,9 +65,12 @@ def main(count: int, seed: int, bootstrap: str, include_domains: str, dry_run: b
 
     # Lazy import: kafka-python pas wanneer we niet in dry-run zitten.
     if not dry_run:
+        import os  # noqa: PLC0415
         from kafka import KafkaProducer  # noqa: PLC0415
 
-        producer = KafkaProducer(
+        # TLS-aware: optionele env-vars zodat Stackable Kafka 26.3 (TLS-only)
+        # bereikbaar is. Default plaintext voor lokale tests.
+        kw: dict = dict(
             bootstrap_servers=bootstrap.split(","),
             client_id="uwv-data-generation-loader",
             acks="all",
@@ -75,6 +78,13 @@ def main(count: int, seed: int, bootstrap: str, include_domains: str, dry_run: b
             linger_ms=100,
             compression_type="gzip",
         )
+        ssl_cafile = os.environ.get("KAFKA_SSL_CAFILE")
+        if ssl_cafile:
+            kw["security_protocol"] = "SSL"
+            kw["ssl_cafile"] = ssl_cafile
+            kw["ssl_check_hostname"] = False
+            print(f"==> TLS aan: ssl_cafile={ssl_cafile}", flush=True)
+        producer = KafkaProducer(**kw)
     else:
         class _Null:
             def send(self, *a, **kw): pass

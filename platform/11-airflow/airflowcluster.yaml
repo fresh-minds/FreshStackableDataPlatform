@@ -63,28 +63,22 @@ spec:
       # Include zelf + cosmos VOOR system-paths zodat factory-imports voorrang hebben.
       # Stackable's eigen log_config + dags-folder achteraan om defaults te behouden.
       PYTHONPATH: "/opt/uwv/airflow/include:/cosmos-pkgs:/stackable/app/log_config:/stackable/airflow/dags"
+      # Stackable 26.3 detecteert executor uit *Executors-block, maar voor onze
+      # setup expliciet zetten zodat tasks via KubernetesExecutor een eigen pod krijgen.
+      AIRFLOW__CORE__EXECUTOR: "KubernetesExecutor"
+      AIRFLOW__KUBERNETES_EXECUTOR__NAMESPACE: "uwv-platform"
+      # Geen pod_template_file — laat Airflow de defaults gebruiken; podOverrides
+      # in kubernetesExecutors-blok hierboven definiëren de mounts + initContainers.
       UWV_SOURCES_DIR: "/opt/uwv/airflow/sources"
       UWV_DBT_MANIFEST_PATH: "/opt/uwv/dbt/manifest.json"
-    # Stackable genereert een webserver_config.py met OAUTH_PROVIDERS
-    # voor Keycloak, maar zonder role-mapping → elke OIDC-user landt
-    # zonder FAB-rol ("Your user has no roles..."). Keycloak zet realm-
-    # roles in de `roles` userinfo-claim (zie realm-uwv.json: `roles`-
-    # scope met oidc-usermodel-realm-role-mapper, default scope op de
-    # airflow-client). Hieronder mappen we die naar de 4 ingebouwde
-    # FAB-rollen:
-    #   platform_admin → Admin (full control: DAGs, users, connections)
-    #   data_engineer  → Op    (DAGs runnen + connections, geen users)
-    #   data_steward   → User  (DAGs zien + triggeren)
-    # AUTH_ROLES_SYNC_AT_LOGIN herziet de mapping bij elke login —
-    # zonder dit blijft een user vastzitten op de rol van zijn eerste
-    # login. AUTH_USER_REGISTRATION_ROLE = "Public" geeft non-platform
-    # users (wia_beoordelaar etc.) géén toegang i.p.v. Viewer.
-    configOverrides:
-      webserver_config.py:
-        AUTH_ROLES_SYNC_AT_LOGIN: "True"
-        AUTH_USER_REGISTRATION: "True"
-        AUTH_USER_REGISTRATION_ROLE: '"Public"'
-        AUTH_ROLES_MAPPING: '{"platform_admin": ["Admin"], "data_engineer": ["Op"], "data_steward": ["User"]}'
+    # NB: configOverrides voor `webserver_config.py` werkt NIET in
+    # Stackable Airflow 26.3 — de operator accepteert de keys in de CRD
+    # maar rendert ze niet in de gegenereerde file. Daarom doen we de
+    # role-mapping via een subPath-mount bovenop de gegenereerde file
+    # (zie webserver-config.yaml ConfigMap + volume mount onderaan
+    # roleGroups.default.podOverrides). Dat geeft ons ook ruimte om
+    # een custom SECURITY_MANAGER_CLASS te zetten — nodig omdat FAB's
+    # default get_oauth_user_info het Keycloak `roles` claim niet leest.
     config:
       logging:
         enableVectorAgent: false
@@ -195,6 +189,14 @@ spec:
                   - name: airflow-dags
                     mountPath: /stackable/airflow/dags
                     readOnly: true
+                  # Vervangt Stackable's gegenereerde webserver_config.py
+                  # met onze versie (role-mapping + custom security mgr).
+                  # subPath laat /stackable/app/config/log_config.py
+                  # intact — alleen deze ene file wordt overlay-gemount.
+                  - name: webserver-config
+                    mountPath: /stackable/app/config/webserver_config.py
+                    subPath: webserver_config.py
+                    readOnly: true
             volumes:
               - name: uwv-ca
                 configMap:
@@ -216,6 +218,9 @@ spec:
                   optional: true
               - name: dbt-manifest-decompressed
                 emptyDir: {}     # ontbreekt vóór dbt-manifest-Job; OK
+              - name: webserver-config
+                configMap:
+                  name: airflow-webserver-config
 
   schedulers:
     envOverrides:
@@ -235,6 +240,12 @@ spec:
       # Include zelf + cosmos VOOR system-paths zodat factory-imports voorrang hebben.
       # Stackable's eigen log_config + dags-folder achteraan om defaults te behouden.
       PYTHONPATH: "/opt/uwv/airflow/include:/cosmos-pkgs:/stackable/app/log_config:/stackable/airflow/dags"
+      # Stackable 26.3 detecteert executor uit *Executors-block, maar voor onze
+      # setup expliciet zetten zodat tasks via KubernetesExecutor een eigen pod krijgen.
+      AIRFLOW__CORE__EXECUTOR: "KubernetesExecutor"
+      AIRFLOW__KUBERNETES_EXECUTOR__NAMESPACE: "uwv-platform"
+      # Geen pod_template_file — laat Airflow de defaults gebruiken; podOverrides
+      # in kubernetesExecutors-blok hierboven definiëren de mounts + initContainers.
       UWV_SOURCES_DIR: "/opt/uwv/airflow/sources"
       UWV_DBT_MANIFEST_PATH: "/opt/uwv/dbt/manifest.json"
     config:
@@ -360,9 +371,114 @@ spec:
               - name: dbt-manifest-decompressed
                 emptyDir: {}
 
-  celeryExecutors:
-    # Niet gebruikt — we draaien KubernetesExecutor (zie executor.kubernetes)
-    config: {}
-    roleGroups:
-      default:
-        replicas: 0
+  # Stackable Airflow 26.3: gebruik kubernetesExecutors-blok voor K8s-executor.
+  # Tasks krijgen dan elk een eigen Pod (geen Celery workers nodig).
+  # We mounten dezelfde cosmos-init + dbt-manifest + sources/include op het
+  # task-pod-template zodat Cosmos's per-model tasks correct worden gedeserialiseerd.
+  kubernetesExecutors:
+    config:
+      logging:
+        enableVectorAgent: false
+      resources:
+        cpu:
+          min: "100m"
+          max: "1000m"
+        memory:
+          limit: "1Gi"
+    envOverrides:
+      REQUESTS_CA_BUNDLE: "/etc/uwv-ca/ca.crt"
+      SSL_CERT_FILE: "/etc/uwv-ca/ca.crt"
+      PYTHONPATH: "/opt/uwv/airflow/include:/cosmos-pkgs:/stackable/app/log_config:/stackable/airflow/dags"
+      UWV_SOURCES_DIR: "/opt/uwv/airflow/sources"
+      UWV_DBT_MANIFEST_PATH: "/opt/uwv/dbt/manifest.json"
+    podOverrides:
+      spec:
+        initContainers:
+          - name: cosmos-init
+            image: python:3.9-slim
+            command:
+              - bash
+              - -euo
+              - pipefail
+              - -c
+              - |
+                pip install --disable-pip-version-check \
+                  --target=/cosmos-pkgs --no-deps \
+                  "astronomer-cosmos==1.6.0"
+                pip install --disable-pip-version-check \
+                  --target=/cosmos-pkgs \
+                  "PyYAML==6.0.2" \
+                  "msgpack==1.0.8" \
+                  "aenum>=3.1"
+                cd /cosmos-pkgs
+                for pkg in airflow apache_airflow* airflow_providers_* \
+                           sqlalchemy SQLAlchemy* alembic flask werkzeug \
+                           jinja2 markupsafe attrs attr deprecated requests \
+                           urllib3 certifi charset_normalizer idna; do
+                  rm -rf "$pkg" "${pkg}-"*.dist-info "${pkg}.py" 2>/dev/null || true
+                done
+                touch /cosmos-pkgs/.ready
+            volumeMounts:
+              - name: cosmos-pkgs
+                mountPath: /cosmos-pkgs
+          - name: manifest-decompress
+            image: busybox:1.36
+            command:
+              - sh
+              - -c
+              - |
+                if [ -f /dbt-manifest-gz/dbt-project.tar.gz ]; then
+                  tar xzf /dbt-manifest-gz/dbt-project.tar.gz -C /dbt-manifest/
+                fi
+                if [ -f /dbt-manifest-gz/manifest.json.gz ]; then
+                  gunzip -c /dbt-manifest-gz/manifest.json.gz > /dbt-manifest/manifest.json
+                else
+                  echo '{"nodes":{},"sources":{}}' > /dbt-manifest/manifest.json
+                fi
+            volumeMounts:
+              - name: dbt-manifest-gz
+                mountPath: /dbt-manifest-gz
+              - name: dbt-manifest-decompressed
+                mountPath: /dbt-manifest
+        containers:
+          - name: base
+            volumeMounts:
+              - name: uwv-ca
+                mountPath: /etc/uwv-ca
+                readOnly: true
+              - name: cosmos-pkgs
+                mountPath: /cosmos-pkgs
+                readOnly: true
+              - name: airflow-dags
+                mountPath: /stackable/airflow/dags
+                readOnly: true
+              - name: airflow-include
+                mountPath: /opt/uwv/airflow/include
+                readOnly: true
+              - name: airflow-sources
+                mountPath: /opt/uwv/airflow/sources
+                readOnly: true
+              - name: dbt-manifest-decompressed
+                mountPath: /opt/uwv/dbt
+                readOnly: true
+        volumes:
+          - name: uwv-ca
+            configMap:
+              name: uwv-ca-bundle
+          - name: cosmos-pkgs
+            emptyDir: {}
+          - name: airflow-dags
+            configMap:
+              name: airflow-dags
+          - name: airflow-include
+            configMap:
+              name: airflow-include
+          - name: airflow-sources
+            configMap:
+              name: airflow-sources
+          - name: dbt-manifest-gz
+            configMap:
+              name: dbt-manifest
+              optional: true
+          - name: dbt-manifest-decompressed
+            emptyDir: {}

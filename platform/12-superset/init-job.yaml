@@ -85,11 +85,10 @@ data:
 
     def ensure_trino_database(s: requests.Session) -> int:
         """Maak een Trino-database connection aan; retourneert id."""
-        # SQLAlchemy URI — Trino + LDAP-auth (smoketest user). Voor dev: TLS uit.
-        uri = (
-            f"trino://{TRINO_USER}:{TRINO_PASSWORD}@{TRINO_HOST}:8443"
-            f"/bronze?protocol=https&verify=false"
-        )
+        # SQLAlchemy URI — Trino zonder password (smoketest via X-Trino-User).
+        # Trino's password-authenticator weigert basic-auth bij niet-direct-TLS,
+        # `method=none` werkt wel (dezelfde aanpak als dbt-trino profiles.yml).
+        uri = f"trino://{TRINO_USER}@{TRINO_HOST}:8443/bronze"
         body = {
             "database_name": "uwv-trino",
             "sqlalchemy_uri": uri,
@@ -101,8 +100,6 @@ data:
                 "engine_params": {
                     "connect_args": {
                         "http_scheme": "https",
-                        # Dev: self-signed CA — disable cert verify in connect_args.
-                        # Productie: zet verify=true en mount uwv-ca-bundle als CA.
                         "verify": False,
                     },
                 },

@@ -14,11 +14,15 @@
     {%- set props = {} -%}
 
     {%- if fmt == 'delta' -%}
-        {%- do props.update({'format': "'PARQUET'"}) -%}
+        {# Trino's delta_lake connector heeft geen `format` property
+           (Delta is altijd Parquet). Alleen `partitioned_by` zetten. #}
         {%- if partition_columns -%}
-            {# Delta in Trino vereist partition-cols als kolomnamen-array. #}
             {%- set parts = partition_columns | join("','") -%}
             {%- do props.update({'partitioned_by': "ARRAY['" ~ parts ~ "']"}) -%}
+        {%- else -%}
+            {# Non-partitioned table — geef een no-op property zodat dbt geen
+               lege WITH () genereert (syntax error in Trino). #}
+            {%- do props.update({'checkpoint_interval': "10"}) -%}
         {%- endif -%}
     {%- elif fmt == 'iceberg' -%}
         {%- do props.update({'format': "'PARQUET'"}) -%}

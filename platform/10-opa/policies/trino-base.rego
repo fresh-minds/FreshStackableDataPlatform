@@ -25,6 +25,10 @@ default rowFilters := []
 
 default columnMask := {}
 
+# Trino OPA-plugin (Trino 477+) verwacht batched column-masks als array.
+# Zonder default-rule: 'Failed to deserialize OPA policy response'.
+default batchColumnMasks := []
+
 # --- helpers -----------------------------------------------------------
 
 # Authenticated user is altijd verplicht.
@@ -33,15 +37,23 @@ authenticated if {
 	input.context.identity.user != ""
 }
 
-# UWV-rollen uit Keycloak: groups-claim of (fallback) leeg.
-user_roles := input.context.identity.groups
+# UWV-rollen uit Keycloak: groups-claim, met fallback voor static-users.
+# Eén complete rule met conditional — anders krijgen we eval_conflict_error
+# als beide rules tegelijk matchen.
+user_roles := groups if {
+	groups := input.context.identity.groups
+	count(groups) > 0
+}
 
-# Voor static-auth (smoketest user, geen groups-claim) plak handmatig de rol op
+# Voor static-auth (smoketest user, geen groups) plak handmatig de rol op
 # o.b.v. de username.
 user_roles := ["smoketest"] if {
 	input.context.identity.user == "smoketest"
-	not input.context.identity.groups
+	count(object.get(input.context.identity, "groups", [])) == 0
 }
+
+# Default: lege roles-set (geen toegang).
+default user_roles := []
 
 # Purpose komt via Trino's `extraCredentials` (HTTP-header X-Trino-Extra-Credential).
 # Lege string = geen purpose meegegeven.
@@ -93,6 +105,28 @@ is_write_op if input.action.operation == "CreateTable"
 
 is_write_op if input.action.operation == "CreateSchema"
 
+is_write_op if input.action.operation == "CreateView"
+
+is_write_op if input.action.operation == "CreateViewWithSelectFromColumns"
+
+is_write_op if input.action.operation == "DropView"
+
+is_write_op if input.action.operation == "RenameTable"
+
+is_write_op if input.action.operation == "RenameSchema"
+
+is_write_op if input.action.operation == "RenameView"
+
+is_write_op if input.action.operation == "SetSchemaAuthorization"
+
+is_write_op if input.action.operation == "SetTableProperties"
+
+is_write_op if input.action.operation == "AddColumn"
+
+is_write_op if input.action.operation == "DropColumn"
+
+is_write_op if input.action.operation == "RenameColumn"
+
 # --- top-level allow ---------------------------------------------------
 
 # Meta-operations (cataloglist, queryplan, etc.) — alleen authenticated.
@@ -109,12 +143,13 @@ allow if {
 	purpose_allows_resource
 }
 
-# Write-operations — alleen voor data_engineer + platform_admin.
+# Write-operations — alleen voor data_engineer + platform_admin + smoketest.
+# smoketest is technische dbt-runner, krijgt write op bronze/silver/gold.
 allow if {
 	authenticated
 	is_write_op
 	some r in user_roles
-	r in {"data_engineer", "platform_admin"}
+	r in {"data_engineer", "platform_admin", "smoketest"}
 }
 
 # --- batch (voor SHOW TABLES / FilterColumns op een lijst) ------------
