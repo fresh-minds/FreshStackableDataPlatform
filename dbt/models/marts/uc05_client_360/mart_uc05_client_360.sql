@@ -61,7 +61,7 @@ select
     a.max_ao_pct,
     coalesce(c.n_contacts_30d, 0)            as n_klantcontacten_30d
 from persona p
-left join ikv_lopend i  using (bsn)
-left join ww_status w   using (bsn)
-left join wia_status a  using (bsn)
-left join crm_recent c  using (bsn)
+left join ikv_lopend i  on p.bsn = i.bsn
+left join ww_status  w  on p.bsn = w.bsn
+left join wia_status a  on p.bsn = a.bsn
+left join crm_recent c  on p.bsn = c.bsn

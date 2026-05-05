@@ -16,6 +16,7 @@ data:
     import os
     import sys
     import time
+    from typing import List, Optional, Tuple
     from urllib.parse import urljoin
 
     import requests
@@ -52,12 +53,68 @@ data:
         return results[0]["id"]
 
 
-    def find_chart_id(s, slice_name: str) -> int | None:
+    def find_chart_id(s, slice_name: str) -> Optional[int]:
         r = s.get(urljoin(SUPERSET_URL, "/api/v1/chart/"),
                   params={"q": f"(filters:!((col:slice_name,opr:eq,value:{slice_name})))"})
         if r.status_code == 200 and r.json().get("count", 0) > 0:
             return r.json()["result"][0]["id"]
         return None
+
+
+    def build_query_context(dataset_id: int, viz_type: str, params: dict) -> str:
+        """Genereer een query_context voor een chart.
+
+        Superset 4.x weigert chart-data renderen als `query_context` leeg
+        is ("Chart has no query context saved. Please save the chart
+        again."). Normaal vult de UI dit bij elk save; bij API-creatie
+        moeten we het zelf zetten. Eén query met de metrics/groupby/time
+        uit `params` is genoeg voor line/pie/big_number_total.
+        """
+        # `metric` (single) en `metrics` (list) moeten allebei in de
+        # query als list. big_number_total gebruikt `metric` (single).
+        metrics = params.get("metrics", [])
+        if not metrics and params.get("metric"):
+            metrics = [params["metric"]]
+
+        query = {
+            "filters": [],
+            "extras": {"having": "", "where": ""},
+            "applied_time_extras": {},
+            "columns": params.get("groupby", []),
+            "metrics": metrics,
+            "annotation_layers": [],
+            "row_limit": params.get("row_limit", 1000),
+            "series_limit": 0,
+            "order_desc": True,
+            "url_params": {},
+            "custom_params": {},
+            "custom_form_data": {},
+        }
+        if params.get("granularity_sqla"):
+            query["granularity"] = params["granularity_sqla"]
+            query["time_grain_sqla"] = params.get("time_grain_sqla", "P1D")
+            # is_timeseries triggert tijd-buckets in de query; zonder dit
+            # vouwt Superset alle rijen samen tot 1 totaal-meting (line
+            # chart toont dan 1 punt). Tijdsbereik = "no filter" zodat de
+            # historische data zichtbaar is in dit dev-dataset.
+            query["is_timeseries"] = True
+            query["time_range"] = "No filter"
+            query["columns"] = [{
+                "timeGrain": params.get("time_grain_sqla", "P1D"),
+                "columnType": "BASE_AXIS",
+                "sqlExpression": params["granularity_sqla"],
+                "label": params["granularity_sqla"],
+                "expressionType": "SQL",
+            }]
+
+        return json.dumps({
+            "datasource": {"id": dataset_id, "type": "table"},
+            "force": False,
+            "queries": [query],
+            "form_data": {**params, "datasource": f"{dataset_id}__table"},
+            "result_format": "json",
+            "result_type": "full",
+        })
 
 
     def create_chart(s, dataset_id: int, slice_name: str, viz_type: str,
@@ -72,6 +129,7 @@ data:
             "viz_type": viz_type,
             "slice_name": slice_name,
             "params": json.dumps(params),
+            "query_context": build_query_context(dataset_id, viz_type, params),
         }
         r = s.post(urljoin(SUPERSET_URL, "/api/v1/chart/"), json=body)
         if r.status_code not in (200, 201):
@@ -82,35 +140,96 @@ data:
         return cid
 
 
-    def find_dashboard_id(s, title: str) -> int | None:
+    def find_dashboard_id(s, slug: str) -> Optional[int]:
+        # Zoek op slug (unique key, geen spaties → rison-safe).
+        # Bug-historie: zoeken op `dashboard_title` met spaties in de
+        # waarde liet de rison-filter falen → script vond bestaand
+        # dashboard niet en POST'te opnieuw → 422 slug-conflict.
         r = s.get(urljoin(SUPERSET_URL, "/api/v1/dashboard/"),
-                  params={"q": f"(filters:!((col:dashboard_title,opr:eq,value:{title})))"})
+                  params={"q": f"(filters:!((col:slug,opr:eq,value:{slug})))"})
         if r.status_code == 200 and r.json().get("count", 0) > 0:
             return r.json()["result"][0]["id"]
         return None
 
 
-    def create_dashboard(s, title: str, slug: str, chart_ids: list[int]) -> int:
-        existing = find_dashboard_id(s, title)
-        if existing:
-            log(f"  = dashboard '{title}' bestaat (id={existing})")
-            return existing
-        body = {
-            "dashboard_title": title,
-            "slug": slug,
-            "published": True,
-        }
-        r = s.post(urljoin(SUPERSET_URL, "/api/v1/dashboard/"), json=body)
-        r.raise_for_status()
-        did = r.json()["id"]
-        log(f"  + dashboard '{title}' (id={did})")
+    def build_position_json(charts: List[Tuple[int, str]]) -> str:
+        """Bouw een Superset dashboard layout-tree (12-kolom grid).
 
-        # Voeg charts toe via PUT op dashboard
+        Eén CHART per ROW, full-width (12 cols). Geeft een geldige tree
+        met ROOT → GRID → ROW(s) → CHART(s). Zonder dit blijft de canvas
+        leeg ook al staan de slices in de M2M-tabel, want het frontend
+        leest position_json om de chart-componenten te plaatsen.
+        """
+        layout = {
+            "DASHBOARD_VERSION_KEY": "v2",
+            "ROOT_ID": {"type": "ROOT", "id": "ROOT_ID", "children": ["GRID_ID"]},
+            "GRID_ID": {
+                "type": "GRID", "id": "GRID_ID", "children": [],
+                "parents": ["ROOT_ID"],
+            },
+        }
+        for idx, (chart_id, slice_name) in enumerate(charts):
+            row_id = f"ROW-{idx + 1}"
+            chart_block_id = f"CHART-{idx + 1}"
+            layout["GRID_ID"]["children"].append(row_id)
+            layout[row_id] = {
+                "type": "ROW", "id": row_id, "children": [chart_block_id],
+                "parents": ["ROOT_ID", "GRID_ID"],
+                "meta": {"background": "BACKGROUND_TRANSPARENT"},
+            }
+            layout[chart_block_id] = {
+                "type": "CHART", "id": chart_block_id, "children": [],
+                "parents": ["ROOT_ID", "GRID_ID", row_id],
+                "meta": {
+                    "chartId": chart_id,
+                    "width": 12,
+                    "height": 50,
+                    "sliceName": slice_name,
+                },
+            }
+        return json.dumps(layout)
+
+
+    def upsert_dashboard(s, title: str, slug: str,
+                         charts: List[Tuple[int, str]]) -> int:
+        """Maak of update dashboard met slices + position_json.
+
+        Idempotent: bestaand dashboard wordt ook ge-PUT zodat charts +
+        layout altijd in sync zijn met dit script.
+        """
+        chart_ids = [c[0] for c in charts]
+        position_json = build_position_json(charts)
+
+        did = find_dashboard_id(s, slug)
+        if did is None:
+            r = s.post(urljoin(SUPERSET_URL, "/api/v1/dashboard/"),
+                       json={"dashboard_title": title, "slug": slug, "published": True})
+            r.raise_for_status()
+            did = r.json()["id"]
+            log(f"  + dashboard '{title}' (id={did})")
+        else:
+            log(f"  = dashboard '{title}' bestaat (id={did}); update layout")
+
+        # 1. Koppel elke chart aan dit dashboard via chart-PUT.
+        #    Dashboard-PUT accepteert geen `slices` (read-only); de M2M
+        #    moet via /api/v1/chart/{id} met `dashboards: [...]`.
         for cid in chart_ids:
-            body = {"slices": [cid]}
-            r = s.put(urljoin(SUPERSET_URL, f"/api/v1/dashboard/{did}"), json=body)
+            r = s.put(urljoin(SUPERSET_URL, f"/api/v1/chart/{cid}"),
+                      json={"dashboards": [did]})
             if r.status_code != 200:
-                log(f"  ! kon chart {cid} niet toevoegen: {r.text[:200]}")
+                log(f"  ! chart {cid} → dashboard {did}: "
+                    f"{r.status_code} {r.text[:200]}")
+                r.raise_for_status()
+
+        # 2. Zet de canvas-layout. Zonder position_json blijft de
+        # dashboard-pagina leeg, ook al staan de slices in de M2M-tabel.
+        r = s.put(urljoin(SUPERSET_URL, f"/api/v1/dashboard/{did}"),
+                  json={"position_json": position_json})
+        if r.status_code != 200:
+            log(f"  ! dashboard {did} layout PUT: "
+                f"{r.status_code} {r.text[:300]}")
+            r.raise_for_status()
+        log(f"  ✓ {len(chart_ids)} charts gekoppeld + layout gezet")
         return did
 
 
@@ -170,7 +289,12 @@ data:
             },
         })
 
-        create_dashboard(s, "WIA Funnel", "wia-funnel", [c1, c2, c3])
+        # Volgorde bepaalt de visuele top-naar-onder layout in het dashboard.
+        upsert_dashboard(s, "WIA Funnel", "wia-funnel", [
+            (c3, "Totaal WIA aanvragen"),
+            (c1, "WIA aanvragen per dag"),
+            (c2, "WIA aanvragen per status"),
+        ])
         log("Klaar.")
         return 0
 

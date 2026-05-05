@@ -1,6 +1,6 @@
 {{ config(
     materialized='table',
-    properties=table_format_properties(partition_columns=['rapport_datum'])
+    properties=table_format_properties()
 ) }}
 
 -- UC-07 — Datakwaliteit polisadministratie, dagrapport.

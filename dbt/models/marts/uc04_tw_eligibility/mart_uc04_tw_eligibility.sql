@@ -16,7 +16,7 @@ with personen as (
         p.bsn,
         coalesce(i.inkomen_maand_eur, 0) as inkomen_maand_eur
     from {{ ref('stg_persona') }} p
-    left join {{ ref('int_huishouden_inkomen') }} i using (bsn)
+    left join {{ ref('int_huishouden_inkomen') }} i on p.bsn = i.bsn
 ),
 tw_norm as (
     select norm_per_maand_eur

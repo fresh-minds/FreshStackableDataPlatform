@@ -1,4 +1,4 @@
-{{ config(materialized='view') }}
+{{ config(materialized='view', tags=['intermediate']) }}
 
 -- Pseudo-identifier voor downstream-marts die geen ruwe BSN nodig hebben.
 -- Gebruikt de centrale `pseudonymize`-macro (SHA-256 + zout) — productie zou

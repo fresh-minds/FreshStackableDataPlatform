@@ -10,7 +10,9 @@ select
     json_extract_scalar(payload, '$.payload.bsn')                    as bsn,
     json_extract_scalar(payload, '$.payload.kanaal')                 as kanaal,
     json_extract_scalar(payload, '$.payload.onderwerp')              as onderwerp,
-    cast(json_extract_scalar(payload, '$.payload.timestamp') as timestamp) as contact_ts,
+    -- ISO-8601 met `Z` (`2025-06-15T14:05:00Z`) is geen Trino cast-target.
+    -- from_iso8601_timestamp() pakt het wel; resultaat is timestamp(3) with time zone.
+    from_iso8601_timestamp(json_extract_scalar(payload, '$.payload.timestamp')) as contact_ts,
     cast(json_extract_scalar(payload, '$.payload.duur_seconden') as integer) as duur_seconden,
     kafka_ts                                                          as ingestion_kafka_ts,
     event_date

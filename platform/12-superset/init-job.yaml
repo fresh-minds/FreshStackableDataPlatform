@@ -127,6 +127,78 @@ data:
         return db_id
 
 
+    # Trino-type-code → Superset-kolom-type. Lowercase keys, fallback = upper().
+    _TRINO_TYPE_MAP = {
+        "date": "DATE", "timestamp": "TIMESTAMP",
+        "varchar": "VARCHAR", "char": "CHAR",
+        "bigint": "BIGINT", "integer": "INTEGER", "smallint": "SMALLINT",
+        "double": "DOUBLE", "real": "REAL", "decimal": "DECIMAL",
+        "boolean": "BOOLEAN",
+    }
+
+
+    def refresh_dataset_columns(s: requests.Session, ds_id: int,
+                                schema: str, table: str) -> None:
+        """Sync kolom-metadata vanuit Trino naar Superset.
+
+        Bij API-creation maakt Superset alleen de temporal-default kolom
+        aan; charts falen daarna met "Columns missing in dataset".
+
+        We omzeilen dat door SQL Lab te gebruiken: een SELECT LIMIT 0
+        leest cursor.description en geeft de complete kolomlijst, ook
+        als OPA-policies DESCRIBE/SHOW COLUMNS filteren.
+
+        Zonder dit moeten gebruikers handmatig per dataset op
+        "Sync columns from source" klikken in de UI.
+        """
+        # 1. Vind de database id voor deze dataset (gold-catalog).
+        rd = s.get(urljoin(SUPERSET_URL, f"/api/v1/dataset/{ds_id}"))
+        if rd.status_code != 200:
+            log(f"  ! GET dataset {ds_id}: {rd.status_code}")
+            return
+        db_id = rd.json()["result"]["database"]["id"]
+
+        # 2. SQL Lab execute: SELECT * LIMIT 0 → cursor.description
+        sql = f"SELECT * FROM {schema}.{table} LIMIT 0"
+        rq = s.post(urljoin(SUPERSET_URL, "/api/v1/sqllab/execute/"),
+                    json={"database_id": db_id, "sql": sql, "schema": schema,
+                          "queryLimit": 1})
+        if rq.status_code != 200:
+            log(f"  ! sqllab {schema}.{table}: {rq.status_code} {rq.text[:200]}")
+            return
+        cols_meta = rq.json().get("columns") or []
+        # SQL Lab returnt [{"name": "...", "type": "..."}, ...]
+        wanted = []
+        for c in cols_meta:
+            tc = c.get("type", "").upper()
+            wanted.append({
+                "column_name": c["name"],
+                "type": _TRINO_TYPE_MAP.get(c.get("type", "").lower(), tc or "VARCHAR"),
+                "is_dttm": tc.startswith(("DATE", "TIMESTAMP")),
+                "filterable": True,
+                "groupby": True,
+            })
+
+        # 3. Pak bestaande columns + merge met wanted (idempotent).
+        existing = {c["column_name"]: c for c in rd.json()["result"].get("columns", [])}
+        for w in wanted:
+            if w["column_name"] not in existing:
+                existing[w["column_name"]] = w
+        # PUT-body verwacht een lijst zonder server-side keys (id, etc).
+        cleaned = []
+        for c in existing.values():
+            cleaned.append({k: c[k] for k in
+                ("column_name", "type", "is_dttm", "filterable", "groupby")
+                if k in c})
+        ru = s.put(urljoin(SUPERSET_URL, f"/api/v1/dataset/{ds_id}"),
+                   json={"columns": cleaned},
+                   params={"override_columns": "true"})
+        if ru.status_code != 200:
+            log(f"  ! sync cols dataset {ds_id}: {ru.status_code} {ru.text[:200]}")
+        else:
+            log(f"  ✓ {len(wanted)} kolommen gesynced ({schema}.{table})")
+
+
     def ensure_dataset(s: requests.Session, db_id: int, schema: str, table: str) -> int:
         # Idempotent
         params = {"q": f"(filters:!((col:table_name,opr:eq,value:{table})))"}
@@ -135,6 +207,7 @@ data:
         if r.json().get("count", 0) > 0:
             ds_id = r.json()["result"][0]["id"]
             log(f"Dataset {schema}.{table} bestaat al (id={ds_id})")
+            refresh_dataset_columns(s, ds_id, schema, table)
             return ds_id
         body = {
             "database": db_id,
@@ -147,6 +220,7 @@ data:
             return -1
         ds_id = r.json()["id"]
         log(f"Dataset {schema}.{table} aangemaakt (id={ds_id})")
+        refresh_dataset_columns(s, ds_id, schema, table)
         return ds_id
 
 
