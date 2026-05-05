@@ -15,12 +15,42 @@ metadata:
   namespace: uwv-platform
 data:
   uwv_security.py: |
+    import jwt as pyjwt
+
     from superset.security import SupersetSecurityManager
 
 
     class UWVSecurityManager(SupersetSecurityManager):
+        # Stale-cookie veilig: FAB's default load_user() crasht met
+        # AttributeError op user.is_active als de pk niet meer bestaat
+        # (na DB-reset). Wij geven None terug → Flask-Login redirect
+        # naar /login.
         def load_user(self, pk):
             user = self.get_user_by_id(int(pk))
             if user is not None and user.is_active:
                 return user
             return None
+
+        # Map Keycloak realm_access.roles → role_keys zodat
+        # AUTH_ROLES_MAPPING de mapping naar Superset-rollen kan doen
+        # (bv. platform_admin → Admin). Keycloak stopt realm-roles in
+        # `realm_access.roles` in het access_token JWT; FAB pakt die
+        # niet automatisch uit, dus doen we het hier.
+        def get_oauth_user_info(self, provider, response):
+            if provider != "keycloak":
+                return super().get_oauth_user_info(provider, response)
+            access_token = response.get("access_token") or ""
+            try:
+                claims = pyjwt.decode(
+                    access_token, options={"verify_signature": False}
+                )
+            except Exception:
+                claims = {}
+            roles = (claims.get("realm_access") or {}).get("roles") or []
+            return {
+                "username": claims.get("preferred_username", ""),
+                "email": claims.get("email", ""),
+                "first_name": claims.get("given_name", ""),
+                "last_name": claims.get("family_name", ""),
+                "role_keys": roles,
+            }

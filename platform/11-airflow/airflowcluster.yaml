@@ -170,6 +170,31 @@ spec:
                     mountPath: /dbt-manifest
             containers:
               - name: airflow
+                # SubPath-mount op /stackable/app/config/webserver_config.py
+                # faalt — Stackable mount daar een projected ConfigMap met
+                # een symlink (..data/webserver_config.py), runc kan geen
+                # file-overlay leggen op een symlink ("not a directory").
+                #
+                # Stackable's container-args doen vóór `airflow webserver`:
+                #   cp -RL /stackable/app/config/webserver_config.py \
+                #          /stackable/airflow/webserver_config.py
+                # Wij overschrijven de DESTINATION via een postStart hook.
+                # Flask-app-init duurt ~5s, deze cp <100ms — race-veilig.
+                # Bij operator-upgrades blijft dit werken zolang de cp-
+                # destination /stackable/airflow/webserver_config.py blijft.
+                lifecycle:
+                  postStart:
+                    exec:
+                      command:
+                        - bash
+                        - -c
+                        - |
+                          for _ in $(seq 1 50); do
+                            [ -f /stackable/airflow/webserver_config.py ] && break
+                            sleep 0.1
+                          done
+                          cp -L /uwv-airflow-config/webserver_config.py \
+                                /stackable/airflow/webserver_config.py
                 volumeMounts:
                   - name: uwv-ca
                     mountPath: /etc/uwv-ca
@@ -189,13 +214,9 @@ spec:
                   - name: airflow-dags
                     mountPath: /stackable/airflow/dags
                     readOnly: true
-                  # Vervangt Stackable's gegenereerde webserver_config.py
-                  # met onze versie (role-mapping + custom security mgr).
-                  # subPath laat /stackable/app/config/log_config.py
-                  # intact — alleen deze ene file wordt overlay-gemount.
+                  # ConfigMap-bron voor de postStart-hook (zie hierboven).
                   - name: webserver-config
-                    mountPath: /stackable/app/config/webserver_config.py
-                    subPath: webserver_config.py
+                    mountPath: /uwv-airflow-config
                     readOnly: true
             volumes:
               - name: uwv-ca

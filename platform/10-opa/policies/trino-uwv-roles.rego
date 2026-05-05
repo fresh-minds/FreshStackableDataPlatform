@@ -42,9 +42,17 @@ resource_catalog := c if {
 	c := input.action.resource.schema.catalogName
 }
 
+# ShowSchemas / catalog-level operations gebruiken `resource.catalog.name`.
+resource_catalog := c if {
+	not input.action.resource.table
+	not input.action.resource.schema
+	c := input.action.resource.catalog.name
+}
+
 resource_catalog := "" if {
 	not input.action.resource.table
 	not input.action.resource.schema
+	not input.action.resource.catalog
 }
 
 resource_schema := s if {

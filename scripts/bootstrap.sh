@@ -202,6 +202,29 @@ kubectl wait --for=condition=Ready pod \
   -l app.kubernetes.io/managed-by=stackablectl \
   -A --timeout=5m || warn "Niet alle Stackable operator-pods zijn (nog) Ready — check 'kubectl get pods -A'"
 
+# uwv-ca-bundle uitbreiden met de Stackable secret-operator self-signed CA.
+# Stackable Trino/Hive/Kafka/etc. krijgen pod-certs uit deze CA voor in-cluster
+# TLS (tls-internal SecretClass). Zonder deze CA in de bundle weigeren clients
+# als Superset (REQUESTS_CA_BUNDLE → /etc/uwv-ca/ca.crt) een SQLAlchemy-
+# verbinding naar https://uwv-trino-coordinator:8443 met
+# 'self-signed certificate in certificate chain'. De originele uwv-platform-
+# issuer CA blijft staan voor extern verkeer (Keycloak via :8443 ingress).
+log "uwv-ca-bundle extenden met Stackable secret-operator CA"
+TMPCA=$(mktemp)
+TMPCAS=$(mktemp)
+kubectl -n uwv-platform get cm uwv-ca-bundle -o jsonpath='{.data.ca\.crt}' > "$TMPCA"
+# Wacht tot secret-provisioner-tls-ca verschijnt (operator initt 'm async).
+for i in {1..30}; do
+  kubectl -n stackable-operators get secret secret-provisioner-tls-ca >/dev/null 2>&1 && break
+  sleep 2
+done
+kubectl -n stackable-operators get secret secret-provisioner-tls-ca \
+  -o jsonpath='{.data.0\.ca\.crt}' | base64 -d > "$TMPCAS"
+cat "$TMPCA" "$TMPCAS" > "$TMPCA.combined"
+kubectl -n uwv-platform create configmap uwv-ca-bundle \
+  --from-file=ca.crt="$TMPCA.combined" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+rm -f "$TMPCA" "$TMPCAS" "$TMPCA.combined"
+
 # 9. OpenSearch single-node (gedeeld voor Vector logs + OpenMetadata search)
 log "Install OpenSearch ${OPENSEARCH_VERSION} (single-node, uwv-meta)"
 kubectl create namespace uwv-meta --dry-run=client -o yaml | kubectl apply -f -

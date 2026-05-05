@@ -83,6 +83,16 @@ is_read_op if input.action.operation == "ShowTables"
 
 is_read_op if input.action.operation == "ShowColumns"
 
+# FilterCatalogs/FilterSchemas/FilterTables — bulk-checks die Trino doet
+# voor SHOW-queries en JDBC-metadata. OPA-batch-rule gebruikt is_read_op.
+is_read_op if input.action.operation == "FilterCatalogs"
+
+is_read_op if input.action.operation == "FilterSchemas"
+
+is_read_op if input.action.operation == "FilterTables"
+
+is_read_op if input.action.operation == "FilterViews"
+
 is_meta_op if input.action.operation == "ExecuteQuery"
 
 is_meta_op if input.action.operation == "AccessCatalog"

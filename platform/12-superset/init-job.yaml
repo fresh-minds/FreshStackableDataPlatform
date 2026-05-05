@@ -83,14 +83,21 @@ data:
         return s
 
 
-    def ensure_trino_database(s: requests.Session) -> int:
-        """Maak een Trino-database connection aan; retourneert id."""
+    def ensure_trino_database(s: requests.Session, name: str, catalog: str) -> int:
+        """Maak een Trino-database connection aan voor één catalog; retourneert id.
+
+        Idempotent op `database_name`. Per catalog 1 connection is de
+        Superset-conventie (Superset's `database` = Trino-catalog).
+        """
         # SQLAlchemy URI — Trino zonder password (smoketest via X-Trino-User).
         # Trino's password-authenticator weigert basic-auth bij niet-direct-TLS,
         # `method=none` werkt wel (dezelfde aanpak als dbt-trino profiles.yml).
-        uri = f"trino://{TRINO_USER}@{TRINO_HOST}:8443/bronze"
+        # Cert-validation: REQUESTS_CA_BUNDLE wijst naar /etc/uwv-ca/ca.crt
+        # die zowel de uwv-platform-issuer als de Stackable secret-operator-CA
+        # bevat (zie scripts/bootstrap.sh sectie 8). Geen verify=False nodig.
+        uri = f"trino://{TRINO_USER}@{TRINO_HOST}:8443/{catalog}"
         body = {
-            "database_name": "uwv-trino",
+            "database_name": name,
             "sqlalchemy_uri": uri,
             "expose_in_sqllab": True,
             "allow_ctas": False,
@@ -98,20 +105,17 @@ data:
             "allow_dml": False,
             "extra": json.dumps({
                 "engine_params": {
-                    "connect_args": {
-                        "http_scheme": "https",
-                        "verify": False,
-                    },
+                    "connect_args": {"http_scheme": "https"},
                 },
             }),
         }
         # Check of hij al bestaat
-        r = s.get(urljoin(SUPERSET_URL, "/api/v1/database/"), params={"q": "(filters:!((col:database_name,opr:eq,value:uwv-trino)))"})
+        r = s.get(urljoin(SUPERSET_URL, "/api/v1/database/"), params={"q": f"(filters:!((col:database_name,opr:eq,value:{name})))"})
         r.raise_for_status()
         result = r.json()
         if result.get("count", 0) > 0:
             db_id = result["result"][0]["id"]
-            log(f"Database 'uwv-trino' bestaat al (id={db_id}); skip create.")
+            log(f"Database '{name}' bestaat al (id={db_id}); skip create.")
             return db_id
 
         r = s.post(urljoin(SUPERSET_URL, "/api/v1/database/"), json=body, timeout=30)
@@ -119,7 +123,7 @@ data:
             log(f"Database POST status={r.status_code} body={r.text[:300]}")
             r.raise_for_status()
         db_id = r.json()["id"]
-        log(f"Database 'uwv-trino' aangemaakt (id={db_id})")
+        log(f"Database '{name}' aangemaakt (id={db_id})")
         return db_id
 
 
@@ -149,9 +153,15 @@ data:
     def main() -> int:
         wait_for_superset()
         s = login()
-        db_id = ensure_trino_database(s)
+        # Per Trino-catalog 1 Superset-database. Voor BI dashboards is gold
+        # de hoofdcatalog (mart-tabellen), maar SQL Lab heeft baat bij
+        # bronze + silver erbij voor exploratie/lineage-checks.
+        bronze_id = ensure_trino_database(s, "uwv-trino-bronze", "bronze")
+        silver_id = ensure_trino_database(s, "uwv-trino-silver", "silver")
+        gold_id = ensure_trino_database(s, "uwv-trino-gold", "gold")
 
-        # Datasets — Trino-syntax: catalog "gold", schema "uc0x_*"
+        # Datasets — gold.uc0x_*.mart_uc0x_* (UC-mart-tabellen voor BI).
+        # Naam komt uit dbt-modellen in dbt/models/marts/uc0x_*.
         targets = [
             ("uc01_wia_funnel", "mart_uc01_wia_funnel_daily"),
             ("uc04_tw_eligibility", "mart_uc04_tw_eligibility"),
@@ -160,12 +170,8 @@ data:
             ("uc06_lastprognose", "mart_uc06_scenario_results"),
             ("uc07_dq_polisadm", "mart_uc07_dq_dagrapport"),
         ]
-        # Note: in Superset's view-of-Trino is `database` = catalog. We hebben hier
-        # de `bronze` catalog opgegeven; voor gold-tabellen moet eigenlijk een
-        # extra database connection worden aangemaakt. Voor de smoke-test volstaat
-        # dat we MINIMAAL één database registratie hebben + datasets-API-call.
         for schema, table in targets:
-            ensure_dataset(s, db_id, schema, table)
+            ensure_dataset(s, gold_id, schema, table)
 
         log("Init voltooid.")
         return 0
