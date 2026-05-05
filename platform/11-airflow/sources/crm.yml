@@ -1,0 +1,40 @@
+# Source registry — CRM klantcontacten.
+schema_version: 1
+
+name: crm
+domain: crm
+
+kafka:
+  topic: uwv.crm.contact
+  partitions: 3
+  key: bsn
+
+bronze:
+  catalog: bronze
+  schema: uwv
+  table: crm_contact
+  partition_by: event_date
+
+silver:
+  catalog: silver
+  schema: crm
+  staging_model: stg_crm_contact
+  dbt_tag: crm
+
+governance:
+  legal_basis: AVG_art_6_1e
+  doelbinding: [klantcontact, klanttevredenheid]
+  bio_classificatie: vertrouwelijk
+  bewaartermijn_jaren: 2
+  eigenaar: divisie_klantcontact
+  pii_kolommen: [bsn, contact_inhoud]
+  risk_tier: midden
+
+sla:
+  mode: streaming
+  expected_event_freq: continuous
+  max_acceptable_lag_seconds: 60
+  alert_threshold_seconds: 300
+
+used_by_use_cases: [uc05]
+anchor: false

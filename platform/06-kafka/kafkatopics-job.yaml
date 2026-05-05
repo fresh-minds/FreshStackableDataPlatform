@@ -55,7 +55,7 @@ spec:
           command: ["bash", "-euo", "pipefail", "-c"]
           args:
             - |
-              BOOTSTRAP="uwv-kafka-bootstrap.uwv-platform.svc.cluster.local:9092"
+              BOOTSTRAP="uwv-kafka-broker-default-bootstrap.uwv-platform.svc.cluster.local:9092"
               echo "Wachten op Kafka-bootstrap..."
               for i in $(seq 1 60); do
                 if kafka-broker-api-versions.sh --bootstrap-server "$BOOTSTRAP" >/dev/null 2>&1; then

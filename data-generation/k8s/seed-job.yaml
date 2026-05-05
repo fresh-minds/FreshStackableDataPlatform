@@ -37,14 +37,14 @@ spec:
               python load_to_kafka.py \
                 --count "${COUNT:-10000}" \
                 --seed "${SEED:-2026}" \
-                --bootstrap "${KAFKA_BOOTSTRAP:-uwv-kafka-bootstrap.uwv-platform.svc.cluster.local:9092}"
+                --bootstrap "${KAFKA_BOOTSTRAP:-uwv-kafka-broker-default-bootstrap.uwv-platform.svc.cluster.local:9092}"
           env:
             - name: COUNT
               value: "10000"
             - name: SEED
               value: "2026"
             - name: KAFKA_BOOTSTRAP
-              value: "uwv-kafka-bootstrap.uwv-platform.svc.cluster.local:9092"
+              value: "uwv-kafka-broker-default-bootstrap.uwv-platform.svc.cluster.local:9092"
             - name: PYTHONPATH
               value: "/app"
           resources:

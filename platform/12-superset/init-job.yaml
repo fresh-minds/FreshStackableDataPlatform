@@ -97,7 +97,16 @@ data:
             "allow_ctas": False,
             "allow_cvas": False,
             "allow_dml": False,
-            "extra": json.dumps({"engine_params": {"connect_args": {"http_scheme": "https"}}}),
+            "extra": json.dumps({
+                "engine_params": {
+                    "connect_args": {
+                        "http_scheme": "https",
+                        # Dev: self-signed CA — disable cert verify in connect_args.
+                        # Productie: zet verify=true en mount uwv-ca-bundle als CA.
+                        "verify": False,
+                    },
+                },
+            }),
         }
         # Check of hij al bestaat
         r = s.get(urljoin(SUPERSET_URL, "/api/v1/database/"), params={"q": "(filters:!((col:database_name,opr:eq,value:uwv-trino)))"})
@@ -198,12 +207,15 @@ spec:
             - name: SUPERSET_URL
               value: "http://uwv-superset-node:8088"
             - name: ADMIN_USER
-              value: "uwvplatform"
+              valueFrom:
+                secretKeyRef:
+                  name: superset-postgres-credentials
+                  key: adminUser.username
             - name: ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: superset-postgres-credentials
-                  key: adminPassword
+                  key: adminUser.password
             - name: TRINO_HOST
               value: "uwv-trino-coordinator.uwv-platform.svc.cluster.local"
             - name: TRINO_USER

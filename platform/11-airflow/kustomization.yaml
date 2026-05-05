@@ -2,21 +2,63 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: uwv-platform
 
+# Architectuur: docs/adr/0007-airflow-pipeline-architecture.md.
+#
+# DAGs worden via 3 ConfigMaps gemount:
+#   - airflow-dags     → /stackable/airflow/dags/  (DAG-aanroepers)
+#   - airflow-include  → /opt/uwv/airflow/include/ (factories + helpers, op PYTHONPATH)
+#   - airflow-sources  → /opt/uwv/airflow/sources/ (YAML-registry)
+#
+# Productie: vervang door Stackable's `dagsGitSync` met een interne git-mirror.
+
 resources:
   - airflowcluster.yaml
   - ingress.yaml
+  - jobs/dbt-manifest-job.yaml
 
-# DAGs worden via een ConfigMap gemount op /stackable/airflow/dags.
-# Productie zou Stackable's `dagsGitSync` gebruiken.
 configMapGenerator:
+  # 1. DAG-aanroeperfiles. Houd dit minimaal — geen logica, alleen factory-calls.
+  #    .airflowignore voorkomt recursieve walk over k8s-ConfigMap-symlinks (..data).
   - name: airflow-dags
     files:
+      - .airflowignore=dags/.airflowignore
       - dags/__init__.py
-      - dags/dbt_run_per_domain.py
+      - dags/ingest_bronze_watch.py
+      - dags/transform_silver_per_domain.py
+      - dags/transform_gold_per_usecase.py
+      - dags/governance_om_ingest.py
+      - dags/bewaartermijn_enforcer.py
       - dags/lakehouse_maintenance.py
-      - dags/synthetic_data_load.py
-      - dags/om_ingest_trino.py
-      - dags/om_ingest_dbt.py
+      # synthetic_data_load.py uitgesloten — gebruikt verouderde
+      # KubernetesJobOperator signature (job_template is geen geldige arg meer).
+      # Voor seed: gebruik `make seed` of `kubectl apply -f data-generation/k8s/`.
+
+  # 2. Factories + helpers. Op PYTHONPATH zodat `from silver_factory import ...`
+  #    werkt vanuit de DAG-aanroepers.
+  - name: airflow-include
+    files:
+      - include/__init__.py
+      - include/sources_loader.py
+      - include/datasets.py
+      - include/trino_helpers.py
+      - include/k8s_helpers.py
+      - include/bronze_factory.py
+      - include/silver_factory.py
+      - include/gold_factory.py
+      - include/governance_factory.py
+
+  # 3. YAML source-registry — single source of truth voor brondefinities.
+  #    Gelezen via env UWV_SOURCES_DIR.
+  - name: airflow-sources
+    files:
+      - sources/persoon.yml
+      - sources/polisadm.yml
+      - sources/ww.yml
+      - sources/wia.yml
+      - sources/wajong.yml
+      - sources/zw.yml
+      - sources/crm.yml
+      - sources/fez.yml
 
 generatorOptions:
   disableNameSuffixHash: true

@@ -1,0 +1,40 @@
+# Source registry — Wajong-dossiers.
+schema_version: 1
+
+name: wajong
+domain: wajong
+
+kafka:
+  topic: uwv.wajong.dossier
+  partitions: 3
+  key: bsn
+
+bronze:
+  catalog: bronze
+  schema: uwv
+  table: wajong_dossier
+  partition_by: event_date
+
+silver:
+  catalog: silver
+  schema: wajong
+  staging_model: stg_wajong_dossier
+  dbt_tag: wajong
+
+governance:
+  legal_basis: Wajong_art_2
+  doelbinding: [uitkering, arbeidsondersteuning]
+  bio_classificatie: vertrouwelijk
+  bewaartermijn_jaren: 10
+  eigenaar: divisie_ag
+  pii_kolommen: [bsn, geboortedatum, woonadres]
+  risk_tier: hoog
+
+sla:
+  mode: streaming
+  expected_event_freq: continuous
+  max_acceptable_lag_seconds: 300
+  alert_threshold_seconds: 900
+
+used_by_use_cases: [uc02]
+anchor: false

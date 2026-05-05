@@ -1,0 +1,42 @@
+# Source registry — FEZ uitkeringslast (geaggregeerd).
+#
+# Afwijkend: geen BSN, mode=batch (maandelijks).
+schema_version: 1
+
+name: fez
+domain: fez
+
+kafka:
+  topic: uwv.fez.uitkeringslast
+  partitions: 1
+  key: jaar_maand_wet_regio   # composite, niet per persoon
+
+bronze:
+  catalog: bronze
+  schema: uwv
+  table: fez_uitkeringslast
+  partition_by: event_date
+
+silver:
+  catalog: silver
+  schema: fez
+  staging_model: stg_fez_uitkeringslast
+  dbt_tag: fez
+
+governance:
+  legal_basis: Wet_SUWI_art_5
+  doelbinding: [verantwoording, sturingsinfo, prognose]
+  bio_classificatie: intern
+  bewaartermijn_jaren: 10
+  eigenaar: divisie_fez
+  pii_kolommen: []
+  risk_tier: laag
+
+sla:
+  mode: batch
+  expected_event_freq: monthly
+  max_acceptable_lag_seconds: 86400      # 1 dag
+  alert_threshold_seconds: 259200        # 3 dagen
+
+used_by_use_cases: [uc06]
+anchor: false

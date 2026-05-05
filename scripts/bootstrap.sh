@@ -138,10 +138,16 @@ kubectl -n uwv-platform get secret minio-tls-internal -o jsonpath='{.data.ca\.cr
 kubectl -n uwv-platform create secret generic minio-tls-internal-fixed \
   --from-file=public.crt="$TMPCRT" --from-file=private.key="$TMPKEY" --from-file=ca.crt="$TMPCA" \
   --dry-run=client -o yaml | kubectl apply -f -
-# CA-bundle voor S3Connection (Stackable Trino server-verify) + uwv-ca-bundle
-# voor pods die OAuth doen via keycloak.uwv-platform.local:8443 (Superset/Airflow).
+# CA-bundle voor S3Connection (Stackable Trino + Spark server-verify).
+# tls.crt + tls.key zijn ook nodig: Stackable secret-operator levert deze
+# in format `tls-pkcs12` (Spark eist PKCS12-truststore), wat een complete
+# keypair in de bron-secret vereist — anders faalt PVC-mount op
+# 'missing required file tls.crt'.
 kubectl -n uwv-platform create secret generic minio-ca-bundle \
-  --from-file=ca.crt="$TMPCA" --dry-run=client -o yaml | \
+  --from-file=ca.crt="$TMPCA" \
+  --from-file=tls.crt="$TMPCRT" \
+  --from-file=tls.key="$TMPKEY" \
+  --dry-run=client -o yaml | \
   sed 's|^metadata:|metadata:\n  labels:\n    secrets.stackable.tech/class: minio-ca|' | \
   kubectl apply -f -
 kubectl -n uwv-platform create configmap uwv-ca-bundle \

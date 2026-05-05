@@ -1,0 +1,3 @@
+# Skip Kubernetes ConfigMap atomic-update artefacten
+# (..2026_..., ..data) — Airflow loopt anders in een symlink-cycle.
+\.\..*

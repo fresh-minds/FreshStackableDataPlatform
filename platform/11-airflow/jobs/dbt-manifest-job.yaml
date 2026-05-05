@@ -1,0 +1,151 @@
+# dbt-manifest pre-render Job
+#
+# Cosmos `LoadMode.DBT_MANIFEST` heeft een vóór-gerenderd `manifest.json`
+# nodig om DAGs te parsen zonder Trino-connectie. Deze Job runt `dbt parse`
+# en zet de output in ConfigMap `dbt-manifest`. De Airflow scheduler mount
+# die ConfigMap onder /opt/uwv/dbt/manifest.json.
+#
+# Trigger:
+#   - Eenmalig na bootstrap (handmatig: `kubectl apply -f`)
+#   - Bij elke dbt-model-wijziging:
+#       make airflow-manifest    (target voegen we nog toe)
+#
+# Productie: in CI als post-merge-hook op main.
+#
+# SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dbt-manifest-renderer
+  namespace: uwv-platform
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dbt-manifest-cm-writer
+  namespace: uwv-platform
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dbt-manifest-cm-writer
+  namespace: uwv-platform
+subjects:
+  - kind: ServiceAccount
+    name: dbt-manifest-renderer
+    namespace: uwv-platform
+roleRef:
+  kind: Role
+  name: dbt-manifest-cm-writer
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dbt-manifest-render
+  namespace: uwv-platform
+  labels:
+    uwv.nl/component: airflow-cosmos
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        uwv.nl/component: airflow-cosmos
+    spec:
+      restartPolicy: Never
+      serviceAccountName: dbt-manifest-renderer
+      initContainers:
+        - name: git-sync
+          image: registry.k8s.io/git-sync/git-sync:v4.2.4
+          env:
+            - name: GITSYNC_REPO
+              valueFrom:
+                configMapKeyRef:
+                  name: uwv-repo-url
+                  key: url
+                  optional: true
+            - name: GITSYNC_REF
+              value: main
+            - name: GITSYNC_ROOT
+              value: /workspace
+            - name: GITSYNC_DEPTH
+              value: "1"
+            - name: GITSYNC_ONE_TIME
+              value: "true"
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+        - name: dbt-parse
+          image: ghcr.io/dbt-labs/dbt-trino:1.9.0
+          workingDir: /workspace/repo/dbt
+          command:
+            - bash
+            - -euo
+            - pipefail
+            - -c
+            - |
+              cp profiles.yml.template profiles.yml
+              dbt deps
+              # Parse-only: rendert manifest.json zonder DB-toegang.
+              # Verlangt dat profiles.yml + packages aanwezig zijn.
+              dbt parse --target dev || true
+              cp target/manifest.json /artifacts/manifest.json
+              ls -lh /artifacts/manifest.json
+          env:
+            - name: TABLE_FORMAT
+              value: delta
+            - name: DBT_PROFILES_DIR
+              value: /workspace/repo/dbt
+            # Trino-conn-vars zijn nodig voor profile-render maar niet voor parse.
+            # Geef placeholders zodat dbt parse niet faalt op missing var.
+            - name: TRINO_HOST
+              value: uwv-trino-coordinator.uwv-platform.svc.cluster.local
+            - name: TRINO_PORT
+              value: "8443"
+            - name: TRINO_USER
+              value: smoketest
+            - name: TRINO_PASSWORD
+              value: placeholder-not-used-in-parse
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: artifacts
+              mountPath: /artifacts
+      containers:
+        - name: cm-writer
+          image: bitnami/kubectl:1.29.6
+          command:
+            - bash
+            - -euo
+            - pipefail
+            - -c
+            - |
+              if [[ ! -s /artifacts/manifest.json ]]; then
+                echo "manifest.json niet aangemaakt — dbt parse faalde?"
+                exit 1
+              fi
+              SIZE=$(stat -c %s /artifacts/manifest.json)
+              echo "manifest.json bytes=$SIZE"
+              if [[ $SIZE -gt 950000 ]]; then
+                echo "WAARSCHUWING: manifest > 950KB — ConfigMap-limiet (1MB)"
+              fi
+              kubectl -n uwv-platform create configmap dbt-manifest \
+                --from-file=manifest.json=/artifacts/manifest.json \
+                --dry-run=client -o yaml | kubectl apply -f -
+              echo "ConfigMap dbt-manifest geüpdatet."
+          volumeMounts:
+            - name: artifacts
+              mountPath: /artifacts
+              readOnly: true
+      volumes:
+        - name: workspace
+          emptyDir: {}
+        - name: artifacts
+          emptyDir: {}

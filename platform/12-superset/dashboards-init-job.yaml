@@ -207,12 +207,15 @@ spec:
             - name: SUPERSET_URL
               value: "http://uwv-superset-node:8088"
             - name: ADMIN_USER
-              value: "uwvplatform"
+              valueFrom:
+                secretKeyRef:
+                  name: superset-postgres-credentials
+                  key: adminUser.username
             - name: ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: superset-postgres-credentials
-                  key: adminPassword
+                  key: adminUser.password
             - name: WIA_DATASET
               value: "mart_uc01_wia_funnel_daily"
           volumeMounts:

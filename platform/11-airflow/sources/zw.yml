@@ -1,0 +1,40 @@
+# Source registry — Ziektewet-meldingen.
+schema_version: 1
+
+name: zw
+domain: zw
+
+kafka:
+  topic: uwv.zw.melding
+  partitions: 3
+  key: bsn
+
+bronze:
+  catalog: bronze
+  schema: uwv
+  table: zw_melding
+  partition_by: event_date
+
+silver:
+  catalog: silver
+  schema: zw
+  staging_model: stg_zw_melding
+  dbt_tag: zw
+
+governance:
+  legal_basis: ZW_art_38
+  doelbinding: [uitkering, reintegratie]
+  bio_classificatie: vertrouwelijk
+  bewaartermijn_jaren: 7
+  eigenaar: divisie_ag
+  pii_kolommen: [bsn, eerste_ziektedag]
+  risk_tier: midden
+
+sla:
+  mode: streaming
+  expected_event_freq: continuous
+  max_acceptable_lag_seconds: 180
+  alert_threshold_seconds: 600
+
+used_by_use_cases: [uc05, uc08]
+anchor: false
