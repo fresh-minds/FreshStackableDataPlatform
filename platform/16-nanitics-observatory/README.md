@@ -11,14 +11,17 @@ glue layer: it serves the Observatory router under `/api/observatory/`
 and exposes four agent-type endpoints so each Observatory view (ReAct,
 ReWOO plan, Reflexion retry, LATS MCTS tree) has traces to render.
 
-| Endpoint | Agent | What lights up in Observatory |
+| Endpoint | Purpose | Notes |
 |---|---|---|
-| `POST /run/react` | `ReActAgent` | Standard span tree, LLM calls, tool calls |
-| `POST /run/rewoo` | `ReWOOAgent` | Plan view: `planning.plan.created`, `planning.step.updated`, parallel-step layout |
-| `POST /run/reflexion` | `ReflexionAgent` | Evaluation panel: `evaluation.result` per attempt, reflection/retry loop |
-| `POST /run/lats` | `LATSAgent` | MCTS tree view: `tree_search.node.*`, `mcts.iteration`, `mcts.backpropagation`, `tree_search.complete` |
-| `POST /run` | (legacy alias for `/run/react`) | Same as `/run/react` |
-| `GET /agents` | — | JSON index of the four agents and their default tasks |
+| `GET /chat` | Browser chat UI — pick an agent, type a task, watch events stream | Single-page; no build step. Talks to the streaming endpoint and the existing Observatory SSE |
+| `POST /run/<slug>` | Run an agent **synchronously** — blocks until done | Use for curl / scripts |
+| `POST /run/<slug>/stream` | Kick off an agent **asynchronously** — returns `{run_id}` in <50 ms | Pair with `GET /api/observatory/runs/<id>/stream` for live events |
+| `POST /run` | Legacy alias for `POST /run/react` | |
+| `GET /agents` | JSON index: slug, label, description, default task | Used by the chat UI to populate the agent picker |
+| `GET /health` | Liveness probe | |
+| `/api/observatory/*` | Embedded trace viewer | SSE stream lives at `/api/observatory/runs/<id>/stream` |
+
+The four agents (`react`, `rewoo`, `reflexion`, `lats`) each emit a distinctive event signature that drives the Observatory's agent-specific views — see [Observatory views](#observatory-views) below.
 
 > **Status: dev-only.** Per the SDK docs, Observatory v0.1.0 is not a
 > production observability platform — no built-in auth, no
@@ -155,12 +158,20 @@ kubectl apply -k .
 kubectl -n uwv-platform get pods -l app.kubernetes.io/component=nanitics-observatory -w
 ```
 
-Then open the UI:
+Two browser entry points:
 
-- <https://nanitics.uwv-platform.local:8443/api/observatory/>
+- <https://nanitics.uwv-platform.local:8443/chat> — chat UI to talk to agents
+- <https://nanitics.uwv-platform.local:8443/api/observatory/> — trace viewer
+
+The chat UI lets you pick an agent, type a task, and watch each tool
+call / LLM call / evaluation event stream in live as the agent works.
+Each run is also captured in the Observatory — there's a "open in
+Observatory" link on every result.
+
+## Observatory views
 
 The first time you'll see an empty run list. Trigger one run per agent
-type so every Observatory view has traces to render:
+type from the chat UI, or from curl:
 
 ```sh
 curl -k -X POST https://nanitics.uwv-platform.local:8443/run/react \
