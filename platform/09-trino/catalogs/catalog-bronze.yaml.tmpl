@@ -18,5 +18,12 @@ metadata:
   annotations:
     uwv.nl/description: "Bronze layer — raw, immutable. Includes PII; OPA enforces strict access (TODO fase 9)."
 spec:
+  configOverrides:
+    # CSV-batch flow (csv_to_bronze.py) schrijft Delta via deltalake-rs en
+    # registreert de tabel daarna in HMS via `CALL bronze.system.register_table`.
+    # Default disabled per Trino-security-best-practice; bewust enabled voor
+    # bronze omdat dit de manier is waarop externe schrijvers (niet-Trino,
+    # niet-Spark) zichzelf kenbaar maken aan de catalog.
+    delta.register-table-procedure.enabled: "true"
   connector:
 __TABLE_FORMAT_CONNECTOR_BLOCK__

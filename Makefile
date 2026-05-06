@@ -59,6 +59,13 @@ opa-test: ## Run opa fmt + opa test op opa-policies-src/
 opa-bundle: opa-test ## Build OPA-bundle: sync rego + data naar platform/10-opa/policies/
 	bash scripts/build-opa-bundle.sh
 
+.PHONY: dbt-image
+dbt-image: ## Build uwv/dbt-trino:1.9.0-uwv (project + dbt_packages baked in) en importeer in k3d
+	@cp infrastructure/airflow/dbt/profiles.yml dbt/profiles.yml
+	docker build -t uwv/dbt-trino:1.9.0-uwv -f infrastructure/airflow/dbt/Dockerfile dbt
+	k3d image import uwv/dbt-trino:1.9.0-uwv -c $(CLUSTER_NAME)
+	@echo "Image geïmporteerd. Cosmos KPO sub-pods pakken 'm bij volgende dbt-task run."
+
 .PHONY: seed
 seed: ## Genereer en laad synthetische data (10k cliënten)
 	bash scripts/seed.sh
@@ -101,6 +108,13 @@ lint-python: ## ruff + mypy over data-generation/ en spark-jobs/
 .PHONY: dbt-parse
 dbt-parse: ## dbt parse + compile (geen warehouse-toegang vereist)
 	cd dbt && dbt deps && dbt parse
+
+.PHONY: dbt-docs
+dbt-docs: ## dbt docs generate --static, en sync naar portal/public/dbt-docs/
+	cd dbt && dbt deps && dbt docs generate --static
+	@mkdir -p portal/public/dbt-docs
+	@cp dbt/target/static_index.html portal/public/dbt-docs/index.html
+	@echo "[dbt-docs] portal/public/dbt-docs/index.html bijgewerkt — open in dev via http://localhost:4321/dbt-docs/"
 
 ##@ Maintenance
 

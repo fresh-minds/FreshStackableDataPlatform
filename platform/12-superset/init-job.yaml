@@ -284,6 +284,8 @@ data:
             ("uc06_lastprognose", "mart_uc06_uitkeringslast_5y"),
             ("uc06_lastprognose", "mart_uc06_scenario_results"),
             ("uc07_dq_polisadm", "mart_uc07_dq_dagrapport"),
+            ("dq_overview", "mart_dq_overview"),
+            ("dq_overview", "mart_dq_violations"),
         ]
         for schema, table in gold_targets:
             ensure_dataset(s, gold_id, schema, table)
@@ -390,6 +392,23 @@ data:
                 ("dienstverbanden_lopend", "BIGINT", False),
                 ("loon_jaar_lopend", "BIGINT", False),
                 ("huidige_status", "VARCHAR", False),
+            ],
+            "mart_dq_overview": [
+                ("uc_code", "VARCHAR", False), ("uc_name", "VARCHAR", False),
+                ("n_records", "BIGINT", False), ("n_checks", "BIGINT", False),
+                ("n_passing_checks", "BIGINT", False),
+                ("n_failing_checks", "BIGINT", False),
+                ("n_violations", "BIGINT", False),
+                ("n_violations_critical", "BIGINT", False),
+                ("n_violations_high", "BIGINT", False),
+                ("n_violations_medium", "BIGINT", False),
+                ("dq_score_pct", "DOUBLE", False),
+                ("dq_status", "VARCHAR", False),
+            ],
+            "mart_dq_violations": [
+                ("uc_code", "VARCHAR", False), ("uc_name", "VARCHAR", False),
+                ("check_name", "VARCHAR", False), ("severity", "VARCHAR", False),
+                ("n_violations", "BIGINT", False), ("n_records", "BIGINT", False),
             ],
         }
 

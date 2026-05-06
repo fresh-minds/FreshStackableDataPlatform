@@ -30,6 +30,7 @@ MINIO_VERSION="${MINIO_VERSION:-5.3.0}"
 KEYCLOAK_VERSION="${KEYCLOAK_VERSION:-22.2.6}"
 PROM_VERSION="${PROM_VERSION:-65.5.1}"
 OPENSEARCH_VERSION="${OPENSEARCH_VERSION:-2.27.1}"
+OPENSEARCH_DASHBOARDS_VERSION="${OPENSEARCH_DASHBOARDS_VERSION:-2.26.0}"
 OPENMETADATA_VERSION="${OPENMETADATA_VERSION:-1.5.0}"
 VECTOR_VERSION="${VECTOR_VERSION:-0.36.1}"
 
@@ -235,6 +236,15 @@ helm upgrade --install opensearch-uwv opensearch/opensearch \
   $(chart_override_args opensearch) \
   --atomic --wait --timeout 10m
 
+# 9a. OpenSearch Dashboards — UI voor logs (uwv-logs-*) en OM-search indices.
+log "Install OpenSearch Dashboards ${OPENSEARCH_DASHBOARDS_VERSION} (uwv-meta)"
+helm upgrade --install opensearch-dashboards-uwv opensearch/opensearch-dashboards \
+  --namespace uwv-meta \
+  --version "${OPENSEARCH_DASHBOARDS_VERSION}" \
+  --values "${ROOT}/infrastructure/helm/opensearch-dashboards/values.yaml" \
+  $(chart_override_args opensearch-dashboards) \
+  --atomic --wait --timeout 10m
+
 # 10. OpenMetadata
 # Voor de OIDC-koppeling met Keycloak doet de OM-pod server-side een
 # token-exchange tegen https://keycloak.uwv-platform.local:8443 (zelf-signed
@@ -279,6 +289,48 @@ kubectl -n uwv-meta patch secret openmetadata-authentication-secret \
 kubectl -n uwv-meta delete pod -l app.kubernetes.io/name=openmetadata >/dev/null 2>&1 || true
 kubectl -n uwv-meta rollout status deploy/openmetadata --timeout=10m >/dev/null \
   || warn "OpenMetadata pod niet ready binnen 10m — check 'kubectl -n uwv-meta logs ...'"
+
+# Genereer een admin-JWT op basis van de ingestion-bot in OM's Postgres-DB.
+# OM 1.5 met `provider=custom-oidc` heeft geen basic-auth, dus `users/login`
+# werkt niet. De `ingestion-bot` user heeft een fernet-encrypted JWT in
+# user_entity; we decrypten met de fernet-key uit de OM Secret en patchen
+# zowel de uwv-meta `openmetadata-admin` Secret (init-Job) als een kopie
+# in uwv-platform (governance_om_ingest DAG draait daar).
+log "Genereer admin-JWT (decrypt ingestion-bot fernet-token) + sync naar uwv-platform"
+FERNET=$(kubectl -n uwv-meta get secret openmetadata-fernetkey-secret -o jsonpath='{.data}' \
+  | python3 -c 'import json,sys,base64;d=json.load(sys.stdin);print(next(iter(base64.b64decode(v).decode() for v in d.values())))')
+ENCRYPTED=$(kubectl -n uwv-data exec postgres-postgresql-0 -c postgresql -- \
+  env PGPASSWORD="$(kubectl -n uwv-data get secret postgres-postgresql -o jsonpath='{.data.password}' | base64 -d)" \
+  psql -U postgres -d openmetadata -t -A -c \
+  "SELECT json->'authenticationMechanism'->'config'->>'JWTToken' FROM user_entity WHERE name='ingestion-bot' LIMIT 1;" \
+  2>/dev/null | sed 's/^fernet://')
+JWT=$(python3 -c "
+from cryptography.fernet import MultiFernet, Fernet
+mf = MultiFernet([Fernet(k.encode()) for k in '${FERNET}'.split(',')])
+print(mf.decrypt(b'${ENCRYPTED}').decode())
+" 2>/dev/null)
+if [[ -n "${JWT:-}" ]]; then
+  JWT_B64=$(printf '%s' "$JWT" | base64 | tr -d '\n')
+  kubectl -n uwv-meta patch secret openmetadata-admin --type='json' \
+    -p="[{\"op\":\"replace\",\"path\":\"/data/jwtToken\",\"value\":\"${JWT_B64}\"}]" >/dev/null
+  # Kopie naar uwv-platform — KPO-tasks (governance_om_ingest) draaien daar
+  # en lezen `OM_JWT_TOKEN` via secretKeyRef.
+  kubectl -n uwv-platform create secret generic openmetadata-admin \
+    --from-literal=jwtToken="$JWT" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  ok "admin-JWT geseed in uwv-meta + uwv-platform"
+else
+  warn "JWT-decrypt faalde — 'kubectl apply -k platform/13-openmetadata-config/' werkt nu niet"
+fi
+
+# Kopie van openmetadata-uwv-config ConfigMap naar uwv-platform — de DAG
+# `governance_om_ingest` draait KPO-pods in uwv-platform en mountt deze
+# ConfigMap op /config voor metadata-ingest workflows.
+log "Kopieer openmetadata-uwv-config ConfigMap naar uwv-platform (voor om-ingest DAG)"
+kubectl -n uwv-meta get configmap openmetadata-uwv-config -o yaml 2>/dev/null \
+  | sed -e 's/namespace: uwv-meta/namespace: uwv-platform/' \
+        -e '/resourceVersion:/d' -e '/uid:/d' -e '/creationTimestamp:/d' \
+  | kubectl apply -f - >/dev/null \
+  || warn "ConfigMap kopie faalde — pas eerst 'kubectl apply -k platform/13-openmetadata-config/' toe"
 
 # 11. Vector (logs collector → OpenSearch)
 log "Install Vector ${VECTOR_VERSION} (Agent-mode op alle nodes)"

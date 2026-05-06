@@ -8,6 +8,8 @@ from __future__ import annotations
 from kubernetes.client.models import (
     V1Container,
     V1EnvVar,
+    V1EnvVarSource,
+    V1SecretKeySelector,
     V1Volume,
     V1VolumeMount,
     V1ConfigMapVolumeSource,
@@ -23,6 +25,13 @@ WORKSPACE_REPO = "/workspace/repo"
 # CA-bundle voor uitgaande TLS-calls (Trino, Keycloak, OM).
 CA_VOLUME = "uwv-ca"
 CA_MOUNT = "/etc/uwv-ca"
+
+# OpenMetadata service-/workflow-YAMLs (configMapGenerator in
+# platform/13-openmetadata-config/kustomization.yaml). Verwacht in dezelfde
+# namespace waar de KPO draait — bootstrap kopieert hem naar uwv-platform.
+OM_CONFIG_VOLUME = "om-config"
+OM_CONFIG_MOUNT = "/config"
+OM_CONFIG_CM_NAME = "openmetadata-uwv-config"
 
 
 def workspace_volume() -> V1Volume:
@@ -42,6 +51,30 @@ def ca_volume() -> V1Volume:
 
 def ca_mount() -> V1VolumeMount:
     return V1VolumeMount(name=CA_VOLUME, mount_path=CA_MOUNT, read_only=True)
+
+
+def om_config_volume() -> V1Volume:
+    """ConfigMap met alle OpenMetadata service-/workflow-YAMLs."""
+    return V1Volume(
+        name=OM_CONFIG_VOLUME,
+        config_map=V1ConfigMapVolumeSource(name=OM_CONFIG_CM_NAME),
+    )
+
+
+def om_config_mount() -> V1VolumeMount:
+    return V1VolumeMount(
+        name=OM_CONFIG_VOLUME, mount_path=OM_CONFIG_MOUNT, read_only=True
+    )
+
+
+def secret_env(name: str, secret: str, key: str) -> V1EnvVar:
+    """Pod env-var die uit een Kubernetes Secret leest (zelfde namespace)."""
+    return V1EnvVar(
+        name=name,
+        value_from=V1EnvVarSource(
+            secret_key_ref=V1SecretKeySelector(name=secret, key=key)
+        ),
+    )
 
 
 def git_sync_init(repo_url: str, ref: str = "main") -> V1Container:

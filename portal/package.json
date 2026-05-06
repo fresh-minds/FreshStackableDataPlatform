@@ -5,8 +5,8 @@
   "description": "Rol-aware launchpad + architectuurkaart voor het UWV Referentie Data- en Analyseplatform.",
   "type": "module",
   "scripts": {
-    "prebuild": "node scripts/sync-data.mjs",
-    "dev": "node scripts/sync-data.mjs && astro dev",
+    "prebuild": "node scripts/sync-data.mjs && node scripts/sync-dbt-docs.mjs",
+    "dev": "node scripts/sync-data.mjs && node scripts/sync-dbt-docs.mjs && astro dev",
     "start": "astro dev",
     "build": "astro build",
     "preview": "astro preview",

@@ -98,6 +98,17 @@ for c in superset airflow nifi openmetadata minio; do
   done
 done
 
+# 2b. Lange access-tokens + geen-refresh voor de openmetadata client.
+# Pac4j (OM 1.5) probeert id_token te refreshen; bij Keycloak-pod-restart
+# zijn in-memory sessies weg en faalt de refresh met 'Session not active'.
+# Met use.refresh.tokens=false gaat OM bij token-expiry naar Keycloak's
+# SSO-cookie ipv refresh-token, en met access.token.lifespan=86400 hoeft
+# dat ook niet binnen een werkdag.
+OM_CID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/clients?clientId=openmetadata\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
+if [ -n \"\$OM_CID\" ]; then
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/clients/\$OM_CID\" -d '{\"attributes\":{\"access.token.lifespan\":\"86400\",\"client.session.max.lifespan\":\"86400\",\"client.session.idle.timeout\":\"28800\",\"use.refresh.tokens\":\"false\"}}' -o /dev/null
+fi
+
 # 3. Unmanaged attribute policy enablen — Keycloak 24+ heeft Declarative
 #    User Profile met unmanaged-attributes standaard UIT. Zonder deze
 #    setting wordt de \\\"policy\\\" custom attribute silently genegeerd

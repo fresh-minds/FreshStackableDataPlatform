@@ -18,6 +18,12 @@ kubectl -n "$NS" rollout status statefulset/opensearch-uwv-master --timeout=10m 
   || fail "OpenSearch (statefulset opensearch-uwv-master) niet Ready"
 pass "OpenSearch Ready"
 
+# 1a. OpenSearch Dashboards Ready
+log "OpenSearch Dashboards Ready"
+kubectl -n "$NS" rollout status deploy/opensearch-dashboards-uwv --timeout=10m >/dev/null 2>&1 \
+  || fail "OpenSearch Dashboards (deploy/opensearch-dashboards-uwv) niet Ready"
+pass "OpenSearch Dashboards Ready"
+
 # 2. OpenMetadata Ready
 log "OpenMetadata server Ready"
 kubectl -n "$NS" rollout status deploy/openmetadata --timeout=10m >/dev/null 2>&1 \

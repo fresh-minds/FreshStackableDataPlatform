@@ -55,6 +55,8 @@ models:
         +schema: crm
       fez:
         +schema: fez
+      klantcontact:
+        +schema: klantcontact
 
     intermediate:
       +database: silver
@@ -76,6 +78,10 @@ models:
         +schema: uc07_dq_polisadm
       uc09_reint_effect:
         +schema: uc09_reint_effect
+      uc_klant_tev:
+        +schema: uc_klant_tev
+      dq_overview:
+        +schema: dq_overview
 
 # ----------------------------------------------------------------------
 # Seeds

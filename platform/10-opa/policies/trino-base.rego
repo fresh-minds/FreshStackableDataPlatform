@@ -37,9 +37,7 @@ authenticated if {
 	input.context.identity.user != ""
 }
 
-# UWV-rollen uit Keycloak: groups-claim, met fallback voor static-users.
-# Eén complete rule met conditional — anders krijgen we eval_conflict_error
-# als beide rules tegelijk matchen.
+# UWV-rollen uit Keycloak: groups-claim of (fallback) leeg.
 user_roles := groups if {
 	groups := input.context.identity.groups
 	count(groups) > 0
@@ -52,7 +50,6 @@ user_roles := ["smoketest"] if {
 	count(object.get(input.context.identity, "groups", [])) == 0
 }
 
-# Default: lege roles-set (geen toegang).
 default user_roles := []
 
 # Purpose komt via Trino's `extraCredentials` (HTTP-header X-Trino-Extra-Credential).
@@ -136,6 +133,12 @@ is_write_op if input.action.operation == "AddColumn"
 is_write_op if input.action.operation == "DropColumn"
 
 is_write_op if input.action.operation == "RenameColumn"
+
+# Connector-procedures (CALL <catalog>.system.<proc>(...)). Trino stuurt
+# `ExecuteProcedure` voor o.a. delta_lake's `system.register_table` —
+# nodig om Python-side geschreven Delta-tabellen in HMS te registreren.
+# Behandelen we als write: alleen technische schrijvers mogen het.
+is_write_op if input.action.operation == "ExecuteProcedure"
 
 # --- top-level allow ---------------------------------------------------
 

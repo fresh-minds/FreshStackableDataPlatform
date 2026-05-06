@@ -1,6 +1,8 @@
-# Ingress voor OpenSearch REST-API (poort 9200).
-# Service opensearch-uwv. Geen auth — security is uit voor dev (zie
-# infrastructure/helm/opensearch/values.yaml).
+# Ingress voor OpenSearch Dashboards (poort 5601) — de browser-UI tegenover
+# de single-node OpenSearch in uwv-meta. De REST-API zelf (port 9200) blijft
+# alleen intern bereikbaar via opensearch-uwv.uwv-meta.svc.cluster.local
+# (Vector, OpenMetadata en de ILM-job gebruiken die service-DNS direct).
+# Geen auth — security is uit voor dev (zie infrastructure/helm/opensearch/values.yaml).
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -22,6 +24,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: opensearch-uwv
+                name: opensearch-dashboards-uwv
                 port:
-                  number: 9200
+                  number: 5601

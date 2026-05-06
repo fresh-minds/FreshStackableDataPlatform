@@ -6,7 +6,16 @@ source:
   serviceConnection:
     config:
       type: Kafka
-      bootstrapServers: uwv-kafka-bootstrap.uwv-platform.svc.cluster.local:9092
+      # Stackable Kafka 26.3 service-naam is `uwv-kafka-broker-default-bootstrap`
+      # (rolGroup `default` in de naam) — luistert SSL op 9093.
+      bootstrapServers: uwv-kafka-broker-default-bootstrap.uwv-platform.svc.cluster.local:9093
+      securityProtocol: SSL
+      # Stackable secret-class `tls` heeft een eigen self-signed CA per cluster.
+      # Schakel cert-verification uit voor dev (in productie: Stackable CA in
+      # truststore mounten en `ssl.ca.location` zetten).
+      consumerConfig:
+        enable.ssl.certificate.verification: "false"
+        ssl.endpoint.identification.algorithm: "none"
   sourceConfig:
     config:
       type: MessagingMetadata

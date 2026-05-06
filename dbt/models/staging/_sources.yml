@@ -32,3 +32,12 @@ sources:
         description: "Klantcontact-events (kanaal, onderwerp)."
       - name: fez_uitkeringslast
         description: "Geaggregeerde uitkeringslast per wet × maand × regio."
+      - name: klanttevredenheid
+        description: |
+          Klanttevredenheid-meting (CSV-batch upload). Geen JSON-envelope —
+          native kolommen (meting_datum, kanaal, doelgroep, score,
+          n_respondenten, opmerking) + ingestion_ts, source_file, event_date.
+        loader: csv_batch
+        meta:
+          bio_classificatie: intern
+          bewaartermijn_jaren: 5

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="dbt">
+  <rect width="24" height="24" rx="5" fill="#FF694A"/>
+  <path d="M6.2 9.6 9.6 6.2a1.7 1.7 0 0 1 2.4 0l5.8 5.8a1.7 1.7 0 0 1 0 2.4l-3.4 3.4a1.7 1.7 0 0 1-2.4 0L6.2 12a1.7 1.7 0 0 1 0-2.4z" fill="#fff"/>
+  <circle cx="9.4" cy="9.4" r="1.5" fill="#FF694A"/>
+  <circle cx="14.6" cy="14.6" r="1.5" fill="#FF694A"/>
+</svg>

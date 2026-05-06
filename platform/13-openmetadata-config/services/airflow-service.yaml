@@ -8,9 +8,13 @@ source:
       type: Airflow
       hostPort: http://uwv-airflow-webserver.uwv-platform.svc.cluster.local:8080
       connection:
-        type: Backend  # praat met Airflow's metastore-DB direct
+        # OM 1.5 BackendConnection vereist dat de ingest-pod IN dezelfde
+        # Airflow-context draait (gebruikt Airflow's eigen DB-config). Wij
+        # draaien een aparte KPO-pod, dus directe PostgresConnection.
+        type: Postgres
         username: uwvplatform
-        password: ${AIRFLOW_DB_PW}
+        authType:
+          password: ${AIRFLOW_DB_PW}
         hostPort: postgres-postgresql.uwv-data.svc.cluster.local:5432
         database: airflow
   sourceConfig:

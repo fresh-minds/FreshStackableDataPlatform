@@ -13,11 +13,18 @@ source:
       type: Trino
       hostPort: uwv-trino-coordinator.uwv-platform.svc.cluster.local:8443
       username: smoketest
-      authType:
-        password: ${TRINO_PASSWORD}
+      # Stackable's Trino draait met `authentication: []` — geen password-
+      # authenticator. Auth komt via X-Trino-User header (impersonation),
+      # autorisatie via OPA. Daarom GEEN authType.password hier; de DBAPI
+      # gebruikt dan alleen de username-header.
       catalog: bronze
-      protocol: https
-      verify: false
+      # `http_scheme: https` gaat als kwarg naar de trino-python-client
+      # (via SQLAlchemy `connect_args`); onze Trino-coordinator luistert
+      # alleen op port 8443/HTTPS. `verify: "False"` schakelt cert-
+      # validation uit voor de zelf-signed Stackable-cert.
+      verify: "False"
+      connectionArguments:
+        http_scheme: https
   sourceConfig:
     config:
       type: DatabaseMetadata

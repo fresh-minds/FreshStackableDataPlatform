@@ -134,6 +134,12 @@ is_write_op if input.action.operation == "DropColumn"
 
 is_write_op if input.action.operation == "RenameColumn"
 
+# Connector-procedures (CALL <catalog>.system.<proc>(...)). Trino stuurt
+# `ExecuteProcedure` voor o.a. delta_lake's `system.register_table` —
+# nodig om Python-side geschreven Delta-tabellen in HMS te registreren.
+# Behandelen we als write: alleen technische schrijvers mogen het.
+is_write_op if input.action.operation == "ExecuteProcedure"
+
 # --- top-level allow ---------------------------------------------------
 
 # Meta-operations (cataloglist, queryplan, etc.) — alleen authenticated.

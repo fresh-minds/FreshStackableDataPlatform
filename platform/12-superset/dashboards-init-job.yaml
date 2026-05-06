@@ -389,6 +389,91 @@ data:
                     }),
                 ],
             },
+            # ─────────────── Cross-UC Datakwaliteit ───────────────
+            # Eén-stop overzicht voor de DQ-steward: per UC totaal-records,
+            # violations per severity, en een tabel met alle individuele
+            # checks. Bron: mart_dq_overview + mart_dq_violations (live
+            # geteld op de gold-marts; geen test-runner-output nodig).
+            {
+                "slug": "dq-overview",
+                "title": "Datakwaliteit — overzicht alle UCs",
+                "dataset": "mart_dq_overview",
+                "charts": [
+                    ("Aantal use-cases gemonitord", "big_number_total", {
+                        "metric": {"expressionType": "SIMPLE",
+                                   "column": {"column_name": "uc_code",
+                                              "type": "VARCHAR"},
+                                   "aggregate": "COUNT_DISTINCT",
+                                   "label": "Use-cases"},
+                    }),
+                    ("Totaal DQ-violations (alle UCs)", "big_number_total", {
+                        "metric": metric("n_violations", "SUM", "BIGINT",
+                                         "Violations"),
+                    }),
+                    ("Critical violations", "big_number_total", {
+                        "metric": metric("n_violations_critical", "SUM",
+                                         "BIGINT", "Critical"),
+                    }),
+                    ("Gemiddelde DQ-score (%)", "big_number_total", {
+                        "metric": metric("dq_score_pct", "AVG", "DOUBLE",
+                                         "Avg DQ-score %"),
+                    }),
+                    ("DQ-score per use-case", "dist_bar", {
+                        "metrics": [metric("dq_score_pct", "AVG", "DOUBLE",
+                                           "DQ-score %")],
+                        "groupby": ["uc_name"],
+                    }),
+                    ("Violations per use-case", "dist_bar", {
+                        "metrics": [metric("n_violations", "SUM", "BIGINT",
+                                           "Violations")],
+                        "groupby": ["uc_name"],
+                    }),
+                    ("DQ-status verdeling", "pie", {
+                        "metrics": [{"expressionType": "SIMPLE",
+                                     "column": {"column_name": "uc_code",
+                                                "type": "VARCHAR"},
+                                     "aggregate": "COUNT",
+                                     "label": "Use-cases"}],
+                        "groupby": ["dq_status"],
+                    }),
+                ],
+            },
+            # Detail-dashboard: 1 rij per (UC × check), gevoed door
+            # mart_dq_violations. Apart dashboard zodat steward kan
+            # drillen na het zien van een rood blok in het overzicht.
+            {
+                "slug": "dq-violations-detail",
+                "title": "Datakwaliteit — violations per check",
+                "dataset": "mart_dq_violations",
+                "charts": [
+                    ("Totaal checks gemonitord", "big_number_total", {
+                        "metric": {"expressionType": "SIMPLE",
+                                   "column": {"column_name": "check_name",
+                                              "type": "VARCHAR"},
+                                   "aggregate": "COUNT",
+                                   "label": "Checks"},
+                    }),
+                    ("Violations per severity", "pie", {
+                        "metrics": [metric("n_violations", "SUM", "BIGINT",
+                                           "Violations")],
+                        "groupby": ["severity"],
+                    }),
+                    ("Violations per check (top 20)", "dist_bar", {
+                        "metrics": [metric("n_violations", "SUM", "BIGINT",
+                                           "Violations")],
+                        "groupby": ["check_name"],
+                        "row_limit": 20,
+                    }),
+                    ("Alle checks (tabel)", "table", {
+                        "metrics": [metric("n_violations", "SUM", "BIGINT",
+                                           "Violations")],
+                        "groupby": ["uc_name", "check_name", "severity"],
+                        "row_limit": 1000,
+                        "include_search": True,
+                        "query_mode": "aggregate",
+                    }),
+                ],
+            },
         ]
 
         # Bouw alle dashboards.

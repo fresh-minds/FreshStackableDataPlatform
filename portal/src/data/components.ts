@@ -15,6 +15,7 @@ export type ComponentId =
   | 'airflow'
   | 'superset'
   | 'openmetadata'
+  | 'dbt-docs'
   | 'prometheus'
   | 'opensearch';
 
@@ -216,6 +217,20 @@ export const components: PlatformComponent[] = [
     ],
   },
   {
+    id: 'dbt-docs',
+    name: 'dbt docs',
+    layer: 'governance',
+    stage: 'discovery',
+    // Statisch geëxporteerde `dbt docs generate --static`-bundel. Geserveerd
+    // door de portal-nginx zelf op /dbt-docs/ — geen aparte service, geen
+    // Prometheus-job (vandaar geen status-dot).
+    short: 'Modellen, tests, sources en lineage van de dbt-projectdefinities.',
+    purpose: 'Wat doen onze dbt-modellen, welke tests draaien er, en hoe vloeit data van staging naar marts?',
+    icon: '/icons/brand/dbt.svg',
+    url: '/dbt-docs/',
+    rolesUsing: ['data_engineer', 'data_steward', 'platform_admin'],
+  },
+  {
     id: 'airflow',
     name: 'Apache Airflow',
     layer: 'orchestration',
@@ -235,7 +250,7 @@ export const components: PlatformComponent[] = [
     short: 'Metrics + alerts; voedt de status-badges in deze portal.',
     purpose: 'Metrics verzamelen en alerteren als iets stuk dreigt te gaan.',
     icon: '/icons/brand/prometheus.svg',
-    url: null,
+    url: 'https://prometheus.uwv-platform.local:8443',
     prometheusJob: 'prometheus',
     rolesUsing: ['platform_admin'],
   },
@@ -247,7 +262,9 @@ export const components: PlatformComponent[] = [
     short: 'Logs (Vector) + search-backend voor OpenMetadata.',
     purpose: 'Logs centraal doorzoekbaar maken — debugging en audit-trail.',
     icon: '/icons/brand/opensearch.svg',
-    url: null,
+    // Externe URL wijst naar OpenSearch Dashboards (port 5601). De REST-API
+    // (port 9200) is alleen intern bereikbaar via cluster-DNS.
+    url: 'https://opensearch.uwv-platform.local:8443',
     prometheusJob: 'opensearch',
     rolesUsing: ['platform_admin', 'data_steward'],
   },

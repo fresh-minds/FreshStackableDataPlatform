@@ -23,7 +23,7 @@ from airflow.providers.trino.hooks.trino import TrinoHook
 from airflow.decorators import task
 
 from datasets import bronze_dataset
-from sources_loader import SourceSpec, load_all_sources
+from sources_loader import SourceSpec, kafka_sources
 from trino_helpers import TRINO_CONN_ID
 
 DEFAULT_ARGS = {
@@ -64,12 +64,18 @@ def _check_bronze_freshness_callable(source: SourceSpec):
 
 
 def build_bronze_watch_dag() -> DAG:
-    """Eén DAG met één freshness-task per bron, publiceert bron-Dataset."""
+    """Eén DAG met één freshness-task per Kafka-bron, publiceert bron-Dataset.
+
+    csv_batch-bronnen (handmatige CSV-upload) hebben geen Kafka-pad en publiceren
+    hun bronze-Dataset zelf via csv_ingest_factory; we filteren ze hier weg
+    zodat ze niet als 'stale' worden geflagd.
+    """
     with DAG(
         dag_id="bronze_watch",
         description=(
-            "Bevestigt Spark-streaming-output per bron en publiceert "
-            "bronze-Datasets als trigger voor silver-DAGs. Zie ADR-0007."
+            "Bevestigt Spark-streaming-output per Kafka-bron en publiceert "
+            "bronze-Datasets als trigger voor silver-DAGs. csv_batch-bronnen "
+            "worden door ingest_csv_<bron> afgehandeld. Zie ADR-0007."
         ),
         default_args=DEFAULT_ARGS,
         schedule=timedelta(minutes=5),
@@ -81,7 +87,7 @@ def build_bronze_watch_dag() -> DAG:
         start = EmptyOperator(task_id="start")
         end = EmptyOperator(task_id="end")
 
-        for source in load_all_sources():
+        for source in kafka_sources():
             check = task(
                 task_id=f"check_{source.name}",
                 outlets=[bronze_dataset(source)],

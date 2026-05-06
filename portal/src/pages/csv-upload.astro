@@ -1,0 +1,231 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+// Minimale CSV-upload UX. Wijst de gebruiker naar de twee externe stappen
+// (MinIO Console upload + Airflow DAG-trigger) en toont een copy-pasteable
+// `mc cp`-command voor wie liever via CLI werkt.
+//
+// Bewust geen browser-side multipart-upload: de portal is pure statische
+// content (geen backend), dus we bouwen geen presigned-URL flow voor één
+// demo-bron. Wanneer er meerdere CSV-bronnen komen kan dit een echte
+// upload-form worden — bijvoorbeeld via MinIO STS + STS-token.
+
+const sources = [
+  {
+    name: 'klanttevredenheid',
+    title: 'Klanttevredenheid',
+    description:
+      'Klanttevredenheid-metingen per kanaal. Verwacht kolommen: meting_datum, ' +
+      'kanaal, doelgroep, score (1–5), n_respondenten, opmerking.',
+    bucket: 'uwv-staging',
+    prefix: 'incoming/klanttevredenheid',
+    dagId: 'ingest_csv_klanttevredenheid',
+  },
+];
+
+// Default-keuze; dropdown laat extra bronnen toe wanneer ze toegevoegd worden.
+const defaultSource = sources[0];
+---
+<Layout title="CSV upload">
+  <section class="panel hero">
+    <h1>Handmatige CSV-upload → bronze</h1>
+    <p>
+      Upload een CSV-bestand voor een bron met <code>mode: csv_batch</code>.
+      De flow is: bestand op MinIO zetten → Airflow-DAG triggeren →
+      Delta-tabel in <code>bronze</code> → automatisch silver + gold via dbt.
+    </p>
+    <p class="note">
+      Voor streaming-bronnen (WIA, WW, polisadministratie, …) gaat data via
+      Kafka — zie het architectuur-diagram. CSV-upload is bedoeld voor
+      ad-hoc batch-bronnen zoals klanttevredenheid-metingen.
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>Bron</h2>
+    <div class="src-pick">
+      <label for="src-select">Kies een bron:</label>
+      <select id="src-select" aria-label="Bron">
+        {sources.map((s) => (
+          <option value={s.name}
+                  data-bucket={s.bucket}
+                  data-prefix={s.prefix}
+                  data-dag={s.dagId}
+                  data-desc={s.description}>
+            {s.title}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    <p id="src-desc" class="src-desc">{defaultSource.description}</p>
+
+    <dl class="src-meta">
+      <dt>Bucket</dt>
+      <dd><code id="src-bucket">{defaultSource.bucket}</code></dd>
+      <dt>Prefix</dt>
+      <dd><code id="src-prefix">{defaultSource.prefix}</code></dd>
+      <dt>DAG</dt>
+      <dd><code id="src-dag">{defaultSource.dagId}</code></dd>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <h2>Stap 1 — Upload het CSV-bestand</h2>
+    <p>
+      Open MinIO Console en sleep je CSV in de map
+      <code id="src-path-1">{defaultSource.bucket}/{defaultSource.prefix}/</code>.
+      Naam mag vrij gekozen worden (bv. <code>2026-05-01.csv</code>).
+    </p>
+    <div class="actions">
+      <a id="open-minio" class="btn btn-primary"
+         href={`https://minio-console.uwv-platform.local:8443/browser/${defaultSource.bucket}/${defaultSource.prefix.replace(/\//g, '%2F')}%2F`}
+         target="_blank" rel="noopener noreferrer">
+        Open MinIO Console
+      </a>
+    </div>
+    <details class="alt">
+      <summary>Liever via CLI (<code>mc</code>)?</summary>
+      <pre><code id="mc-cmd">mc cp ./mijn-meting.csv uwv-platform/{defaultSource.bucket}/{defaultSource.prefix}/$(date -u +%Y%m%dT%H%M%S).csv</code></pre>
+      <p class="note">
+        Vereist een geconfigureerde <code>uwv-platform</code> alias in
+        <code>~/.mc/config.json</code>. Zie
+        <a href="/UWV_Platform_Handboek_per_rol.pdf" target="_blank" rel="noopener noreferrer">handboek</a>.
+      </p>
+    </details>
+  </section>
+
+  <section class="panel">
+    <h2>Stap 2 — Trigger de ingest-DAG</h2>
+    <p>
+      Open Airflow en trigger DAG <code id="src-dag-2">{defaultSource.dagId}</code>
+      met deze JSON-config (<em>Trigger DAG w/ config</em>):
+    </p>
+    <pre class="cfg"><code id="dag-conf">{JSON.stringify({ object_key: `${defaultSource.prefix}/<bestandsnaam>.csv` }, null, 2)}</code></pre>
+    <div class="actions">
+      <a id="open-airflow" class="btn btn-primary"
+         href={`https://airflow.uwv-platform.local:8443/dags/${defaultSource.dagId}/`}
+         target="_blank" rel="noopener noreferrer">
+        Open Airflow DAG
+      </a>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Stap 3 — Resultaat</h2>
+    <p>
+      Bij succes verschijnt de data automatisch:
+    </p>
+    <ul>
+      <li><strong>Bronze</strong> — Delta-tabel in <code>bronze.uwv.&lt;bron&gt;</code> (Trino).</li>
+      <li><strong>Silver</strong> — getriggerd door bronze-Dataset; dbt staging-view.</li>
+      <li><strong>Gold</strong> — getriggerd door silver-Dataset; dbt mart-tabel.</li>
+      <li><strong>Superset</strong> — dashboard <em>Klanttevredenheid trend</em>.</li>
+    </ul>
+    <div class="actions">
+      <a class="btn" href="https://trino.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">Trino UI</a>
+      <a class="btn" href="https://superset.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">Superset</a>
+      <a class="btn" href="https://openmetadata.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">OpenMetadata</a>
+    </div>
+  </section>
+
+  <script>
+    const sel  = document.getElementById('src-select') as HTMLSelectElement | null;
+    const desc = document.getElementById('src-desc');
+    const buck = document.getElementById('src-bucket');
+    const pref = document.getElementById('src-prefix');
+    const dag  = document.getElementById('src-dag');
+    const dag2 = document.getElementById('src-dag-2');
+    const path1 = document.getElementById('src-path-1');
+    const conf = document.getElementById('dag-conf');
+    const mc   = document.getElementById('mc-cmd');
+    const oM   = document.getElementById('open-minio') as HTMLAnchorElement | null;
+    const oA   = document.getElementById('open-airflow') as HTMLAnchorElement | null;
+
+    // Source-data zit in <option data-*> attributes — geen runtime fetch nodig.
+    type Src = { description: string; bucket: string; prefix: string; dagId: string };
+    const collected: Record<string, Src> = {};
+    Array.from(sel?.options ?? []).forEach((opt) => {
+      collected[opt.value] = {
+        description: opt.dataset.desc   ?? '',
+        bucket:      opt.dataset.bucket ?? '',
+        prefix:      opt.dataset.prefix ?? '',
+        dagId:       opt.dataset.dag    ?? '',
+      };
+    });
+
+    function render() {
+      const v = sel?.value;
+      if (!v) return;
+      const s = collected[v];
+      if (desc) desc.textContent = s.description;
+      if (buck) buck.textContent = s.bucket;
+      if (pref) pref.textContent = s.prefix;
+      if (dag)  dag.textContent  = s.dagId;
+      if (dag2) dag2.textContent = s.dagId;
+      if (path1) path1.textContent = `${s.bucket}/${s.prefix}/`;
+      if (conf) conf.textContent = JSON.stringify({ object_key: `${s.prefix}/<bestandsnaam>.csv` }, null, 2);
+      if (mc)   mc.textContent   = `mc cp ./mijn-meting.csv uwv-platform/${s.bucket}/${s.prefix}/$(date -u +%Y%m%dT%H%M%S).csv`;
+      if (oM)   oM.href = `https://minio-console.uwv-platform.local:8443/browser/${s.bucket}/${encodeURIComponent(s.prefix + '/')}`;
+      if (oA)   oA.href = `https://airflow.uwv-platform.local:8443/dags/${s.dagId}/`;
+    }
+    sel?.addEventListener('change', render);
+    render();
+  </script>
+
+  <style>
+    .hero h1 { margin-bottom: .5rem; }
+    .note { font-size: .82rem; color: var(--c-muted); margin-top: .5rem; }
+
+    .src-pick { display: flex; align-items: center; gap: .75rem; margin-bottom: .75rem; }
+    .src-pick select {
+      background: var(--c-panel-2);
+      color: var(--c-text);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius);
+      padding: .35rem .55rem;
+      font: inherit;
+    }
+    .src-desc { color: var(--c-muted); margin: .25rem 0 .75rem; }
+    .src-meta {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: .25rem 1rem;
+      margin: 0;
+    }
+    .src-meta dt { color: var(--c-muted); font-size: .82rem; }
+    .src-meta dd { margin: 0; }
+
+    .actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .75rem; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      padding: .45rem .85rem;
+      background: var(--c-panel-2);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius);
+      color: var(--c-text);
+      font-size: .9rem;
+    }
+    .btn:hover { border-color: var(--c-accent); text-decoration: none; }
+    .btn-primary {
+      background: var(--c-accent);
+      color: #1a1206;
+      border-color: var(--c-accent);
+      font-weight: 600;
+    }
+    [data-theme="light"] .btn-primary { color: #fff; }
+    .btn-primary:hover { filter: brightness(1.05); }
+
+    pre.cfg, details.alt pre {
+      background: var(--c-panel-2);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius);
+      padding: .65rem .85rem;
+      overflow-x: auto;
+      font-size: .85rem;
+    }
+    details.alt summary { cursor: pointer; color: var(--c-muted); }
+    details.alt[open] summary { color: var(--c-text); }
+  </style>
+</Layout>

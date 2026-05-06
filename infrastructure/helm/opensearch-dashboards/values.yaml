@@ -1,0 +1,36 @@
+# OpenSearch Dashboards — UI tegenover de single-node OpenSearch in uwv-meta.
+# Geeft platform_admin/data_steward een browser-bare zoekinterface op de
+# `uwv-logs-*` indices die Vector schrijft.
+#
+# Chart: opensearch-project/opensearch-dashboards
+# Productie: schaal naar ≥ 2 replicas + enable security-plugin (TLS naar OS).
+---
+opensearchHosts: "http://opensearch-uwv.uwv-meta.svc.cluster.local:9200"
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+# Security-plugin uit (matched de OpenSearch-side, zie infrastructure/helm/opensearch/values.yaml).
+extraEnvs:
+  - name: DISABLE_SECURITY_DASHBOARDS_PLUGIN
+    value: "true"
+
+# Service exposure (in-cluster only — externe TLS doet de ingress).
+service:
+  type: ClusterIP
+  port: 5601
+
+# Dashboards eigen config: bind 0.0.0.0, target dezelfde OS-host, geen TLS-verify.
+config:
+  opensearch_dashboards.yml: |
+    server.host: "0.0.0.0"
+    opensearch.hosts: ["http://opensearch-uwv.uwv-meta.svc.cluster.local:9200"]
+    opensearch.ssl.verificationMode: none
+    opensearch.requestHeadersWhitelist: ["authorization", "securitytenant"]

@@ -90,6 +90,12 @@ const sIdentity       = stageById('identity')!;
             {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
           </a>
         ))}
+        <a class="comp-tile comp-tile-action" href="/csv-upload/"
+           title="Handmatig een CSV uploaden naar bronze (batch-flow)">
+          <span class="upload-icon" aria-hidden="true">⇪</span>
+          <span class="tile-name">CSV upload</span>
+          <span class="tile-tag">batch</span>
+        </a>
       </div>
     </div>
 
@@ -412,6 +418,34 @@ const sIdentity       = stageById('identity')!;
   .comp-tile:hover { border-color: var(--c-accent); text-decoration: none; transform: translateY(-1px); }
   .comp-tile img { display: block; }
   .tile-name { font-weight: 500; font-size: .85rem; }
+
+  /* Action-tile (geen externe component, maar een portal-actie zoals CSV-upload). */
+  .comp-tile-action {
+    background: color-mix(in srgb, var(--c-accent) 8%, var(--c-panel));
+    border-style: dashed;
+    border-color: color-mix(in srgb, var(--c-accent) 50%, var(--c-border));
+  }
+  .comp-tile-action:hover { background: color-mix(in srgb, var(--c-accent) 14%, var(--c-panel)); }
+  .upload-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    font-size: 1.1rem;
+    color: var(--c-accent);
+    background: color-mix(in srgb, var(--c-accent) 18%, transparent);
+  }
+  .tile-tag {
+    font-size: .65rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--c-accent);
+    background: color-mix(in srgb, var(--c-accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--c-accent) 35%, transparent);
+    border-radius: 999px;
+    padding: .1rem .45rem;
+  }
 
   .ref-outputs {
     background: var(--c-panel-2);

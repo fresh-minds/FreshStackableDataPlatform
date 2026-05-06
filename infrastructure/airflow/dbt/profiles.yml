@@ -1,0 +1,29 @@
+# dbt-profiles voor in-cluster Cosmos KubernetesExecutionMode runs.
+#
+# Cosmos 1.6 met TrinoCertificateProfileMapping injecteert geen profiles.yml
+# in de Kubernetes-task-pod (alleen voor ExecutionMode.LOCAL). Daarom bakken
+# we een statisch profiel in de image; Trino-host komt via cluster-DNS,
+# auth via static-user `smoketest` (cluster heeft `authentication: []`,
+# dus method=none wat alleen X-Trino-User stuurt).
+#
+# Voor lokale `dbt` runs gebruik je profiles.yml.template in dbt/.
+uwv_trino:
+  target: dev
+  outputs:
+    dev:
+      type: trino
+      method: none
+      user: smoketest
+      host: uwv-trino-coordinator.uwv-platform.svc.cluster.local
+      # 8443 is hardgecodeerd: TRINO_PORT mag niet via env worden overschreven
+      # (sommige Trino-clients/Cosmos zetten 'm op 443).
+      port: 8443
+      http_scheme: https
+      # cert=false → geen TLS-verify. OK voor in-cluster dev (cert-manager
+      # self-signed CA niet aanwezig in dbt-image). Productie injecteert
+      # /etc/ssl/uwv-platform-ca.crt via volume + extraLoad-config.
+      cert: false
+      database: silver
+      schema: dbt_default
+      threads: 4
+      session_properties: {}

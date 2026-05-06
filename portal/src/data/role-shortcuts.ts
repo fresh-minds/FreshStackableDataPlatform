@@ -50,20 +50,24 @@ export const shortcuts: Record<RoleId, Shortcut[]> = {
     { title: 'Lineage UC-09', hint: 'Hoe het sandbox-panel is opgebouwd', component: 'openmetadata', href: 'https://openmetadata.uwv-platform.local:8443/lineage/trino.sandbox.uc09_research' },
   ],
   data_steward: [
+    { title: 'DQ-overzicht (alle UCs)', hint: 'Cross-UC violations + DQ-score per use-case', component: 'superset', href: 'https://superset.uwv-platform.local:8443/dashboard/list/?filters=(slug:dq-overview)' },
+    { title: 'DQ-violations detail', hint: 'Drill-down per check × severity', component: 'superset', href: 'https://superset.uwv-platform.local:8443/dashboard/list/?filters=(slug:dq-violations-detail)' },
     { title: 'Data Quality dashboard', hint: 'DQ-checks en profielen', component: 'openmetadata', href: 'https://openmetadata.uwv-platform.local:8443/data-quality' },
     { title: 'Glossary onderhouden', hint: 'Termen, eigenaars, classificaties', component: 'openmetadata', href: 'https://openmetadata.uwv-platform.local:8443/glossary' },
+    { title: 'dbt docs — modellen & tests', hint: 'Statische export van dbt-projectdefinities', component: 'dbt-docs', href: '/dbt-docs/' },
     { title: 'Trino: profiler-queries', hint: 'Verkennen op kwaliteits-doel', component: 'trino', href: 'https://trino.uwv-platform.local:8443' },
   ],
   data_engineer: [
     { title: 'NiFi flows', hint: 'Ingestion-pipelines bewerken', component: 'nifi', href: 'https://nifi.uwv-platform.local:8443' },
     { title: 'Airflow DAGs', hint: 'Batch- en dbt-runs', component: 'airflow', href: 'https://airflow.uwv-platform.local:8443' },
+    { title: 'dbt docs — modellen & lineage', hint: 'Welk model leest welke source, welke tests draaien', component: 'dbt-docs', href: '/dbt-docs/' },
     { title: 'MinIO buckets', hint: 'bronze/silver/gold/sensitive', component: 'minio', href: '/go/minio/' },
     { title: 'JIT-toegang aanvragen', hint: 'Bronze alleen met just-in-time', component: 'keycloak', href: 'https://keycloak.uwv-platform.local:8443/realms/uwv/account' },
   ],
   platform_admin: [
-    { title: 'Cluster-status (Prometheus)', hint: 'Up/Down per service', component: 'prometheus', href: '/architecture' },
+    { title: 'Cluster-status (Prometheus)', hint: 'Up/Down per service', component: 'prometheus', href: 'https://prometheus.uwv-platform.local:8443' },
     { title: 'Keycloak admin', hint: 'Users, rollen, MFA', component: 'keycloak', href: 'https://keycloak.uwv-platform.local:8443/admin' },
-    { title: 'OpenSearch logs', hint: 'Audit + applicatie-logs', component: 'opensearch', href: 'https://opensearch.uwv-platform.local:8443' },
+    { title: 'OpenSearch Dashboards', hint: 'Discover op uwv-logs-* — audit + applicatie-logs', component: 'opensearch', href: 'https://opensearch.uwv-platform.local:8443/app/data-explorer/discover' },
     { title: 'Break-glass procedure', hint: 'Alleen in nood; alles wordt gelogd', component: 'opa', href: 'docs/runbook.md' },
   ],
 };

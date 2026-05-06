@@ -1,0 +1,27 @@
+# Non-sensitive runtime config for the Nanitics Observatory pod.
+#
+# The endpoint URL is *not* a secret on its own — it identifies the Azure
+# resource. The API key is stored separately in `nanitics-azure-foundry`
+# (Secret) and merged in via envFrom in the Deployment.
+#
+# Replace the placeholder endpoint with your Foundry resource. Full URL
+# shape (the trailing /openai/v1 is added by the app if missing):
+#
+#   https://<your-resource>.services.ai.azure.com/openai/v1
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nanitics-observatory-config
+  namespace: uwv-platform
+data:
+  LLM_PROVIDER: "azure-foundry"
+  # Must match a deployment name in the Foundry project. Probed via
+  # /v1/chat/completions — confirmed deployments: gpt-4o, gpt-5-nano
+  # (gpt-5-nano is a reasoning model and needs max_completion_tokens
+  # instead of max_tokens; gpt-4o is the safe default).
+  LLM_MODEL: "gpt-4o"
+  # Azure AI Foundry Project endpoint. Stripped the /responses suffix —
+  # the OpenAI SDK appends /chat/completions itself. Both endpoints live
+  # under the same /openai/v1/ base on Foundry Projects.
+  AZURE_AI_FOUNDRY_ENDPOINT: "https://devfreshmindsaifoundry.services.ai.azure.com/api/projects/proj-default/openai/v1"
+  LOG_LEVEL: "INFO"

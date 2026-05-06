@@ -10,7 +10,10 @@ source:
       hostPort: http://uwv-superset-node.uwv-platform.svc.cluster.local:8088
       connection:
         provider: db
-        username: uwvplatform
+        # Superset application-admin (zie platform/01-secrets/dev-secrets.yaml
+        # secret superset-postgres-credentials → adminUser.username/password).
+        # NIET de Postgres-user 'uwvplatform' — die is voor de SQLAlchemy-DB.
+        username: admin
         password: ${SUPERSET_ADMIN_PW}
   sourceConfig:
     config:

@@ -477,7 +477,13 @@
         "email",
         "roles",
         "web-origins"
-      ]
+      ],
+      "attributes": {
+        "access.token.lifespan": "86400",
+        "client.session.max.lifespan": "86400",
+        "client.session.idle.timeout": "28800",
+        "use.refresh.tokens": "false"
+      }
     },
     {
       "clientId": "portal",
