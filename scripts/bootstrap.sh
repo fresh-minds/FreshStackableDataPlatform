@@ -35,6 +35,7 @@ OPENMETADATA_VERSION="${OPENMETADATA_VERSION:-1.5.0}"
 VECTOR_VERSION="${VECTOR_VERSION:-0.36.1}"
 
 log()   { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+ok()    { printf '\033[1;32mOK\033[0m %s\n' "$*"; }
 warn()  { printf '\033[1;33m!!\033[0m %s\n' "$*"; }
 error() { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
 
@@ -198,10 +199,17 @@ helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
 log "Install Stackable operators (release 26.3)"
 stackablectl release install 26.3 --operator-namespace stackable-operators
 
+log "Wachten tot Stackable operator-pods aanwezig zijn (stackablectl returns before pods are scheduled)"
+for i in {1..60}; do
+  count=$(kubectl -n stackable-operators get pods --no-headers 2>/dev/null | wc -l)
+  if [[ "$count" -gt 0 ]]; then break; fi
+  sleep 2
+done
+
 log "Wachten tot Stackable operator-pods Ready zijn (timeout 5m)"
-kubectl wait --for=condition=Ready pod \
-  -l app.kubernetes.io/managed-by=stackablectl \
-  -A --timeout=5m || warn "Niet alle Stackable operator-pods zijn (nog) Ready — check 'kubectl get pods -A'"
+kubectl wait --for=condition=Ready pod -n stackable-operators \
+  -l stackable.tech/vendor=Stackable \
+  --timeout=5m || warn "Niet alle Stackable operator-pods zijn (nog) Ready — check 'kubectl get pods -A'"
 
 # uwv-ca-bundle uitbreiden met de Stackable secret-operator self-signed CA.
 # Stackable Trino/Hive/Kafka/etc. krijgen pod-certs uit deze CA voor in-cluster
@@ -210,21 +218,62 @@ kubectl wait --for=condition=Ready pod \
 # verbinding naar https://uwv-trino-coordinator:8443 met
 # 'self-signed certificate in certificate chain'. De originele uwv-platform-
 # issuer CA blijft staan voor extern verkeer (Keycloak via :8443 ingress).
-log "uwv-ca-bundle extenden met Stackable secret-operator CA"
-TMPCA=$(mktemp)
-TMPCAS=$(mktemp)
-kubectl -n uwv-platform get cm uwv-ca-bundle -o jsonpath='{.data.ca\.crt}' > "$TMPCA"
-# Wacht tot secret-provisioner-tls-ca verschijnt (operator initt 'm async).
-for i in {1..30}; do
-  kubectl -n stackable-operators get secret secret-provisioner-tls-ca >/dev/null 2>&1 && break
+#
+# secret-provisioner-tls-ca wordt door secret-operator pas gegenereerd op
+# eerste cert-request via de `tls` SecretClass. Forceer dat met een
+# kortlevende Pod die zo'n volume mountt.
+log "Trigger secret-provisioner-tls-ca generation via dummy CSI volume Pod"
+kubectl -n stackable-operators delete pod tls-ca-trigger --ignore-not-found --wait=true >/dev/null 2>&1 || true
+cat <<'EOF' | kubectl apply -f - >/dev/null
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tls-ca-trigger
+  namespace: stackable-operators
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 1
+  containers:
+  - name: idle
+    image: registry.k8s.io/pause:3.9
+    volumeMounts:
+    - name: tls
+      mountPath: /tls
+  volumes:
+  - name: tls
+    csi:
+      driver: secrets.stackable.tech
+      volumeAttributes:
+        secrets.stackable.tech/class: tls
+        secrets.stackable.tech/scope: pod
+EOF
+
+log "Wachten tot secret-provisioner-tls-ca beschikbaar is (timeout 3m)"
+SECRET_READY=false
+for i in {1..90}; do
+  if kubectl -n stackable-operators get secret secret-provisioner-tls-ca >/dev/null 2>&1; then
+    SECRET_READY=true
+    break
+  fi
   sleep 2
 done
-kubectl -n stackable-operators get secret secret-provisioner-tls-ca \
-  -o jsonpath='{.data.0\.ca\.crt}' | base64 -d > "$TMPCAS"
-cat "$TMPCA" "$TMPCAS" > "$TMPCA.combined"
-kubectl -n uwv-platform create configmap uwv-ca-bundle \
-  --from-file=ca.crt="$TMPCA.combined" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-rm -f "$TMPCA" "$TMPCAS" "$TMPCA.combined"
+kubectl -n stackable-operators delete pod tls-ca-trigger --ignore-not-found --wait=false >/dev/null 2>&1 || true
+
+if [[ "$SECRET_READY" == "true" ]]; then
+  log "uwv-ca-bundle extenden met Stackable secret-operator CA"
+  TMPCA=$(mktemp)
+  TMPCAS=$(mktemp)
+  kubectl -n uwv-platform get cm uwv-ca-bundle -o jsonpath='{.data.ca\.crt}' > "$TMPCA"
+  kubectl -n stackable-operators get secret secret-provisioner-tls-ca \
+    -o jsonpath='{.data.0\.ca\.crt}' | base64 -d > "$TMPCAS"
+  cat "$TMPCA" "$TMPCAS" > "$TMPCA.combined"
+  kubectl -n uwv-platform create configmap uwv-ca-bundle \
+    --from-file=ca.crt="$TMPCA.combined" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  rm -f "$TMPCA" "$TMPCAS" "$TMPCA.combined"
+else
+  warn "secret-provisioner-tls-ca niet verschenen binnen 3m — uwv-ca-bundle bevat alleen platform-CA."
+  warn "Run 'bash scripts/bootstrap.sh' opnieuw na 'make deploy-platform' om de CA-bundle te complementeren."
+fi
 
 # 9. OpenSearch single-node (gedeeld voor Vector logs + OpenMetadata search)
 log "Install OpenSearch ${OPENSEARCH_VERSION} (single-node, uwv-meta)"
@@ -266,6 +315,14 @@ kubectl -n uwv-meta create secret generic mysql-secrets \
   --from-literal=openmetadata-mysql-password="${PG_PW}" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
+# OpenMetadata Helm chart referencet `openmetadata-oidc-client` Secret in
+# uwv-meta (Keycloak SSO). Die zit in platform/01-secrets/dev-secrets.yaml en
+# wordt normaal door deploy-platform aangemaakt — maar dat draait NÁ bootstrap.
+# Pas alle dev-secrets nu vast toe; idempotent en deploy-platform re-applyt ze
+# straks gewoon.
+log "Apply platform/01-secrets/dev-secrets.yaml (vereist door OM-helm-chart)"
+kubectl apply -f "${ROOT}/platform/01-secrets/dev-secrets.yaml" >/dev/null
+
 log "Install OpenMetadata ${OPENMETADATA_VERSION}"
 helm upgrade --install openmetadata open-metadata/openmetadata \
   --namespace uwv-meta \
@@ -297,18 +354,24 @@ kubectl -n uwv-meta rollout status deploy/openmetadata --timeout=10m >/dev/null 
 # zowel de uwv-meta `openmetadata-admin` Secret (init-Job) als een kopie
 # in uwv-platform (governance_om_ingest DAG draait daar).
 log "Genereer admin-JWT (decrypt ingestion-bot fernet-token) + sync naar uwv-platform"
-FERNET=$(kubectl -n uwv-meta get secret openmetadata-fernetkey-secret -o jsonpath='{.data}' \
-  | python3 -c 'import json,sys,base64;d=json.load(sys.stdin);print(next(iter(base64.b64decode(v).decode() for v in d.values())))')
+# JWT-block fail-soft: als OM nog niet ready is bestaan secret/db niet → skip met warn.
+JWT=""
+set +e
+FERNET=$(kubectl -n uwv-meta get secret openmetadata-fernetkey-secret -o jsonpath='{.data}' 2>/dev/null \
+  | python3 -c 'import json,sys,base64;d=json.load(sys.stdin);print(next(iter(base64.b64decode(v).decode() for v in d.values())))' 2>/dev/null)
 ENCRYPTED=$(kubectl -n uwv-data exec postgres-postgresql-0 -c postgresql -- \
   env PGPASSWORD="$(kubectl -n uwv-data get secret postgres-postgresql -o jsonpath='{.data.password}' | base64 -d)" \
   psql -U postgres -d openmetadata -t -A -c \
   "SELECT json->'authenticationMechanism'->'config'->>'JWTToken' FROM user_entity WHERE name='ingestion-bot' LIMIT 1;" \
   2>/dev/null | sed 's/^fernet://')
-JWT=$(python3 -c "
+if [[ -n "${FERNET}" && -n "${ENCRYPTED}" ]]; then
+  JWT=$(python3 -c "
 from cryptography.fernet import MultiFernet, Fernet
 mf = MultiFernet([Fernet(k.encode()) for k in '${FERNET}'.split(',')])
 print(mf.decrypt(b'${ENCRYPTED}').decode())
 " 2>/dev/null)
+fi
+set -e
 if [[ -n "${JWT:-}" ]]; then
   JWT_B64=$(printf '%s' "$JWT" | base64 | tr -d '\n')
   kubectl -n uwv-meta patch secret openmetadata-admin --type='json' \

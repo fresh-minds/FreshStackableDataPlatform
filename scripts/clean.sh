@@ -9,7 +9,7 @@ if ! command -v k3d >/dev/null 2>&1; then
   exit 1
 fi
 
-if k3d cluster list -o json 2>/dev/null | grep -q "\"name\": \"${CLUSTER_NAME}\""; then
+if k3d cluster list -o json 2>/dev/null | jq -e ".[] | select(.name==\"${CLUSTER_NAME}\")" >/dev/null; then
   echo "==> Verwijderen k3d cluster '${CLUSTER_NAME}'"
   k3d cluster delete "$CLUSTER_NAME"
 else

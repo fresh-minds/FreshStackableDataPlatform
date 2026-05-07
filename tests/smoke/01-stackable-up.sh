@@ -59,7 +59,11 @@ fi
 log "Check MinIO buckets via API"
 mc_pod=$(kubectl -n uwv-platform get pod -l app=minio -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
 if [[ -n "$mc_pod" ]]; then
-  buckets=$(kubectl -n uwv-platform exec "$mc_pod" -- mc ls local/ 2>/dev/null | awk '{print $NF}' | tr -d '/' | sort)
+  # MinIO is TLS-enabled; the in-pod 'local' alias is http and stale. Configure
+  # an https alias on the fly using the chart's MINIO_ROOT_USER/PASSWORD env.
+  buckets=$(kubectl -n uwv-platform exec "$mc_pod" -- sh -c \
+    'mc --insecure alias set s3 https://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; mc --insecure ls s3/' 2>/dev/null \
+    | awk '{print $NF}' | tr -d '/' | sort)
   for b in uwv-bronze uwv-silver uwv-gold uwv-sensitive uwv-staging uwv-checkpoints uwv-meta; do
     if echo "$buckets" | grep -qx "$b"; then
       pass "bucket $b bestaat"
