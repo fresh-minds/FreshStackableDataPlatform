@@ -200,3 +200,119 @@ spec:
               service:
                 name: minio
                 port: { number: 9000 }
+---
+# ---- Platform landing page (replaces the original portal) ----
+# The original `portal` Deployment used uwv-platform/portal:dev — a locally-
+# built image with no registry the AKS cluster can pull from. Until that's
+# pushed to ACR/Docker Hub, this serves a tiny static landing page from
+# nginx so platform.uwv-platform.cloud has something useful at the root.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-landing-html
+  namespace: uwv-platform
+data:
+  index.html: |
+    <!doctype html>
+    <html lang="nl">
+      <head>
+        <meta charset="utf-8" />
+        <title>UWV Platform — Cloud</title>
+        <style>
+          body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;margin:4rem auto;padding:0 1rem;color:#1f2937;line-height:1.5}
+          h1{color:#1d4ed8} .badge{display:inline-block;background:#dbeafe;color:#1d4ed8;font-size:.75rem;font-weight:600;padding:.2rem .6rem;border-radius:.5rem;letter-spacing:.05em;text-transform:uppercase}
+          ul{list-style:none;padding:0} li{margin:.6rem 0;padding:.8rem 1rem;border:1px solid #e5e7eb;border-radius:.5rem}
+          a{color:#1d4ed8;text-decoration:none;font-weight:600} a:hover{text-decoration:underline}
+          small{color:#6b7280}
+        </style>
+      </head>
+      <body>
+        <span class="badge">Cloud · AKS</span>
+        <h1>UWV Reference Platform</h1>
+        <p>Synthetic data, illustrative reference. Not a production UWV system.</p>
+        <ul>
+          <li><a href="https://keycloak.uwv-platform.cloud:8443/">Keycloak</a><br><small>OIDC identity provider — kcadmin / dev-only-pw</small></li>
+          <li><a href="https://grafana.uwv-platform.cloud:8443/">Grafana</a><br><small>Dashboards on Prometheus — admin / dev-only-pw</small></li>
+          <li><a href="https://minio-console.uwv-platform.cloud:8443/">MinIO Console</a><br><small>S3 buckets — uwvadmin / dev-only-pw</small></li>
+          <li><a href="https://openmetadata.uwv-platform.cloud:8443/">OpenMetadata</a><br><small>Catalog &amp; lineage — admin@uwv-platform.local / dev-only-pw</small></li>
+          <li><a href="https://minio.uwv-platform.cloud:8443/">MinIO S3 API</a><br><small>Programmatic access (403 unauth is the right answer)</small></li>
+        </ul>
+        <p><small>This is a placeholder landing page. The full Astro portal needs an image
+          registry to host on AKS — see WORKLOG.</small></p>
+      </body>
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platform-landing
+  namespace: uwv-platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: platform-landing }
+  template:
+    metadata:
+      labels: { app: platform-landing }
+    spec:
+      containers:
+        - name: nginx
+          image: nginxinc/nginx-unprivileged:1.27-alpine
+          ports: [{ containerPort: 8080 }]
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+              readOnly: true
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits:   { memory: 64Mi }
+      volumes:
+        - name: html
+          configMap:
+            name: platform-landing-html
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: platform-landing
+  namespace: uwv-platform
+spec:
+  selector: { app: platform-landing }
+  ports: [{ port: 80, targetPort: 8080 }]
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: platform-cloud-tls
+  namespace: uwv-platform
+spec:
+  secretName: platform-cloud-tls
+  issuerRef:
+    name: uwv-platform-issuer
+    kind: ClusterIssuer
+  commonName: platform.uwv-platform.cloud
+  dnsNames: [platform.uwv-platform.cloud]
+  duration: 8760h
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: platform-cloud
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [platform.uwv-platform.cloud]
+      secretName: platform-cloud-tls
+  rules:
+    - host: platform.uwv-platform.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: platform-landing
+                port: { number: 80 }
