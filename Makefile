@@ -188,3 +188,7 @@ aks-pf: ## Start kubectl port-forward to AKS ingress (127.0.0.2:8443 → *.uwv-p
 .PHONY: aks-pf-stop
 aks-pf-stop: ## Stop the AKS port-forward
 	@bash scripts/azure/aks-pf.sh stop
+
+.PHONY: aks-portal-publish
+aks-portal-publish: ## Build portal/dist (if missing) + ship it as a ConfigMap to AKS, then roll the Deployment
+	bash scripts/azure/portal-publish.sh

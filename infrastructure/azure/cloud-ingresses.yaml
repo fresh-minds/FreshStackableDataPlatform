@@ -201,46 +201,76 @@ spec:
                 name: minio
                 port: { number: 9000 }
 ---
-# ---- Platform landing page (replaces the original portal) ----
-# The original `portal` Deployment used uwv-platform/portal:dev — a locally-
-# built image with no registry the AKS cluster can pull from. Until that's
-# pushed to ACR/Docker Hub, this serves a tiny static landing page from
-# nginx so platform.uwv-platform.cloud has something useful at the root.
+# ---- Platform portal (Astro static site served via nginx) ----
+# The original `portal` Deployment used uwv-platform/portal:dev, a locally
+# built image with no registry the AKS cluster can pull from. To avoid
+# requiring a registry today, we re-use stock nginxinc/nginx-unprivileged
+# and inject:
+#   1. nginx.conf via ConfigMap (the portal's own config from portal/nginx.conf)
+#   2. The built static site (portal/dist/) as a tar.gz inside a binaryData
+#      ConfigMap, extracted on pod start by an initContainer.
+# scripts/azure/portal-publish.sh re-builds the dist tarball ConfigMap and
+# rolls the Deployment.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: platform-landing-html
+  name: platform-landing-nginx-conf
   namespace: uwv-platform
 data:
-  index.html: |
-    <!doctype html>
-    <html lang="nl">
-      <head>
-        <meta charset="utf-8" />
-        <title>UWV Platform — Cloud</title>
-        <style>
-          body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;margin:4rem auto;padding:0 1rem;color:#1f2937;line-height:1.5}
-          h1{color:#1d4ed8} .badge{display:inline-block;background:#dbeafe;color:#1d4ed8;font-size:.75rem;font-weight:600;padding:.2rem .6rem;border-radius:.5rem;letter-spacing:.05em;text-transform:uppercase}
-          ul{list-style:none;padding:0} li{margin:.6rem 0;padding:.8rem 1rem;border:1px solid #e5e7eb;border-radius:.5rem}
-          a{color:#1d4ed8;text-decoration:none;font-weight:600} a:hover{text-decoration:underline}
-          small{color:#6b7280}
-        </style>
-      </head>
-      <body>
-        <span class="badge">Cloud · AKS</span>
-        <h1>UWV Reference Platform</h1>
-        <p>Synthetic data, illustrative reference. Not a production UWV system.</p>
-        <ul>
-          <li><a href="https://keycloak.uwv-platform.cloud:8443/">Keycloak</a><br><small>OIDC identity provider — kcadmin / dev-only-pw</small></li>
-          <li><a href="https://grafana.uwv-platform.cloud:8443/">Grafana</a><br><small>Dashboards on Prometheus — admin / dev-only-pw</small></li>
-          <li><a href="https://minio-console.uwv-platform.cloud:8443/">MinIO Console</a><br><small>S3 buckets — uwvadmin / dev-only-pw</small></li>
-          <li><a href="https://openmetadata.uwv-platform.cloud:8443/">OpenMetadata</a><br><small>Catalog &amp; lineage — admin@uwv-platform.local / dev-only-pw</small></li>
-          <li><a href="https://minio.uwv-platform.cloud:8443/">MinIO S3 API</a><br><small>Programmatic access (403 unauth is the right answer)</small></li>
-        </ul>
-        <p><small>This is a placeholder landing page. The full Astro portal needs an image
-          registry to host on AKS — see WORKLOG.</small></p>
-      </body>
-    </html>
+  nginx.conf: |
+    worker_processes  1;
+    error_log  /dev/stderr  warn;
+    pid        /tmp/nginx.pid;
+    events { worker_connections 1024; }
+    http {
+      include       /etc/nginx/mime.types;
+      default_type  application/octet-stream;
+      client_body_temp_path /tmp/client_body;
+      proxy_temp_path       /tmp/proxy;
+      fastcgi_temp_path     /tmp/fastcgi;
+      uwsgi_temp_path       /tmp/uwsgi;
+      scgi_temp_path        /tmp/scgi;
+      access_log /dev/stdout;
+      sendfile on;
+      gzip on;
+      gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;
+      resolver kube-dns.kube-system.svc.cluster.local valid=30s;
+
+      server {
+        listen 8080 default_server;
+        server_name _;
+
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+
+        root /usr/share/nginx/html;
+        index index.html;
+
+        location = /api/health {
+          access_log off;
+          return 200 '{"status":"ok"}';
+          default_type application/json;
+        }
+
+        location ~ ^/api/status/up$ {
+          if ($arg_job !~ ^[a-z0-9_-]+$) { return 400; }
+          set $prom_host "prometheus-kube-prometheus-prometheus.uwv-monitoring.svc.cluster.local:9090";
+          proxy_pass http://$prom_host/api/v1/query?query=up%7Bjob%3D%22$arg_job%22%7D;
+          proxy_read_timeout 5s;
+          proxy_intercept_errors on;
+          error_page 502 503 504 = @prom_unavailable;
+        }
+
+        location @prom_unavailable {
+          add_header Content-Type "application/json" always;
+          return 200 '{"status":"unavailable"}';
+        }
+
+        location / {
+          try_files $uri $uri/ $uri.html /index.html;
+        }
+      }
+    }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -254,22 +284,44 @@ spec:
   template:
     metadata:
       labels: { app: platform-landing }
+      # rolling annotation so a portal-publish.sh re-applies ConfigMap +
+      # forces the pod to re-extract the tarball even if the Deployment
+      # spec is otherwise unchanged.
+      annotations:
+        portal.uwv-platform/dist-checksum: "init"
     spec:
+      initContainers:
+        - name: extract-dist
+          image: docker.io/library/busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              cd /html
+              tar -xzf /dist/portal-dist.tar.gz
+              echo "extracted $(find /html -type f | wc -l) files"
+          volumeMounts:
+            - { name: html, mountPath: /html }
+            - { name: dist-tar, mountPath: /dist }
       containers:
         - name: nginx
           image: nginxinc/nginx-unprivileged:1.27-alpine
           ports: [{ containerPort: 8080 }]
           volumeMounts:
-            - name: html
-              mountPath: /usr/share/nginx/html
-              readOnly: true
+            - { name: html, mountPath: /usr/share/nginx/html, readOnly: true }
+            - { name: nginx-conf, mountPath: /etc/nginx/nginx.conf, subPath: nginx.conf, readOnly: true }
           resources:
             requests: { cpu: 10m, memory: 32Mi }
-            limits:   { memory: 64Mi }
+            limits:   { memory: 96Mi }
       volumes:
         - name: html
+          emptyDir: {}
+        - name: dist-tar
           configMap:
-            name: platform-landing-html
+            name: platform-landing-dist
+        - name: nginx-conf
+          configMap:
+            name: platform-landing-nginx-conf
 ---
 apiVersion: v1
 kind: Service
