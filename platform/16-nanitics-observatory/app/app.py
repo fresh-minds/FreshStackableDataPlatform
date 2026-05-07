@@ -24,12 +24,15 @@ React bundle baked into the image at /srv/observatory-ui.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import uuid
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from nanitics import (
@@ -37,6 +40,7 @@ from nanitics import (
     EvaluationContext,
     EvaluationResult,
     EvaluationVerdict,
+    InMemoryEmitter,
     InMemoryEpisodeStore,
     InMemoryPersistentTraceStore,
     InMemoryPlanStore,
@@ -51,6 +55,7 @@ from nanitics import (
     ReflexionAgent,
     ReWOOAgent,
     ToolCall,
+    TraceCollector,
     TracedExecutor,
     Usage,
     tool,
@@ -61,6 +66,9 @@ LOG = logging.getLogger("nanitics-observatory-uwv")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 
 UI_DIR = Path("/srv/observatory-ui")
+# Image lays out static next to app.py at /srv/static (see Dockerfile).
+# Fall back to local-dev path next to app.py for non-container runs.
+STATIC_DIR = Path("/srv/static") if Path("/srv/static").exists() else Path(__file__).parent / "static"
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "azure-foundry").lower()
 MODEL = os.environ.get("LLM_MODEL", "gpt-4o")
 
@@ -405,3 +413,82 @@ async def run_legacy(body: RunRequest) -> dict[str, str]:
 @app.post("/run/{agent_slug}")
 async def run_agent(agent_slug: str, body: RunRequest) -> dict[str, str]:
     return await _execute(agent_slug, body)
+
+
+# ---------------------------------------------------------------------------
+# Async run + chat UI — streaming surface for /chat.
+#
+# The synchronous /run/{slug} above blocks until the agent finishes. For the
+# chat UI we need real-time event streaming, so we kick the run off as a
+# background task, return run_id immediately, and let the client tail the
+# existing Observatory SSE endpoint at /api/observatory/runs/{id}/stream.
+# ---------------------------------------------------------------------------
+
+
+async def _execute_in_background(agent_slug: str, body: RunRequest) -> str:
+    """Mimic TracedExecutor.execute() but return run_id BEFORE work completes.
+
+    The agent runs as an asyncio.Task; events stream into the trace store
+    through TraceCollector exactly as in the synchronous path. The Observatory
+    SSE endpoint can then tail the store and surface events live to a browser.
+    """
+    if agent_slug not in AGENTS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown agent {agent_slug!r}. Available: {','.join(AGENTS.keys())}",
+        )
+    runner = AGENTS[agent_slug]["run"]
+
+    run_id = str(uuid.uuid4())
+    trace_id = str(uuid.uuid4())
+    metadata = {
+        "source": "uwv-platform",
+        "provider": LLM_PROVIDER,
+        "agent_type": agent_slug,
+        "surface": "chat-stream",
+    }
+    await store.register_run(run_id, trace_id, metadata)
+
+    emitter = InMemoryEmitter(trace_id=trace_id)
+    collector = TraceCollector(store=store, parent_id=run_id)
+    emitter.add_listener(collector.handle)
+
+    async def _runner() -> None:
+        try:
+            result = await runner(emitter, body.task)
+            await collector.close()
+            await store.update_run_status(run_id, "completed", result=str(result))
+        except Exception as exc:  # noqa: BLE001
+            LOG.exception("Agent run %s failed", run_id)
+            try:
+                await collector.close()
+            finally:
+                await store.update_run_status(run_id, "failed", error=str(exc))
+
+    asyncio.create_task(_runner())  # noqa: RUF006 — fire-and-forget by design
+    return run_id
+
+
+@app.post("/run/{agent_slug}/stream")
+async def run_agent_streaming(agent_slug: str, body: RunRequest) -> dict[str, str]:
+    """Kick off an agent run asynchronously; return run_id immediately.
+
+    Pair with: GET /api/observatory/runs/{run_id}/stream  (SSE)
+              GET /api/observatory/runs?limit=1            (final result)
+    """
+    run_id = await _execute_in_background(agent_slug, body)
+    return {
+        "run_id": run_id,
+        "agent_type": agent_slug,
+        "status": "running",
+        "stream_url": f"/api/observatory/runs/{run_id}/stream",
+    }
+
+
+@app.get("/chat", response_class=HTMLResponse)
+async def chat_ui() -> HTMLResponse:
+    """Serve the SSE-streaming chat page baked into the image."""
+    chat_html = STATIC_DIR / "chat.html"
+    if not chat_html.exists():
+        raise HTTPException(status_code=500, detail="chat.html not bundled into image")
+    return HTMLResponse(content=chat_html.read_text(encoding="utf-8"))
