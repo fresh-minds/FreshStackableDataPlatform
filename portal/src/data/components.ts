@@ -17,7 +17,9 @@ export type ComponentId =
   | 'openmetadata'
   | 'dbt-docs'
   | 'prometheus'
-  | 'opensearch';
+  | 'opensearch'
+  | 'nanitics'
+  | 'multica';
 
 // Legacy "layer" — fijne granulariteit voor de oude card-tag.
 export type ComponentLayer =
@@ -31,7 +33,8 @@ export type ComponentLayer =
   | 'orchestration'
   | 'bi'
   | 'governance'
-  | 'observability';
+  | 'observability'
+  | 'ai-agents';
 
 // Reference-architecture lanes (Monte-Carlo-stijl).
 // Hier groeperen we componenten in de plek die ze in de pipeline innemen.
@@ -44,7 +47,8 @@ export type ComponentStage =
   | 'discovery'
   | 'pipeline'
   | 'observability'
-  | 'identity';
+  | 'identity'
+  | 'agents';
 
 export interface PlatformComponent {
   id: ComponentId;
@@ -268,6 +272,33 @@ export const components: PlatformComponent[] = [
     prometheusJob: 'opensearch',
     rolesUsing: ['platform_admin', 'data_steward'],
   },
+  {
+    id: 'nanitics',
+    name: 'Nanitics Observatory',
+    layer: 'ai-agents',
+    stage: 'agents',
+    // Runtime-lane: agents draaien IN het platform, deze UI laat ze zien.
+    short: 'Trace-viewer voor runtime-agents (ReAct/ReWOO/Reflexion/LATS) — span trees, plan, MCTS.',
+    purpose: 'Agents bouwen die platform-tools aanroepen (Trino, Airflow) en hun runs inspecteren.',
+    icon: '/icons/brand/nanitics.svg',
+    url: 'https://nanitics.uwv-platform.local:8443/api/observatory/',
+    rolesUsing: ['platform_admin', 'data_engineer'],
+  },
+  {
+    id: 'multica',
+    name: 'Multica',
+    layer: 'ai-agents',
+    stage: 'agents',
+    // Dev-loop-lane: coördineert coding agents (Claude Code/Codex/Copilot CLI/…)
+    // die op de laptop van de developer draaien — de server houdt taken,
+    // voortgang en skills bij. Niet hetzelfde als Nanitics (runtime).
+    short: 'Coördinatie van coding agents (Claude Code, Codex, Copilot CLI, …) — taken, voortgang, skills.',
+    purpose: 'Taken toewijzen aan coding agents; voortgang volgen. Agents draaien op je laptop.',
+    icon: '/icons/brand/multica.svg',
+    url: 'https://multica.uwv-platform.local:8443',
+    prometheusJob: 'multica-backend',
+    rolesUsing: ['platform_admin', 'data_engineer'],
+  },
 ];
 
 export function componentsForRole(role: string): PlatformComponent[] {
@@ -306,6 +337,10 @@ export const stages: StageMeta[] = [
   { id: 'pipeline',       title: 'Pipeline-orkestratie',     blurb: 'Wat draait wanneer, in welke volgorde, met welke afhankelijkheid.',     icon: '/icons/stage/pipeline.svg',       kind: 'overlay' },
   { id: 'observability',  title: 'Observability',            blurb: 'Metrics, logs en alerts om de gezondheid van het platform te zien.',    icon: '/icons/stage/observability.svg',  kind: 'overlay' },
   { id: 'identity',       title: 'Identiteit & Toegang',     blurb: 'SSO regelt wie wat mag — elk onderdeel checkt het token.',              icon: '/icons/stage/identity.svg',       kind: 'side' },
+  // Twee lanes naast elkaar: Nanitics observeert runtime-agents IN het
+  // platform; Multica coördineert coding agents die op de laptop draaien.
+  // Eén bouwt, de ander observeert. Zie docs/explorations/multica-vs-nanitics.md.
+  { id: 'agents',         title: 'Agents & AI-tooling',      blurb: 'Twee lanes: runtime-agent observability (Nanitics) en dev-loop coding agents (Multica).', icon: '/icons/stage/agents.svg',         kind: 'overlay' },
 ];
 
 export function stageById(id: ComponentStage): StageMeta | undefined {

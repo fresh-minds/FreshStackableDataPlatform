@@ -1,0 +1,82 @@
+# Single host, path-based routing — exact mirror of the upstream Nginx
+# example in SELF_HOSTING_ADVANCED.md, adapted to nginx-ingress.
+#
+# Browser → multica.uwv-platform.local:8443
+#   /                → multica-frontend (Next.js)
+#   /api, /auth, /uploads, /ws → multica-backend (Go)
+#
+# WebSocket upgrade is handled by the nginx-ingress automatically when
+# the Service path matches; no special annotation is required for
+# nginx-ingress >= 1.0. We add a generous read-timeout so SSE / WS
+# streams stay open.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: multica
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+    nginx.ingress.kubernetes.io/proxy-body-size: "25m"
+    # SSE + WebSocket: keep connections alive for 1h.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["multica.uwv-platform.local"]
+      secretName: multica-tls
+  rules:
+    - host: multica.uwv-platform.local
+      http:
+        paths:
+          # Order matters: more-specific paths first.
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: multica-backend
+                port:
+                  number: 80
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: multica-backend
+                port:
+                  number: 80
+          - path: /uploads
+            pathType: Prefix
+            backend:
+              service:
+                name: multica-backend
+                port:
+                  number: 80
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: multica-backend
+                port:
+                  number: 80
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: multica-backend
+                port:
+                  number: 80
+          - path: /readyz
+            pathType: Prefix
+            backend:
+              service:
+                name: multica-backend
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: multica-frontend
+                port:
+                  number: 80

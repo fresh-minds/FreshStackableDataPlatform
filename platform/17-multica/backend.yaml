@@ -1,0 +1,104 @@
+# Multica backend — Go REST API + WebSocket server.
+# Image: ghcr.io/multica-ai/multica-backend:latest (official prebuilt).
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: multica-backend
+  namespace: uwv-platform
+spec:
+  selector:
+    app.kubernetes.io/name: multica-backend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+# Separate Service for /metrics — ClusterIP only, scraped by Prometheus.
+# Deliberately not exposed via the public ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: multica-backend-metrics
+  namespace: uwv-platform
+  labels:
+    app.kubernetes.io/component: multica
+    prometheus-job: multica-backend
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app.kubernetes.io/name: multica-backend
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multica-backend
+  namespace: uwv-platform
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: multica-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: multica-backend
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: ghcr.io/multica-ai/multica-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          envFrom:
+            - configMapRef:
+                name: multica-backend-config
+            - secretRef:
+                name: multica-backend
+          # Liveness: cheap, public, dependency-free.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          # Readiness: dependency-aware (db + migrations) per upstream docs.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 1000m, memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/data/uploads
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: multica-uploads
