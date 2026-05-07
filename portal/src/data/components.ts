@@ -227,7 +227,7 @@ export const components: PlatformComponent[] = [
     short: 'Modellen, tests, sources en lineage van de dbt-projectdefinities.',
     purpose: 'Wat doen onze dbt-modellen, welke tests draaien er, en hoe vloeit data van staging naar marts?',
     icon: '/icons/brand/dbt.svg',
-    url: '/dbt-docs/',
+    url: '/dbt-docs.html',
     rolesUsing: ['data_engineer', 'data_steward', 'platform_admin'],
   },
   {

@@ -1,15 +1,20 @@
 #!/usr/bin/env node
 // Build-time loader: kopieert dbt/target/static_index.html (één self-contained
 // HTML-bundel die `dbt docs generate --static` produceert) naar
-// portal/public/dbt-docs/index.html, zodat nginx het statisch kan serveren op
-// /dbt-docs/.
+// portal/public/dbt-docs.html, zodat zowel Vite (dev) als nginx (prod) het
+// statisch serveren op /dbt-docs.html.
+//
+// Bewust een single file (geen public/dbt-docs/index.html): Astro's dev
+// server routeert /dbt-docs/ via z'n eigen pages-resolver en negeert
+// public/<dir>/index.html, dus dat zou alleen in productie werken. Single
+// file is identiek in dev en prod.
 //
 // Als de static-bundel ontbreekt (typisch op een verse checkout zonder
 // `make dbt-docs`-run met live Trino), schrijven we een placeholder met
 // instructies. Zo blijft de portal-build groen en is de fout uitlegbaar in de
 // browser i.p.v. een 404.
 
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -17,24 +22,27 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..', '..');
 
 const src = resolve(repoRoot, 'dbt', 'target', 'static_index.html');
-const destDir = resolve(__dirname, '..', 'public', 'dbt-docs');
-const dest = resolve(destDir, 'index.html');
+const destDir = resolve(__dirname, '..', 'public');
+const dest = resolve(destDir, 'dbt-docs.html');
 
 mkdirSync(destDir, { recursive: true });
+
+// Heuristiek: een echte dbt-docs static bundle is honderden KB tot meerdere
+// MB groot; de placeholder hieronder is ~1.7KB. Zo schrijven we niet per
+// ongeluk een echte bundle (b.v. via COPY portal/ in Docker) over met een
+// placeholder.
+const PLACEHOLDER_THRESHOLD_BYTES = 50_000;
 
 if (existsSync(src)) {
   copyFileSync(src, dest);
   console.log(`[sync-dbt-docs] ${src} -> ${dest}`);
-} else if (existsSync(dest)) {
+} else if (existsSync(dest) && statSync(dest).size > PLACEHOLDER_THRESHOLD_BYTES) {
   // Source ontbreekt (typisch: Docker-build zonder dbt/ in de context), maar
-  // er staat al een bundel op de bestemming — laat 'm staan. Zo overschrijven
-  // we niet per ongeluk een lokaal-gegenereerde bundel die via `COPY portal/`
-  // mee de image in is gekomen.
-  console.log(`[sync-dbt-docs] ${src} ontbreekt — bestaande ${dest} wordt behouden.`);
+  // er staat al een grote bundel op de bestemming — laat 'm staan.
+  console.log(`[sync-dbt-docs] ${src} ontbreekt — bestaande ${dest} (groot bestand) wordt behouden.`);
 } else {
   // Placeholder — toont een nette uitleg i.p.v. een 404. Geen externe assets,
-  // past binnen de strict CSP van portal/nginx.conf (default-src 'self',
-  // style-src 'self' 'unsafe-inline').
+  // past binnen de strict CSP van portal/nginx.conf.
   const placeholder = `<!doctype html>
 <html lang="nl">
 <head>
@@ -63,7 +71,7 @@ if (existsSync(src)) {
   <pre>make dbt-docs</pre>
   <p>
     Dit runt <code>dbt deps &amp;&amp; dbt docs generate --static</code> en kopieert
-    de output naar <code>portal/public/dbt-docs/index.html</code>. Herbouw daarna
+    de output naar <code>portal/public/dbt-docs.html</code>. Herbouw daarna
     de portal-image (of refresh in dev-mode) en deze pagina toont de docs.
   </p>
   <p class="muted">

@@ -6,4 +6,4 @@ dist/
 .env.local
 *.log
 src/data/role-mappings.generated.json
-public/dbt-docs/
+public/dbt-docs.html

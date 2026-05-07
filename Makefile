@@ -109,12 +109,25 @@ lint-python: ## ruff + mypy over data-generation/ en spark-jobs/
 dbt-parse: ## dbt parse + compile (geen warehouse-toegang vereist)
 	cd dbt && dbt deps && dbt parse
 
+# dbt-binary: prefereer dbt-core (Python) — die ondersteunt `docs generate
+# --static`. dbt-fusion (Rust-rewrite) ondersteunt het commando nog niet,
+# dus als die als eerste op PATH staat valt de target stil. Override met
+# `DBT=/pad/naar/dbt make dbt-docs`.
+DBT ?= $(shell test -x $$HOME/.dbt-core-venv/bin/dbt && echo $$HOME/.dbt-core-venv/bin/dbt || command -v dbt)
+
+# CA-bundle voor TLS-verify naar Trino. dbt-trino's `cert:`-setting wordt op
+# sommige paden genegeerd; via REQUESTS_CA_BUNDLE/SSL_CERT_FILE gebeurt het
+# zeker. Pad komt overeen met de fallback in dbt/profiles.yml.
+TRINO_TLS_CERT_PATH ?= $$HOME/.uwv-platform-ca.crt
+
 .PHONY: dbt-docs
-dbt-docs: ## dbt docs generate --static, en sync naar portal/public/dbt-docs/
-	cd dbt && dbt deps && dbt docs generate --static
-	@mkdir -p portal/public/dbt-docs
-	@cp dbt/target/static_index.html portal/public/dbt-docs/index.html
-	@echo "[dbt-docs] portal/public/dbt-docs/index.html bijgewerkt — open in dev via http://localhost:4321/dbt-docs/"
+dbt-docs: ## dbt docs generate --static, en sync naar portal/public/dbt-docs.html
+	cd dbt && $(DBT) deps && \
+	  REQUESTS_CA_BUNDLE=$(TRINO_TLS_CERT_PATH) SSL_CERT_FILE=$(TRINO_TLS_CERT_PATH) \
+	  $(DBT) docs generate --static
+	@mkdir -p portal/public
+	@cp dbt/target/static_index.html portal/public/dbt-docs.html
+	@echo "[dbt-docs] portal/public/dbt-docs.html bijgewerkt — open in dev via http://localhost:4321/dbt-docs.html"
 
 ##@ Maintenance
 
