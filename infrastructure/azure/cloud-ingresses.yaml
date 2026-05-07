@@ -33,6 +33,14 @@ metadata:
   namespace: uwv-auth
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
+    # Pin X-Forwarded-Host with port so Keycloak (hostname-dynamic) builds
+    # login URLs with :8443 — the port the kubectl-PF user actually connects
+    # to. Keycloak's --proxy-headers=xforwarded honours X-Forwarded-Host
+    # (including any embedded port) but doesn't read X-Forwarded-Port
+    # separately, so we encode the port in the Host header.
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header X-Forwarded-Host keycloak.uwv-platform.cloud:8443;
+      proxy_set_header X-Forwarded-Port 8443;
 spec:
   ingressClassName: nginx
   tls:
