@@ -43,22 +43,23 @@ pass "openmetadata-init Job Complete"
 
 # 4. Classifications via API
 log "Classifications via REST API"
-om_pod=$(kubectl -n "$NS" get pod -l app.kubernetes.io/name=openmetadata \
-           -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-if [[ -z "$om_pod" ]]; then
-  fail "OpenMetadata-pod niet gevonden"
-fi
 
 token=$(kubectl -n "$NS" get secret openmetadata-admin -o jsonpath='{.data.jwtToken}' | base64 -d)
 
-# Classifications-list ophalen via interne API
-classifications=$(kubectl -n "$NS" exec "$om_pod" -- \
-  curl -fsS http://localhost:8585/api/v1/classifications \
-       -H "Authorization: Bearer $token" \
-  2>/dev/null || echo "{}")
+# OM-image heeft geen 'curl'; query via tijdelijke curl-pod.
+om_curl() {
+  local path="$1"
+  kubectl -n "$NS" run om-smoke-$RANDOM \
+    --image=curlimages/curl:8.10.1 --rm -i --restart=Never --quiet -- \
+    curl -fsS --max-time 30 \
+      "http://openmetadata.uwv-meta.svc.cluster.local:8585${path}" \
+      -H "Authorization: Bearer ${token}" 2>/dev/null || echo "{}"
+}
+
+classifications=$(om_curl "/api/v1/classifications")
 
 for c in PII Health Confidentiality BIO LegalBasis Doelbinding AI; do
-  if echo "$classifications" | grep -q "\"name\": \"$c\""; then
+  if echo "$classifications" | grep -qE "\"name\":\\s*\"$c\""; then
     pass "classification '$c' aanwezig"
   else
     fail "classification '$c' ontbreekt"
@@ -67,11 +68,8 @@ done
 
 # 5. Glossary CGM
 log "Glossary CGM"
-gloss=$(kubectl -n "$NS" exec "$om_pod" -- \
-  curl -fsS http://localhost:8585/api/v1/glossaries \
-       -H "Authorization: Bearer $token" \
-  2>/dev/null || echo "{}")
-if echo "$gloss" | grep -q "\"name\": \"CGM\""; then
+gloss=$(om_curl "/api/v1/glossaries")
+if echo "$gloss" | grep -qE "\"name\":\\s*\"CGM\""; then
   pass "glossary 'CGM' aanwezig"
 else
   fail "glossary 'CGM' ontbreekt"
@@ -79,13 +77,10 @@ fi
 
 # 6. Sample CGM-terms
 log "CGM-terms sample"
-terms=$(kubectl -n "$NS" exec "$om_pod" -- \
-  curl -fsS "http://localhost:8585/api/v1/glossaryTerms?glossary=CGM&limit=50" \
-       -H "Authorization: Bearer $token" \
-  2>/dev/null || echo "{}")
+terms=$(om_curl "/api/v1/glossaryTerms?glossary=CGM&limit=50")
 for t in Aanvraag Beoordeling Cliënt IKV Uitkering; do
   # CGM-term heeft FQN `CGM.<name>` in OM
-  if echo "$terms" | grep -q "\"name\": \"$t\""; then
+  if echo "$terms" | grep -qE "\"name\":\\s*\"$t\""; then
     pass "term CGM.$t aanwezig"
   else
     log "  [warn] term CGM.$t niet gevonden — kan zijn dat init-Job nog niet alle posts deed"

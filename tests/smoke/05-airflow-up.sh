@@ -38,19 +38,34 @@ fi
 dag_list=$(kubectl -n "$NS" exec "$sched_pod" -c airflow -- \
   airflow dags list 2>/dev/null | tail -n +2 || true)
 
-for d in dbt_run_per_domain lakehouse_maintenance synthetic_data_load; do
-  if echo "$dag_list" | grep -q "$d"; then
+# Cosmos LoadMode.DBT_MANIFEST genereert per-domein DAGs (silver_<domain>)
+# en per-UC gold-DAGs (gold_uc0X_*). De factory-mappen zijn aanwezig in
+# manifest.json. We verifiëren dat: (a) tenminste één silver_*-DAG bestaat,
+# (b) tenminste één gold_*-DAG bestaat, (c) de housekeeping-DAGs er staan.
+for d in lakehouse_maintenance bronze_watch governance_om_ingest; do
+  if echo "$dag_list" | grep -qE "^$d\b|\\| $d *\\|"; then
     pass "DAG $d gevonden"
   else
     fail "DAG $d ontbreekt — output:\n$dag_list"
   fi
 done
 
+if echo "$dag_list" | grep -qE "^silver_"; then
+  pass "Cosmos silver_<domain> DAGs aanwezig (dbt-manifest geladen)"
+else
+  fail "Geen silver_* DAGs gevonden — Cosmos heeft de dbt-manifest niet geparsed:\n$dag_list"
+fi
+if echo "$dag_list" | grep -qE "^gold_uc"; then
+  pass "Cosmos gold_uc* DAGs aanwezig"
+else
+  fail "Geen gold_uc* DAGs gevonden"
+fi
+
 # 4. Geen import-errors
 log "DAG-import errors"
 errors=$(kubectl -n "$NS" exec "$sched_pod" -c airflow -- \
   airflow dags list-import-errors 2>/dev/null || true)
-if echo "$errors" | grep -qiE 'no.*errors|^$'; then
+if echo "$errors" | grep -qiE 'no.*(errors|data)|^$'; then
   pass "Geen DAG-import errors"
 else
   printf '  %s\n' "$errors"

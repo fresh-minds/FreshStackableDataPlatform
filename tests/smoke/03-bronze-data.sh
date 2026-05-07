@@ -29,17 +29,15 @@ esac
 
 # 2. Hive Metastore kent de bronze.uwv schema
 log "Hive Metastore: bronze.uwv schema"
+TRINO_HELPER="$(dirname "$0")/_trino_query.py"
 trino_exec() {
-  kubectl -n "$NS" exec statefulset/uwv-trino-coordinator-default -c trino -- \
-    bash -lc "TRINO_PASSWORD='$SMOKE_PASSWORD' /stackable/trino-cli/trino \
-      --server https://localhost:8443 --insecure \
-      --user $SMOKE_USER --password \
-      --output-format CSV \
-      --execute \"$1\""
+  kubectl -n "$NS" exec -i statefulset/uwv-trino-coordinator-default -c trino -- \
+    env TRINO_USER="$SMOKE_USER" TRINO_SERVER="https://localhost:8443" \
+    python3 - "$1" <"$TRINO_HELPER"
 }
 
 schemas=$(trino_exec "SHOW SCHEMAS FROM bronze" 2>&1 || true)
-if echo "$schemas" | grep -qE "^\"?uwv\"?$|^uwv$"; then
+if echo "$schemas" | grep -qx 'uwv'; then
   pass "schema bronze.uwv aanwezig"
 else
   fail "schema bronze.uwv ontbreekt — output:\n$schemas"
@@ -61,8 +59,8 @@ fi
 # 4. Row-count
 log "Row-count bronze.uwv.persona_created"
 count_out=$(trino_exec "SELECT count(*) FROM bronze.uwv.persona_created" 2>&1 || true)
-# Parse output: laatste regel is het getal (CSV zonder header)
-n=$(echo "$count_out" | tail -1 | tr -d '"' | tr -d ' ' || echo 0)
+# Parse output: helper geeft tab-separated rijen, eerste regel = count
+n=$(echo "$count_out" | head -1 | tr -d ' ')
 if [[ "$n" =~ ^[0-9]+$ ]] && [[ "$n" -ge "$EXPECTED_COUNT" ]]; then
   pass "persona_created bevat $n records (>= $EXPECTED_COUNT)"
 elif [[ "$n" =~ ^[0-9]+$ ]] && [[ "$n" -gt 0 ]]; then

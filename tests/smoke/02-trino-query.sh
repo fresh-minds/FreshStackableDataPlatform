@@ -28,9 +28,9 @@ kubectl -n "$NS" rollout status statefulset/uwv-trino-worker-default --timeout=5
 pass "Trino-coordinator + worker pods Ready"
 
 log "OPA cluster Ready"
-kubectl -n "$NS" rollout status daemonset/uwv-opa-default --timeout=5m >/dev/null 2>&1 \
-  || kubectl -n "$NS" rollout status statefulset/uwv-opa-default --timeout=5m >/dev/null \
-  || fail "OPA niet Ready (geen daemonset of statefulset uwv-opa-default)"
+kubectl -n "$NS" rollout status daemonset/uwv-opa-server-default --timeout=5m >/dev/null 2>&1 \
+  || kubectl -n "$NS" rollout status statefulset/uwv-opa-server-default --timeout=5m >/dev/null \
+  || fail "OPA niet Ready (geen daemonset of statefulset uwv-opa-server-default)"
 pass "OPA pods Ready"
 
 # 2. Bundle-ConfigMap aanwezig + correct gelabeld
@@ -49,7 +49,7 @@ opa_result=$(kubectl -n "$NS" run opa-smoke-$RANDOM \
   --image=curlimages/curl:8.10.1 --rm -i --restart=Never --quiet -- \
   curl -fsS --max-time 10 \
     -H 'Content-Type: application/json' \
-    -X POST "http://uwv-opa.${NS}.svc.cluster.local:8081/v1/data/trino/allow" \
+    -X POST "http://uwv-opa-server.${NS}.svc.cluster.local:8081/v1/data/trino/allow" \
     -d '{"input":{"context":{"identity":{"user":"smoketest"}},"action":{"operation":"ExecuteQuery"}}}' \
   2>/dev/null || true)
 if echo "$opa_result" | grep -q '"result": *true'; then
@@ -63,7 +63,7 @@ opa_anon=$(kubectl -n "$NS" run opa-smoke-anon-$RANDOM \
   --image=curlimages/curl:8.10.1 --rm -i --restart=Never --quiet -- \
   curl -fsS --max-time 10 \
     -H 'Content-Type: application/json' \
-    -X POST "http://uwv-opa.${NS}.svc.cluster.local:8081/v1/data/trino/allow" \
+    -X POST "http://uwv-opa-server.${NS}.svc.cluster.local:8081/v1/data/trino/allow" \
     -d '{"input":{"context":{"identity":{"user":""}},"action":{"operation":"ExecuteQuery"}}}' \
   2>/dev/null || true)
 if echo "$opa_anon" | grep -q '"result": *false'; then
@@ -72,17 +72,23 @@ else
   fail "OPA antwoord op anonymous niet zoals verwacht: $opa_anon"
 fi
 
-# 4. SHOW CATALOGS via Trino CLI op coordinator
+# Stackable 26.3 trino-server image bundles geen CLI meer; query via REST
+# (stdin-streamed python helper, gebruikt alleen stdlib in de trino-pod).
+# Trino-cluster heeft `authentication: []` (geen password-auth), dus alleen
+# X-Trino-User; geen TRINO_PASSWORD doorgeven.
+TRINO_HELPER="$(dirname "$0")/_trino_query.py"
+trino_exec() {
+  kubectl -n "$NS" exec -i statefulset/uwv-trino-coordinator-default -c trino -- \
+    env TRINO_USER="$SMOKE_USER" TRINO_SERVER="https://localhost:8443" \
+    python3 - "$1" <"$TRINO_HELPER"
+}
+
+# 4. SHOW CATALOGS via REST
 log "SHOW CATALOGS via static-auth"
-catalog_out=$(kubectl -n "$NS" exec statefulset/uwv-trino-coordinator-default -c trino -- \
-  bash -lc "TRINO_PASSWORD='$SMOKE_PASSWORD' /stackable/trino-cli/trino \
-    --server https://localhost:8443 --insecure \
-    --user $SMOKE_USER --password \
-    --output-format CSV \
-    --execute 'SHOW CATALOGS'" 2>&1 || true)
+catalog_out=$(trino_exec "SHOW CATALOGS" 2>&1 || true)
 
 for c in bronze silver gold sensitive; do
-  if echo "$catalog_out" | grep -qE "^\"?${c}\"?$|^${c}$"; then
+  if echo "$catalog_out" | grep -qx "$c"; then
     pass "catalog $c aanwezig"
   else
     fail "catalog $c ontbreekt — output:\n$catalog_out"
@@ -91,12 +97,8 @@ done
 
 # 5. SELECT 1
 log "SELECT 1 via static-auth"
-select_out=$(kubectl -n "$NS" exec statefulset/uwv-trino-coordinator-default -c trino -- \
-  bash -lc "TRINO_PASSWORD='$SMOKE_PASSWORD' /stackable/trino-cli/trino \
-    --server https://localhost:8443 --insecure \
-    --user $SMOKE_USER --password \
-    --execute 'SELECT 1'" 2>&1 || true)
-if echo "$select_out" | grep -q '^"\?1"\?$\|^1$'; then
+select_out=$(trino_exec "SELECT 1" 2>&1 || true)
+if echo "$select_out" | grep -qx '1'; then
   pass "SELECT 1 → 1"
 else
   fail "SELECT 1 onverwacht: $select_out"

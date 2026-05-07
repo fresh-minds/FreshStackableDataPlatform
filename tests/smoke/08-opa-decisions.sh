@@ -19,7 +19,7 @@ log()  { printf '\033[1;34m  ==>\033[0m %s\n' "$*"; }
 pass() { printf '\033[1;32m  OK\033[0m  %s\n' "$*"; }
 fail() { printf '\033[1;31m  FAIL\033[0m %s\n' "$*" >&2; exit 1; }
 
-OPA_URL="http://uwv-opa.${NS}.svc.cluster.local:8081"
+OPA_URL="http://uwv-opa-server.${NS}.svc.cluster.local:8081"
 
 curl_decide() {
   local path="$1"

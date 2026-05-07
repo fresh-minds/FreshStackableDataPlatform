@@ -15,18 +15,33 @@ log()  { printf '\033[1;34m  ==>\033[0m %s\n' "$*"; }
 pass() { printf '\033[1;32m  OK\033[0m  %s\n' "$*"; }
 fail() { printf '\033[1;31m  FAIL\033[0m %s\n' "$*" >&2; exit 1; }
 
-# Bepaal runner: lokale pip-binary of docker-image
-DBT_BIN=""
-if command -v dbt >/dev/null 2>&1; then
+# Bepaal runner. dbt-fusion (de Rust-rewrite, default in latere dbt-installs)
+# heeft nog geen Trino-adapter ("not yet implemented: Trino"), dus wij
+# voorkeuren expliciet een dbt-core venv. Volgorde:
+#   1. $DBT_BIN env-override (gebruiker-controle)
+#   2. ~/.dbt-core-venv/bin/dbt (conventie in deze repo)
+#   3. PATH-dbt mits NIET fusion
+#   4. lokale uwv/dbt-trino:1.9.0-uwv image
+#   5. upstream ghcr.io/dbt-labs/dbt-trino:1.9.0
+DBT_BIN="${DBT_BIN:-}"
+if [[ -z "$DBT_BIN" && -x "$HOME/.dbt-core-venv/bin/dbt" ]]; then
+  DBT_BIN="$HOME/.dbt-core-venv/bin/dbt"
+fi
+if [[ -z "$DBT_BIN" ]] && command -v dbt >/dev/null 2>&1 && ! dbt --version 2>&1 | grep -qi fusion; then
   DBT_BIN="dbt"
-  log "Using local dbt: $(dbt --version | head -1)"
-elif command -v docker >/dev/null 2>&1; then
-  DBT_IMAGE="${DBT_IMAGE:-ghcr.io/dbt-labs/dbt-trino:1.9.0}"
+fi
+if [[ -z "$DBT_BIN" ]] && command -v docker >/dev/null 2>&1; then
+  DBT_IMAGE="${DBT_IMAGE:-uwv/dbt-trino:1.9.0-uwv}"
+  if ! docker image inspect "$DBT_IMAGE" >/dev/null 2>&1; then
+    DBT_IMAGE="ghcr.io/dbt-labs/dbt-trino:1.9.0"
+  fi
   log "Using docker image: $DBT_IMAGE"
   DBT_BIN="docker run --rm -v $(pwd):/dbt -w /dbt -e DBT_PROFILES_DIR=/dbt $DBT_IMAGE"
-else
-  fail "Geen dbt en geen docker beschikbaar — installeer dbt-core+dbt-trino, of een Docker."
 fi
+if [[ -z "$DBT_BIN" ]]; then
+  fail "Geen dbt-trino en geen docker beschikbaar — installeer dbt-core+dbt-trino in ~/.dbt-core-venv, of een Docker."
+fi
+log "Using dbt: $DBT_BIN"
 
 # 1. profiles.yml — gebruik de template als smoke; password kan dummy zijn.
 if [[ ! -f "$ROOT/dbt/profiles.yml" ]]; then
