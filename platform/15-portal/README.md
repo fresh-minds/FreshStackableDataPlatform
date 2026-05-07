@@ -1,7 +1,36 @@
 # platform/15-portal — UWV Platform Portal
 
-Rol-aware launchpad + architectuurkaart, bereikbaar op
-**`https://platform.uwv-platform.local`** na `make deploy-platform`.
+Rol-aware launchpad + architectuurkaart + UDP Academy (certificeringstracks),
+bereikbaar op **`https://platform.uwv-platform.local`** na `make deploy-platform`.
+
+## UDP Academy
+
+De `/learn/`-routes vormen het certificeringsplatform met 33 modules
+(11 rollen × 3 levels) en SVG-certificaten. Alles is statisch behalve:
+
+- voortgang sync via `/api/learn/progress` → Keycloak user-attribute
+  `udp_progress` (Academy-backend deployment in [academy-backend.yaml](academy-backend.yaml));
+- auto-checks via `/api/learn/check/<id>`.
+
+Zonder de backend werkt alles op localStorage; voortgang is dan per browser.
+
+### Keycloak service-account
+
+De backend praat met Keycloak admin-API via `client_id=portal-backend`
+(zie [realm-uwv.json](../../infrastructure/helm/keycloak/realm-uwv.json)).
+
+Eenmalig na realm-import: ken `realm-management:manage-users` toe aan het
+service-account user:
+
+```bash
+kcadm.sh add-roles \
+  -r uwv \
+  --uusername service-account-portal-backend \
+  --cclientid realm-management \
+  --rolename manage-users
+```
+
+Daarna kan de backend voortgang naar user-attributes schrijven.
 
 ## Architectuur
 

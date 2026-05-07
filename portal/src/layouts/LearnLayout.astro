@@ -1,0 +1,157 @@
+---
+import Layout from './Layout.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  // Ingestelde leestofbreedte. "prose" = max 68ch (modules), "wide" = volledige breedte (overzichten).
+  width?: 'prose' | 'wide';
+}
+
+const { title, description, width = 'wide' } = Astro.props;
+---
+<Layout title={title} description={description}>
+  <div class={`learn-shell learn-${width}`}>
+    <slot />
+  </div>
+</Layout>
+
+<style is:global>
+  /* ─── Algemene Learn-stijlen — minimal, hergebruik tokens uit Layout. ─── */
+
+  .learn-shell { max-width: 100%; }
+  .learn-prose {
+    max-width: 68ch;
+    margin: 0 auto;
+  }
+
+  .learn-crumbs {
+    color: var(--c-muted);
+    font-size: .85rem;
+    margin: 0 0 1rem;
+  }
+  .learn-crumbs a { color: var(--c-muted); }
+  .learn-crumbs a:hover { color: var(--c-text); }
+  .learn-crumbs .sep { margin: 0 .35rem; opacity: .6; }
+
+  /* ─── Module-overzicht (lijst, geen cards) ─── */
+  .module-list {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0 0;
+    border-top: 1px solid var(--c-border);
+  }
+  .module-list li {
+    border-bottom: 1px solid var(--c-border);
+  }
+  .module-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 1rem;
+    align-items: center;
+    padding: .85rem .25rem;
+    color: var(--c-text);
+  }
+  .module-row:hover { text-decoration: none; }
+  .module-row:hover .module-title { color: var(--c-accent); }
+  .module-row .module-title { font-weight: 500; }
+  .module-row .module-meta { color: var(--c-muted); font-size: .82rem; }
+  .module-row .module-duration { color: var(--c-muted); font-size: .8rem; }
+
+  /* ─── Voortgang-glyph (geen kleurverloop, plat) ─── */
+  .pdot {
+    display: inline-block;
+    width: .85em;
+    height: .85em;
+    border: 1px solid var(--c-border);
+    border-radius: 2px;
+    vertical-align: middle;
+    background: transparent;
+  }
+  .pdot.done { background: var(--c-accent); border-color: var(--c-accent); }
+  .pdot.in-progress {
+    background: linear-gradient(135deg, var(--c-accent) 50%, transparent 50%);
+    border-color: var(--c-accent);
+  }
+
+  /* ─── Module-content (typografie) ─── */
+  .module-prose {
+    line-height: 1.6;
+  }
+  .module-prose h2 {
+    margin-top: 2rem;
+    font-size: 1.15rem;
+  }
+  .module-prose h3 {
+    margin-top: 1.5rem;
+    font-size: 1rem;
+  }
+  .module-prose ul, .module-prose ol {
+    padding-left: 1.25rem;
+  }
+  .module-prose ul li, .module-prose ol li {
+    margin: .25rem 0;
+  }
+  .module-prose code {
+    font-size: .88em;
+  }
+  .module-prose blockquote {
+    margin: 1rem 0;
+    padding: .25rem .9rem;
+    border-left: 2px solid var(--c-accent);
+    color: var(--c-muted);
+    font-size: .92rem;
+  }
+  .module-prose table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .9rem;
+    margin: 1rem 0;
+  }
+  .module-prose th, .module-prose td {
+    text-align: left;
+    padding: .4rem .5rem;
+    border-bottom: 1px solid var(--c-border);
+  }
+  .module-prose th {
+    color: var(--c-muted);
+    font-weight: 500;
+    border-bottom: 1px solid var(--c-border);
+  }
+
+  /* ─── Block-headers binnen een module (Lab / Opdracht / Quiz) ─── */
+  .learn-block {
+    background: var(--c-panel-2);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    padding: .85rem 1rem;
+    margin: 1rem 0;
+  }
+  .learn-block-title {
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--c-muted);
+    margin: 0 0 .35rem;
+  }
+
+  /* ─── Module-navigatie (vorige / volgende) ─── */
+  .module-nav {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--c-border);
+  }
+  .module-nav a {
+    display: block;
+    padding: .65rem .85rem;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    color: var(--c-text);
+  }
+  .module-nav a:hover { border-color: var(--c-accent); text-decoration: none; }
+  .module-nav .nav-dir { display: block; font-size: .7rem; color: var(--c-muted); text-transform: uppercase; letter-spacing: .07em; }
+  .module-nav .nav-next { text-align: right; }
+</style>

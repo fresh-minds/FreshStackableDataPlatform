@@ -1,0 +1,71 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+// Generieke SSO-redirect-pagina. Gebruik: /go/<service>/ stuurt door naar
+// https://<service>.uwv-platform.local:8443/. Voor MinIO is een aparte pagina
+// nodig (custom SSO-flow); zie /go/minio.astro.
+//
+// We renderen statisch alle bekende services. Onbekende service-keys leiden
+// niet tot een build-error, ze worden simpelweg niet gegenereerd.
+
+interface ServiceTarget {
+  // Subdomein op uwv-platform.local
+  host: string;
+  // Optioneel pad op de target
+  path?: string;
+  // Display-naam
+  label: string;
+}
+
+const targets: Record<string, ServiceTarget> = {
+  superset:     { host: 'superset',     label: 'Apache Superset' },
+  trino:        { host: 'trino',        label: 'Trino' },
+  airflow:      { host: 'airflow',      label: 'Apache Airflow' },
+  nifi:         { host: 'nifi',         label: 'Apache NiFi' },
+  openmetadata: { host: 'openmetadata', label: 'OpenMetadata' },
+  prometheus:   { host: 'prometheus',   label: 'Prometheus' },
+  keycloak:     { host: 'keycloak',     label: 'Keycloak', path: '/realms/uwv/account' },
+  opensearch:   { host: 'opensearch',   label: 'OpenSearch Dashboards', path: '/app/data-explorer/discover' },
+};
+
+export async function getStaticPaths() {
+  return Object.keys({
+    superset: 0, trino: 0, airflow: 0, nifi: 0, openmetadata: 0,
+    prometheus: 0, keycloak: 0, opensearch: 0,
+  }).map((service) => ({ params: { service } }));
+}
+
+const { service } = Astro.params as { service: string };
+const target = targets[service];
+if (!target) return Astro.redirect('/');
+
+// Build de URL — zonder TLD; client-script herschrijft .local naar .cloud waar nodig.
+const url = `https://${target.host}.uwv-platform.local:8443${target.path ?? ''}`;
+---
+<Layout title={`${target.label} — SSO redirect`}>
+  <section class="panel">
+    <h1>Doorsturen naar {target.label}…</h1>
+    <p id="status">Bezig met inloggen via Keycloak SSO…</p>
+    <p id="fallback" hidden>
+      Automatisch doorsturen mislukte. Open
+      <a href={url} rel="noreferrer">{target.label}</a> direct.
+    </p>
+  </section>
+
+  <script define:vars={{ url }}>
+    // Client-side rewrite van .local → .cloud is al actief vanuit Layout.astro,
+    // maar we wachten tot na het rewrite-script om de href op te bouwen.
+    function go() {
+      const host = window.location.hostname;
+      const dest = host.endsWith('.uwv-platform.cloud')
+        ? url.replace(/uwv-platform\.local/g, 'uwv-platform.cloud')
+        : url;
+      window.location.replace(dest);
+    }
+    setTimeout(() => {
+      const fb = document.getElementById('fallback');
+      if (fb) fb.hidden = false;
+    }, 2000);
+    go();
+  </script>
+</Layout>

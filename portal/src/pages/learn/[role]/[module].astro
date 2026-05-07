@@ -1,0 +1,141 @@
+---
+import LearnLayout from '../../../layouts/LearnLayout.astro';
+import LabLauncher from '../../../components/learn/LabLauncher.astro';
+import QuizBlock from '../../../components/learn/QuizBlock.astro';
+import ChecksBlock from '../../../components/learn/ChecksBlock.astro';
+import ProgressDot from '../../../components/learn/ProgressDot.astro';
+import { getCollection } from 'astro:content';
+import { roleById, type RoleId } from '../../../data/roles';
+import { levels, levelMeta, moduleKey } from '../../../data/learn-tracks';
+
+export async function getStaticPaths() {
+  const all = await getCollection('learn');
+  return all.map((entry) => ({
+    params: {
+      role: entry.data.role,
+      module: entry.slug.split('/').pop(),
+    },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await entry.render();
+const role = entry.data.role as RoleId;
+const meta = roleById(role)!;
+
+// Volgende/vorige module bepalen voor module-nav.
+const all = await getCollection('learn', ({ data }) => data.role === role);
+all.sort((a, b) => {
+  const lvl = levels.findIndex((l) => l.id === a.data.level)
+            - levels.findIndex((l) => l.id === b.data.level);
+  return lvl !== 0 ? lvl : a.data.order - b.data.order;
+});
+const idx = all.findIndex((m) => m.slug === entry.slug);
+const prev = idx > 0 ? all[idx - 1] : null;
+const next = idx < all.length - 1 ? all[idx + 1] : null;
+const slug = (e: typeof entry) => e.slug.split('/').pop();
+
+const key = moduleKey(role, entry.data.level, entry.data.order);
+---
+<LearnLayout title={`${entry.data.title} · ${meta.displayName}`} width="prose">
+  <p class="learn-crumbs">
+    <a href="/learn/">Academy</a>
+    <span class="sep">/</span>
+    <a href={`/learn/${role}/`}>{meta.displayName}</a>
+    <span class="sep">/</span>
+    <span>{levelMeta(entry.data.level).title}</span>
+  </p>
+
+  <h1>{entry.data.title}</h1>
+  <p class="muted">
+    <ProgressDot moduleKey={key} />
+    <span class="meta-inline">{levelMeta(entry.data.level).title} · {entry.data.duration}</span>
+  </p>
+
+  <p class="lead">{entry.data.summary}</p>
+
+  {entry.data.prereqs.length > 0 && (
+    <p class="muted prereqs">
+      Vereisten:
+      {entry.data.prereqs.map((p, i) => {
+        const [pr, pl, po] = p.split('/');
+        return (
+          <>
+            {i > 0 && ', '}
+            <a href={`/learn/${pr}/${pl}-${po}/`}><code>{p}</code></a>
+          </>
+        );
+      })}
+    </p>
+  )}
+
+  <article class="module-prose">
+    <Content />
+  </article>
+
+  {entry.data.labs.length > 0 && (
+    <section class="learn-block">
+      <h2 class="learn-block-title">Hands-on lab</h2>
+      <div class="lab-list">
+        {entry.data.labs.map((lab) => (
+          <LabLauncher
+            title={lab.title}
+            hint={lab.hint}
+            href={lab.href}
+            vscodePath={lab.vscodePath}
+          />
+        ))}
+      </div>
+    </section>
+  )}
+
+  {entry.data.checks.length > 0 && (
+    <section class="learn-block">
+      <h2 class="learn-block-title">Verificatie — auto-check</h2>
+      <ChecksBlock moduleKey={key} checks={entry.data.checks} />
+    </section>
+  )}
+
+  {entry.data.quiz.length > 0 && (
+    <section class="learn-block">
+      <h2 class="learn-block-title">Quiz</h2>
+      <QuizBlock moduleKey={key} questions={entry.data.quiz} certifies={entry.data.certifies} />
+    </section>
+  )}
+
+  <nav class="module-nav">
+    {prev ? (
+      <a class="nav-prev" href={`/learn/${role}/${slug(prev)}/`}>
+        <span class="nav-dir">← vorige</span>
+        <span>{prev.data.title}</span>
+      </a>
+    ) : <span></span>}
+    {next ? (
+      <a class="nav-next" href={`/learn/${role}/${slug(next)}/`}>
+        <span class="nav-dir">volgende →</span>
+        <span>{next.data.title}</span>
+      </a>
+    ) : <span></span>}
+  </nav>
+</LearnLayout>
+
+<style>
+  .lead { font-size: 1.05rem; margin: .5rem 0 1.5rem; }
+  .meta-inline { margin-left: .35rem; }
+  .prereqs { font-size: .85rem; }
+  .lab-list { display: flex; flex-direction: column; gap: .5rem; }
+</style>
+
+<script>
+  import { bootstrap, setProgress, statusOf } from '../../../scripts/learn-progress';
+  bootstrap();
+
+  // Markeer module als 'in-progress' bij eerste bezoek (geen overschrijving van 'done').
+  const root = document.querySelector<HTMLElement>('article.module-prose');
+  if (root) {
+    const key = document.querySelector<HTMLElement>('.module-prose')?.getAttribute('data-key')
+             ?? document.querySelector<HTMLElement>('[data-progress-key]')?.dataset.progressKey;
+    if (key && !statusOf(key)) setProgress(key, 'in-progress');
+  }
+</script>

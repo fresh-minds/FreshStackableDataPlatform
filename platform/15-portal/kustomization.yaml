@@ -9,6 +9,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  - academy-backend.yaml
 
 commonLabels:
   app.kubernetes.io/part-of: uwv-platform

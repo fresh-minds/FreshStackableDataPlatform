@@ -540,6 +540,28 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "portal-backend",
+      "name": "UDP Academy Backend (service account)",
+      "description": "Service-account voor de Academy-backend; schrijft voortgang naar user-attribute udp_progress.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-portal-backend-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": [
+        "profile",
+        "roles"
+      ],
+      "fullScopeAllowed": false,
+      "attributes": {
+        "use.refresh.tokens": "false"
+      }
     }
   ],
   "clientScopes": [

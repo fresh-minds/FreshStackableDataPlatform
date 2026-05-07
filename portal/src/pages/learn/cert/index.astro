@@ -1,0 +1,240 @@
+---
+import LearnLayout from '../../../layouts/LearnLayout.astro';
+import { roles } from '../../../data/roles';
+
+// Static page; alle data komt client-side uit URL + sessionStorage + localStorage.
+const rolesPayload = roles.map((r) => ({
+  id: r.id,
+  displayName: r.displayName,
+  domain: r.domain,
+}));
+---
+<LearnLayout title="Certificaat · Academy">
+  <p class="learn-crumbs">
+    <a href="/learn/">Academy</a>
+    <span class="sep">/</span>
+    <a href="/learn/me/">Mijn voortgang</a>
+    <span class="sep">/</span>
+    <span>Certificaat</span>
+  </p>
+
+  <h1>Certificaat</h1>
+  <p class="muted" data-cert-status>Bezig met opbouwen…</p>
+
+  <section class="cert-wrap" hidden data-cert-shell>
+    <div class="cert" id="cert-svg-wrap">
+      <!-- SVG wordt client-side gegenereerd -->
+    </div>
+    <div class="cert-actions">
+      <button type="button" data-cert-download>→ Download SVG</button>
+      <a class="cert-print" href="#" onclick="window.print();return false;">→ Afdrukken</a>
+    </div>
+  </section>
+
+  <section class="panel" hidden data-cert-error>
+    <h2>Geen certificaat</h2>
+    <p>
+      Dit certificaat wordt verleend wanneer alle modules van een rol
+      (Foundation, Practitioner, Expert) zijn afgerond. Open
+      <a href="/learn/me/">Mijn voortgang</a> om te zien welke modules nog openstaan.
+    </p>
+  </section>
+
+  <script type="application/json" id="cert-roles" set:html={JSON.stringify(rolesPayload)} />
+</LearnLayout>
+
+<style>
+  .cert-wrap {
+    margin: 1rem 0 0;
+  }
+  .cert {
+    background: #fdfdf8;
+    color: #1a1206;
+    padding: 4rem 3rem;
+    border: 1px solid #d0c8b0;
+    border-radius: 4px;
+    aspect-ratio: 1.414 / 1;     /* A-formaat liggend */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    box-shadow: 0 1px 6px rgba(0,0,0,.08);
+  }
+  .cert h2 {
+    border: 0;
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: .25em;
+    color: #8b5a00;
+    margin: 0 0 .5rem;
+  }
+  .cert .cert-name {
+    font-size: 2.4rem;
+    font-weight: 600;
+    line-height: 1.2;
+    margin: 1rem 0;
+  }
+  .cert .cert-role {
+    font-size: 1.4rem;
+    color: #8b5a00;
+    font-style: italic;
+    margin: 0;
+  }
+  .cert .cert-body {
+    font-size: 1rem;
+    line-height: 1.6;
+    margin: 1.5rem 0;
+    max-width: 60ch;
+  }
+  .cert footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    font-size: .85rem;
+    color: #5b4520;
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid #d0c8b0;
+  }
+  .cert footer .cert-id {
+    font-family: ui-monospace, monospace;
+    font-size: .7rem;
+    color: #8a7d62;
+  }
+
+  .cert-actions {
+    display: flex;
+    gap: .5rem;
+    margin-top: 1rem;
+  }
+  .cert-actions button, .cert-actions a {
+    padding: .4rem .85rem;
+    border: 1px solid var(--c-border);
+    background: var(--c-panel);
+    color: var(--c-text);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font: inherit;
+  }
+  .cert-actions button:hover, .cert-actions a:hover { border-color: var(--c-accent); text-decoration: none; }
+
+  @media print {
+    .topbar, footer, .learn-crumbs, .cert-actions, [data-cert-status] { display: none !important; }
+    h1 { display: none; }
+    .cert { box-shadow: none; border: 1px solid #d0c8b0; }
+  }
+</style>
+
+<script>
+  import { readProgress } from '../../../scripts/learn-progress';
+
+  interface RoleInfo { id: string; displayName: string; domain: string; }
+
+  const ROLES: RoleInfo[] = JSON.parse(
+    document.getElementById('cert-roles')!.textContent ?? '[]',
+  );
+
+  function escape(s: string): string {
+    return s.replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]!));
+  }
+
+  function shortHash(s: string): string {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+      h = (h << 5) - h + s.charCodeAt(i);
+      h |= 0;
+    }
+    return Math.abs(h).toString(16).padStart(8, '0').slice(0, 8);
+  }
+
+  function user(): string {
+    return sessionStorage.getItem('uwv-portal-user') ?? 'UWV-medewerker';
+  }
+
+  function isComplete(roleId: string): boolean {
+    const p = readProgress();
+    const keys = Object.keys(p).filter((k) => k.startsWith(roleId + '/'));
+    if (keys.length < 3) return false; // minimaal 3 levels
+    return keys.every((k) => p[k] === 'done');
+  }
+
+  function buildCert(role: RoleInfo): void {
+    const name = user();
+    const date = new Date().toISOString().slice(0, 10);
+    const id = shortHash(`${role.id}|${name}|${date}`);
+    const html = `
+      <h2>UDP Academy</h2>
+      <p class="cert-body">Hierbij wordt verklaard dat</p>
+      <div class="cert-name">${escape(name)}</div>
+      <p class="cert-body">de volledige certificeringstrack heeft afgerond voor de rol</p>
+      <p class="cert-role">${escape(role.displayName)}</p>
+      <p class="cert-body" style="margin-top:1rem">
+        Modules Foundation, Practitioner en Expert zijn doorlopen voor het
+        UWV Reference Data &amp; Analytics Platform — incl. compliance-grenzen,
+        hands-on opdrachten en verificatie.
+      </p>
+      <footer>
+        <div>
+          <strong>UDP Academy</strong><br />
+          Domein: ${escape(role.domain)}
+        </div>
+        <div style="text-align:right">
+          ${escape(date)}<br />
+          <span class="cert-id">cert-${id}</span>
+        </div>
+      </footer>
+    `;
+    document.getElementById('cert-svg-wrap')!.innerHTML = html;
+
+    document.querySelector<HTMLElement>('[data-cert-shell]')!.hidden = false;
+    document.querySelector<HTMLElement>('[data-cert-status]')!.textContent =
+      `Certificaat behaald: ${role.displayName} — ${date}`;
+
+    document.querySelector<HTMLButtonElement>('[data-cert-download]')!
+      .addEventListener('click', () => downloadAsSvg(role, name, date, id));
+  }
+
+  function showError(): void {
+    document.querySelector<HTMLElement>('[data-cert-status]')!.textContent =
+      'Geen certificaat beschikbaar voor deze rol.';
+    document.querySelector<HTMLElement>('[data-cert-error]')!.hidden = false;
+  }
+
+  function downloadAsSvg(role: RoleInfo, name: string, date: string, id: string): void {
+    // Eenvoudige standalone SVG (afgekorte versie van de HTML-render).
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 850" font-family="ui-sans-serif, system-ui, sans-serif">
+  <rect width="1200" height="850" fill="#fdfdf8"/>
+  <rect x="40" y="40" width="1120" height="770" fill="none" stroke="#d0c8b0" stroke-width="2"/>
+  <text x="100" y="160" font-size="20" letter-spacing="5" fill="#8b5a00" font-weight="600">UDP ACADEMY</text>
+  <text x="100" y="240" font-size="22" fill="#1a1206">Hierbij wordt verklaard dat</text>
+  <text x="100" y="340" font-size="56" fill="#1a1206" font-weight="600">${escape(name)}</text>
+  <text x="100" y="400" font-size="22" fill="#1a1206">de volledige certificeringstrack heeft afgerond voor de rol</text>
+  <text x="100" y="470" font-size="36" fill="#8b5a00" font-style="italic">${escape(role.displayName)}</text>
+  <text x="100" y="540" font-size="18" fill="#1a1206">Modules Foundation, Practitioner en Expert zijn doorlopen</text>
+  <text x="100" y="568" font-size="18" fill="#1a1206">voor het UWV Reference Data &amp; Analytics Platform.</text>
+  <line x1="100" y1="700" x2="1100" y2="700" stroke="#d0c8b0" stroke-width="1"/>
+  <text x="100" y="740" font-size="16" fill="#5b4520" font-weight="600">UDP Academy</text>
+  <text x="100" y="762" font-size="14" fill="#5b4520">Domein: ${escape(role.domain)}</text>
+  <text x="1100" y="740" font-size="16" fill="#5b4520" text-anchor="end">${escape(date)}</text>
+  <text x="1100" y="762" font-size="11" fill="#8a7d62" text-anchor="end" font-family="ui-monospace, monospace">cert-${id}</text>
+</svg>`;
+    const blob = new Blob([svg], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `udp-academy-${role.id}-${date}.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function init(): void {
+    const params = new URLSearchParams(location.search);
+    const roleId = params.get('role');
+    const role = ROLES.find((r) => r.id === roleId);
+    if (!role) { showError(); return; }
+    if (!isComplete(role.id)) { showError(); return; }
+    buildCert(role);
+  }
+
+  init();
+</script>
