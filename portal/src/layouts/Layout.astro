@@ -26,6 +26,30 @@ const { title, description = 'UWV Reference Data Platform — rol-aware launchpa
         } catch (e) { /* localStorage onbeschikbaar — gebruik default */ }
       })();
     </script>
+    <script is:inline>
+      // Cross-environment URL rewrite: dezelfde Astro-build serveert k3d
+      // (*.uwv-platform.local op host 8443) én AKS (*.uwv-platform.cloud).
+      // Component- en shortcut-URLs zijn build-time hardcoded op .local;
+      // als we op .cloud zitten herschrijven we ze ter plekke.
+      (function () {
+        var host = window.location.hostname;
+        if (!host.endsWith('.uwv-platform.cloud')) return;
+        function rewrite() {
+          var anchors = document.querySelectorAll('a[href*="uwv-platform.local"]');
+          for (var i = 0; i < anchors.length; i++) {
+            anchors[i].href = anchors[i].href.replace(/uwv-platform\.local/g, 'uwv-platform.cloud');
+          }
+        }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', rewrite);
+        } else {
+          rewrite();
+        }
+        // Architecture/me/role pages render some links via client-side JS;
+        // a single MutationObserver catches those without per-page hooks.
+        new MutationObserver(rewrite).observe(document.documentElement, { childList: true, subtree: true });
+      })();
+    </script>
   </head>
   <body>
     <header class="topbar">
