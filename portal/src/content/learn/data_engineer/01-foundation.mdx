@@ -1,0 +1,122 @@
+---
+title: "Het platform voor de Data-engineer"
+role: data_engineer
+level: foundation
+order: 1
+duration: "45 min"
+summary: "Stackable-operators, de NiFi → Kafka → Spark → Delta-keten, dbt-trino voor transformatie, en JIT-toegang tot bronze. Wat staat waar in de repo."
+labs:
+  - title: "Open NiFi"
+    hint: "Visuele ingestion-flows"
+    href: "/go/nifi/"
+  - title: "Open Airflow"
+    hint: "Batch- en dbt-runs"
+    href: "/go/airflow/"
+  - title: "Open de repo in vscode.dev"
+    hint: "Bekijk de structuur van platform/, dbt/, spark-jobs/, nifi-flows/"
+    href: "/dbt-docs/"
+    vscodePath: "README.md"
+  - title: "Open de architectuur-doc in vscode.dev"
+    hint: "Definitief plaatje van de pipeline"
+    href: "/architecture/"
+    vscodePath: "docs/architecture.md"
+quiz:
+  - q: "Welke directory bevat de Stackable-CRD-manifesten?"
+    options:
+      - "infrastructure/"
+      - "platform/"
+      - "dbt/"
+      - "tests/"
+    correct: 1
+    explain: "platform/00-namespaces tot platform/16-* zijn de Stackable + supporting CRD's, in deploy-volgorde."
+  - q: "Wat is een correcte volgorde van data-stromen?"
+    options:
+      - "Trino → Kafka → NiFi → Spark"
+      - "NiFi → Kafka → Spark Structured Streaming → Delta op MinIO; daarna dbt-trino voor transformatie"
+      - "MinIO → NiFi → Trino → Airflow"
+      - "Spark → NiFi → Trino"
+    correct: 1
+  - q: "Hoe krijg je tijdelijk toegang tot bronze.uwv.* voor debug?"
+    options:
+      - "Direct queryen in Trino — engineer-rol mag altijd"
+      - "JIT-procedure: ticket aanmaken met scope + reden, platform-admin keurt goed; toegang 4 uur, queries gelogd, ticket-id in elke SQL als comment"
+      - "Een collega vragen om copy-paste"
+      - "Naar de business gaan"
+    correct: 1
+---
+
+Welkom. Engineer-rol op dit platform combineert vier verantwoordelijkheden:
+ingestion (NiFi), streaming compute (Spark), transformatie (dbt), en
+orkestratie (Airflow). Plus: discipline rondom bronze-toegang.
+
+## Stackable als basis
+
+Alle data-componenten draaien als CRDs onder de Stackable Data Platform
+operators (NiFi, Kafka, Spark, Hive, Trino, Airflow, Superset, OPA, ZooKeeper).
+Dat betekent:
+
+- één YAML per cluster (`platform/<nn>-<service>/cluster.yaml`);
+- de operator regelt de pods, configmaps, secrets, listeners;
+- upgrades zijn declarative — wijzig de release-versie in
+  `infrastructure/stackable-release.yaml` en pas toe.
+
+Reden om met Stackable te werken staat in [ADR-0001](/docs/adr/0001-stackable-as-base.md).
+
+## De pipeline
+
+```
+Bron (CSV, Kafka, REST, DB)
+   │
+   ▼
+NiFi (ingestion-flow per bron)
+   │
+   ▼
+Kafka topic (uwv.<domein>.<entiteit>)
+   │
+   ▼
+Spark Structured Streaming (write_delta)
+   │
+   ▼
+MinIO (s3a://uwv-bronze/<domein>/)
+   │   ◀── Hive Metastore registreert de tabel
+   ▼
+dbt-trino (staging → silver → gold marts)
+   │
+   ▼
+Trino (queries voor business + Superset)
+```
+
+Alles wat je in deze keten doet is versie-beheerd in deze repo.
+
+## Repo-structuur die je moet kennen
+
+| Directory | Wat |
+|---|---|
+| `platform/` | Stackable CRD's per service, in deploy-volgorde |
+| `nifi-flows/templates/` | NiFi-flow-templates per bron |
+| `spark-jobs/` | PySpark streaming en batch jobs + helpers |
+| `dbt/models/` | staging/intermediate/marts per UC |
+| `data-generation/` | Synthetische data-generators |
+| `opa-policies-src/` | Rego + role-mappings.json |
+| `tests/smoke/` | Smoke-tests die je in CI én lokaal draait |
+| `Makefile` | `make cluster`, `make bootstrap`, `make seed`, `make test` |
+
+## JIT-toegang tot bronze
+
+Je werkt 95% van de tijd op silver/gold (dbt-modellen). Voor debug op
+bronze (PII zichtbaar) geldt JIT:
+
+```
+1. Ticket aanmaken: scope + reden + verwachte duur
+2. platform-admin keurt goed → 4 uur toegang
+3. queries gelogd; ticket-id verplicht in SQL-comment
+4. automatische deactivatie
+```
+
+Geen JIT = geen toegang. Geen workarounds — die staan in de audit-log.
+
+## Volgende stap
+
+In de Practitioner-module voeg je een nieuwe bron toe: NiFi-template, Kafka-
+topic, Spark-job, dbt-staging, OPA-update, OpenMetadata-service-config — in
+één PR. Klein scope, maar elke laag raken.

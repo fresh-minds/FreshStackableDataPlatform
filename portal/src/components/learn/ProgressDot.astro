@@ -1,0 +1,9 @@
+---
+// Progress-glyph voor één module. Class wordt client-side gezet door
+// progress.ts; server-side renderen we hem als onbeginnen (default).
+interface Props {
+  moduleKey: string;
+}
+const { moduleKey } = Astro.props;
+---
+<span class="pdot" data-progress-key={moduleKey} aria-label="voortgang"></span>

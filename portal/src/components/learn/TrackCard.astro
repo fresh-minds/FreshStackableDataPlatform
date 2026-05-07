@@ -1,0 +1,46 @@
+---
+import { trackFor } from '../../data/learn-tracks';
+import type { RoleId } from '../../data/roles';
+import { roleById } from '../../data/roles';
+
+interface Props {
+  role: RoleId;
+  moduleCount: number;
+}
+
+const { role, moduleCount } = Astro.props;
+const meta = roleById(role)!;
+const track = trackFor(role)!;
+---
+<a class="track-card" href={`/learn/${role}/`} data-track-role={role}>
+  <span class="track-name">{meta.displayName}</span>
+  <span class="track-blurb">{track.oneLiner}</span>
+  <span class="track-meta">
+    <span>{moduleCount} modules</span>
+    <span class="track-progress" data-track-progress="0/0">0/{moduleCount}</span>
+  </span>
+</a>
+
+<style>
+  .track-card {
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    padding: .85rem 1rem;
+    background: var(--c-panel);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    color: var(--c-text);
+  }
+  .track-card:hover { border-color: var(--c-accent); text-decoration: none; }
+  .track-name { font-weight: 500; }
+  .track-blurb { color: var(--c-muted); font-size: .85rem; line-height: 1.4; }
+  .track-meta {
+    display: flex;
+    justify-content: space-between;
+    color: var(--c-muted);
+    font-size: .78rem;
+    margin-top: .35rem;
+  }
+  .track-progress { color: var(--c-text); }
+</style>

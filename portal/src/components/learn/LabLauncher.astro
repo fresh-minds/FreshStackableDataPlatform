@@ -1,0 +1,85 @@
+---
+// "Open in X"-knop. href is meestal een /go/<service> redirect, vscodePath
+// is een relatief repo-pad dat we tot vscode.dev URL bouwen. We bouwen de
+// vscode.dev URL op basis van een data-attribute zodat de gebruiker zijn
+// eigen fork/branch kan kiezen via een query-string of localStorage.
+
+interface Props {
+  title: string;
+  hint?: string;
+  href: string;
+  vscodePath?: string;
+}
+
+const { title, hint, href, vscodePath } = Astro.props;
+
+// Default repo. Klant kan dit overriden per omgeving via window.UWV_REPO.
+const defaultRepo = 'github.com/UWV/UDP_Stackable';
+const isExternal = href.startsWith('http');
+---
+<div class="lab" data-vscode-path={vscodePath ?? ''} data-default-repo={defaultRepo}>
+  <div class="lab-body">
+    <strong class="lab-title">{title}</strong>
+    {hint && <span class="lab-hint">{hint}</span>}
+  </div>
+  <div class="lab-actions">
+    <a class="lab-btn" href={href} target={isExternal ? '_blank' : '_self'} rel={isExternal ? 'noopener noreferrer' : undefined}>
+      → Open
+    </a>
+    {vscodePath && (
+      <a class="lab-btn lab-btn-secondary" data-vscode target="_blank" rel="noopener noreferrer">
+        → vscode.dev
+      </a>
+    )}
+  </div>
+</div>
+
+<style>
+  .lab {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1rem;
+    align-items: center;
+    padding: .75rem .85rem;
+    background: var(--c-panel);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+  }
+  .lab-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+  .lab-title { font-weight: 500; }
+  .lab-hint { color: var(--c-muted); font-size: .82rem; }
+  .lab-actions { display: flex; gap: .35rem; flex-wrap: wrap; justify-content: flex-end; }
+  .lab-btn {
+    display: inline-block;
+    padding: .35rem .75rem;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    color: var(--c-text);
+    background: var(--c-panel-2);
+    font-size: .85rem;
+    white-space: nowrap;
+  }
+  .lab-btn:hover { border-color: var(--c-accent); text-decoration: none; }
+  .lab-btn-secondary { background: transparent; }
+</style>
+
+<script>
+  // vscode.dev URL bouwen. We respecteren window.UWV_REPO override (kan in
+  // dev gezet worden zodat de knop naar je eigen fork wijst), anders fallback
+  // naar de default uit het data-attribute.
+  function buildVscodeUrl(path: string, defaultRepo: string): string {
+    const repo = (window as any).UWV_REPO ?? defaultRepo;
+    const branch = (window as any).UWV_BRANCH ?? 'main';
+    // vscode.dev opent een directory of bestand vanuit github.
+    // Patroon: https://vscode.dev/<repo-host>/<owner>/<name>/blob/<branch>/<path>
+    return `https://vscode.dev/${repo}/blob/${branch}/${path}`;
+  }
+
+  document.querySelectorAll<HTMLElement>('[data-vscode-path]').forEach((wrap) => {
+    const path = wrap.dataset.vscodePath;
+    const repo = wrap.dataset.defaultRepo!;
+    if (!path) return;
+    const a = wrap.querySelector<HTMLAnchorElement>('[data-vscode]');
+    if (a) a.href = buildVscodeUrl(path, repo);
+  });
+</script>

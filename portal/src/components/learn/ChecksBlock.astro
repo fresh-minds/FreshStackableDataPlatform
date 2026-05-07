@@ -1,0 +1,103 @@
+---
+// Auto-check blok. Roept /api/learn/check/<id> aan. Het backend-endpoint
+// (zie ci/scripts/learn-check.py) inspecteert de live staat van het platform
+// en retourneert {ok:bool, msg:string}. In dev (zonder endpoint) krijgt
+// de gebruiker een nette "niet beschikbaar" — maar mag gewoon doorgaan.
+
+interface Check {
+  id: string;
+  title: string;
+  hint?: string;
+}
+
+interface Props {
+  moduleKey: string;
+  checks: Check[];
+}
+
+const { moduleKey, checks } = Astro.props;
+---
+<div class="checks" data-checks-key={moduleKey}>
+  <ul class="checks-list">
+    {checks.map((c) => (
+      <li data-check-id={c.id}>
+        <span class="check-icon" aria-hidden="true">○</span>
+        <span class="check-body">
+          <strong>{c.title}</strong>
+          {c.hint && <span class="check-hint">{c.hint}</span>}
+          <span class="check-msg" data-check-msg></span>
+        </span>
+      </li>
+    ))}
+  </ul>
+  <button type="button" data-checks-run>Controleer mijn werk</button>
+</div>
+
+<style>
+  .checks-list { list-style: none; padding: 0; margin: 0 0 .75rem; }
+  .checks-list li {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: .65rem;
+    padding: .5rem 0;
+    border-bottom: 1px solid var(--c-border);
+  }
+  .checks-list li:last-child { border-bottom: 0; }
+  .check-icon { font-size: 1.2rem; line-height: 1; color: var(--c-muted); }
+  .checks-list li.ok .check-icon  { color: var(--c-ok);  }
+  .checks-list li.bad .check-icon { color: var(--c-bad); }
+  .check-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+  .check-hint { color: var(--c-muted); font-size: .82rem; }
+  .check-msg  { font-size: .82rem; color: var(--c-muted); }
+  .checks-list li.bad .check-msg { color: var(--c-bad); }
+  .checks-list li.ok  .check-msg { color: var(--c-ok); }
+  .checks button {
+    padding: .4rem .85rem;
+    border: 1px solid var(--c-border);
+    background: var(--c-panel);
+    color: var(--c-text);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .checks button:hover { border-color: var(--c-accent); }
+</style>
+
+<script>
+  import { setProgress } from '../../scripts/learn-progress';
+
+  document.querySelectorAll<HTMLElement>('.checks').forEach((root) => {
+    const key = root.dataset.checksKey!;
+    const btn = root.querySelector<HTMLButtonElement>('[data-checks-run]')!;
+    btn.addEventListener('click', async () => {
+      const items = root.querySelectorAll<HTMLLIElement>('[data-check-id]');
+      let allOk = true;
+      for (const li of items) {
+        const id = li.dataset.checkId!;
+        const msg = li.querySelector<HTMLElement>('[data-check-msg]')!;
+        li.classList.remove('ok', 'bad');
+        msg.textContent = 'controleren…';
+        try {
+          const r = await fetch(`/api/learn/check/${encodeURIComponent(id)}`, {
+            credentials: 'include',
+          });
+          if (r.ok) {
+            const j = (await r.json()) as { ok: boolean; msg: string };
+            li.classList.add(j.ok ? 'ok' : 'bad');
+            msg.textContent = j.msg ?? '';
+            if (!j.ok) allOk = false;
+          } else if (r.status === 404) {
+            msg.textContent = 'check niet beschikbaar in deze omgeving';
+            allOk = false;
+          } else {
+            msg.textContent = `fout (${r.status})`;
+            allOk = false;
+          }
+        } catch {
+          msg.textContent = 'check niet bereikbaar';
+          allOk = false;
+        }
+      }
+      if (allOk && items.length > 0) setProgress(key, 'done');
+    });
+  });
+</script>

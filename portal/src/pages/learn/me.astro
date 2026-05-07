@@ -1,0 +1,194 @@
+---
+import LearnLayout from '../../layouts/LearnLayout.astro';
+import { getCollection } from 'astro:content';
+import { roles, roleById } from '../../data/roles';
+import { levels, levelMeta, moduleKey } from '../../data/learn-tracks';
+
+const all = await getCollection('learn');
+all.sort((a, b) => {
+  const r = a.data.role.localeCompare(b.data.role);
+  if (r !== 0) return r;
+  const lvl = levels.findIndex((l) => l.id === a.data.level)
+            - levels.findIndex((l) => l.id === b.data.level);
+  return lvl !== 0 ? lvl : a.data.order - b.data.order;
+});
+
+// Payload als JSON in de pagina — script vult voortgang client-side in.
+const payload = all.map((m) => ({
+  key: moduleKey(m.data.role, m.data.level, m.data.order),
+  role: m.data.role,
+  roleName: roleById(m.data.role)?.displayName ?? m.data.role,
+  level: m.data.level,
+  levelName: levelMeta(m.data.level).title,
+  order: m.data.order,
+  title: m.data.title,
+  href: `/learn/${m.data.role}/${m.slug.split('/').pop()}/`,
+  certifies: m.data.certifies,
+}));
+---
+<LearnLayout title="Mijn voortgang · Academy">
+  <p class="learn-crumbs">
+    <a href="/learn/">Academy</a>
+    <span class="sep">/</span>
+    <span>Mijn voortgang</span>
+  </p>
+
+  <h1>Mijn voortgang</h1>
+  <p class="muted" data-progress-summary>—</p>
+
+  <section class="panel">
+    <h2>Modules</h2>
+    <table class="me-table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Rol</th>
+          <th>Level</th>
+          <th>Module</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody data-me-rows>
+        <!-- gevuld door script -->
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>Certificaten</h2>
+    <p class="muted">
+      Certificaten verschijnen automatisch zodra je alle Expert-modules van een rol hebt afgerond.
+      Download als SVG en bewaar of print als bewijs van afronding.
+    </p>
+    <div class="cert-list" data-cert-list>
+      <p class="muted" data-cert-empty>Nog geen certificaten behaald.</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Voortgang resetten</h2>
+    <p class="muted">Lokaal resetten verwijdert je voortgang in deze browser. Een synced sessie haalt de remote staat opnieuw op.</p>
+    <button type="button" data-progress-reset>→ Mijn voortgang wissen</button>
+  </section>
+
+  <script type="application/json" id="learn-me-data" set:html={JSON.stringify(payload)} />
+</LearnLayout>
+
+<style>
+  .me-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  .me-table th, .me-table td { text-align: left; padding: .45rem .5rem; border-bottom: 1px solid var(--c-border); }
+  .me-table th { color: var(--c-muted); font-weight: 500; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
+  .me-table a { color: var(--c-text); }
+  .me-table a:hover { color: var(--c-accent); text-decoration: none; }
+
+  .cert-list { display: flex; flex-direction: column; gap: .5rem; }
+  .cert-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: .85rem;
+    align-items: center;
+    padding: .65rem .85rem;
+    background: var(--c-panel-2);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+  }
+  .cert-row a { color: var(--c-text); }
+  .cert-row a:hover { color: var(--c-accent); text-decoration: none; }
+
+  [data-progress-reset] {
+    padding: .4rem .85rem;
+    border: 1px solid var(--c-border);
+    background: var(--c-panel);
+    color: var(--c-text);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  [data-progress-reset]:hover { border-color: var(--c-bad); color: var(--c-bad); }
+</style>
+
+<script>
+  import { bootstrap, readProgress, clearProgress } from '../../scripts/learn-progress';
+  bootstrap();
+
+  interface MeRow {
+    key: string; role: string; roleName: string; level: string; levelName: string;
+    order: number; title: string; href: string; certifies: boolean;
+  }
+
+  const data: MeRow[] = JSON.parse(
+    document.getElementById('learn-me-data')!.textContent ?? '[]',
+  );
+
+  function escape(s: string): string {
+    return s.replace(/[&<>"']/g, (c) => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
+    }[c]!));
+  }
+
+  function render() {
+    const p = readProgress();
+    const rows = document.querySelector<HTMLElement>('[data-me-rows]')!;
+    rows.innerHTML = data.map((m) => {
+      const status = p[m.key];
+      const dotClass = status === 'done' ? 'done' : status === 'in-progress' ? 'in-progress' : '';
+      const statusText = status === 'done' ? 'afgerond' : status === 'in-progress' ? 'mee bezig' : '—';
+      return `
+        <tr>
+          <td><span class="pdot ${dotClass}"></span> <span class="muted">${statusText}</span></td>
+          <td>${escape(m.roleName)}</td>
+          <td>${escape(m.levelName)}</td>
+          <td><a href="${m.href}">${escape(m.title)}</a></td>
+          <td>${m.certifies ? '<span class="badge ok">cert</span>' : ''}</td>
+        </tr>`;
+    }).join('');
+
+    // ─── Voortgang-summary ───
+    const total = data.length;
+    const done = data.filter((m) => p[m.key] === 'done').length;
+    const inP  = data.filter((m) => p[m.key] === 'in-progress').length;
+    const sumEl = document.querySelector<HTMLElement>('[data-progress-summary]')!;
+    sumEl.textContent = `${done} afgerond · ${inP} bezig · ${total - done - inP} nog niet begonnen (van ${total} modules)`;
+
+    // ─── Certificaten — afgegeven wanneer ALLE modules van een rol op 'done' staan ───
+    const certs: { role: string; roleName: string; date: string }[] = [];
+    const byRole = new Map<string, MeRow[]>();
+    data.forEach((m) => {
+      if (!byRole.has(m.role)) byRole.set(m.role, []);
+      byRole.get(m.role)!.push(m);
+    });
+    byRole.forEach((mods, role) => {
+      const allDone = mods.length > 0 && mods.every((m) => p[m.key] === 'done');
+      if (allDone) {
+        certs.push({
+          role,
+          roleName: mods[0].roleName,
+          date: new Date().toISOString().slice(0, 10),
+        });
+      }
+    });
+
+    const certList = document.querySelector<HTMLElement>('[data-cert-list]')!;
+    const certEmpty = document.querySelector<HTMLElement>('[data-cert-empty]')!;
+    if (certs.length === 0) {
+      certList.innerHTML = '<p class="muted">Nog geen certificaten behaald.</p>';
+    } else {
+      certList.innerHTML = certs.map((c) => `
+        <div class="cert-row">
+          <span><strong>${escape(c.roleName)}</strong> — alle modules afgerond</span>
+          <span class="muted">${escape(c.date)}</span>
+          <a href="/learn/cert/?role=${encodeURIComponent(c.role)}">→ Open certificaat</a>
+        </div>
+      `).join('');
+      certEmpty.hidden = true;
+    }
+  }
+
+  render();
+  document.addEventListener('uwv-learn:progress', render);
+
+  document.querySelector<HTMLButtonElement>('[data-progress-reset]')?.addEventListener('click', () => {
+    if (!confirm('Mijn voortgang wissen? Dit verwijdert lokaal opgeslagen Academy-voortgang.')) return;
+    clearProgress();
+    render();
+  });
+</script>

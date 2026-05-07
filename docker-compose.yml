@@ -1,0 +1,40 @@
+# UDP Academy + portal — compose-stack voor lokaal draaien.
+# Twee services: nginx-static (Astro build) + academy-backend (FastAPI).
+# Open daarna http://localhost:8080/learn/
+
+services:
+  portal:
+    build:
+      context: .
+      dockerfile: portal/Dockerfile
+    image: uwv-platform/portal:dev
+    container_name: udp-portal
+    ports:
+      - "8090:8080"
+    volumes:
+      # Override de productie nginx.conf door een compose-vriendelijke versie.
+      # 127.0.0.11 als resolver, geen kube-dns, academy via service-name.
+      - ./portal/nginx.compose.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      academy:
+        condition: service_healthy
+    restart: unless-stopped
+
+  academy:
+    build:
+      context: ./portal
+      dockerfile: Dockerfile.academy
+    image: uwv-platform/academy-backend:dev
+    container_name: udp-academy
+    # Geen Keycloak in compose — env's blijven leeg, /api/learn/check/_ping
+    # werkt; voortgang-sync ('PUT /api/learn/progress') faalt met 401, en
+    # de frontend valt netjes terug op localStorage.
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/api/learn/check/_ping')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped

@@ -1,0 +1,66 @@
+---
+import LearnLayout from '../../layouts/LearnLayout.astro';
+import TrackCard from '../../components/learn/TrackCard.astro';
+import { getCollection } from 'astro:content';
+import { tracks } from '../../data/learn-tracks';
+import { roleById } from '../../data/roles';
+
+const all = await getCollection('learn');
+const counts = new Map<string, number>();
+for (const m of all) counts.set(m.data.role, (counts.get(m.data.role) ?? 0) + 1);
+
+const business = tracks.filter((t) => roleById(t.role)?.category === 'business');
+const tech     = tracks.filter((t) => roleById(t.role)?.category === 'tech');
+---
+<LearnLayout title="Academy">
+  <section class="panel">
+    <h1>UDP Academy</h1>
+    <p>
+      Per rol op het platform een leerpad: <strong>Foundation</strong>
+      (wat is dit), <strong>Practitioner</strong> (één taak van begin tot eind)
+      en <strong>Expert</strong> (zelf werk leveren). Iedere module linkt
+      naar de live tools en — voor tech-rollen — naar de juiste plek in
+      <a href="https://vscode.dev" rel="noreferrer">vscode.dev</a>.
+    </p>
+    <p class="muted">
+      Voortgang slaan we lokaal op in je browser. Na inlog via Keycloak
+      synchroniseert de Academy je voortgang automatisch over apparaten.
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>Eindgebruikers</h2>
+    <p class="muted">Voor wie het platform raadpleegt voor het eigen werk.</p>
+    <div class="grid-2 track-grid">
+      {business.map((t) => (
+        <TrackCard role={t.role} moduleCount={counts.get(t.role) ?? 0} />
+      ))}
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Platform-team</h2>
+    <p class="muted">Voor wie het platform bouwt en beheert.</p>
+    <div class="grid-2 track-grid">
+      {tech.map((t) => (
+        <TrackCard role={t.role} moduleCount={counts.get(t.role) ?? 0} />
+      ))}
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Eigen voortgang</h2>
+    <p>
+      <a href="/learn/me/">→ Mijn voortgang en certificaten</a>
+    </p>
+  </section>
+</LearnLayout>
+
+<style>
+  .track-grid { gap: .75rem; }
+</style>
+
+<script>
+  import { bootstrap } from '../../scripts/learn-progress';
+  bootstrap();
+</script>
