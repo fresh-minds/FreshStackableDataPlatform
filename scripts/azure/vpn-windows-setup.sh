@@ -49,7 +49,7 @@ fi
 # 3. Print instructions
 GW_IP=$(cd "$TF_DIR" && terraform output -raw vpn_gateway_public_ip 2>/dev/null || echo "<provisioning>")
 AKS_VNET=$(cd "$TF_DIR" && terraform output -json aks_vnet_address_space 2>/dev/null || echo "[]")
-LB_INTERNAL=$(kubectl -n ingress-nginx get svc ingress-nginx-controller-internal -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "<not yet allocated>")
+LB_INTERNAL=$(kubectl --context uwv-platform-aks -n ingress-nginx get svc ingress-nginx-controller-internal -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "<not yet allocated>")
 
 cat <<EOF
 
@@ -72,10 +72,10 @@ cat <<EOF
    4. Connect: Settings → Network & Internet → VPN → "${GW_NAME:-<gw>}" → Connect.
 
    5. Once connected, edit C:\\Windows\\System32\\drivers\\etc\\hosts (admin):
-        $LB_INTERNAL keycloak.uwv-platform.local minio-console.uwv-platform.local grafana.uwv-platform.local openmetadata.uwv-platform.local
+        $LB_INTERNAL platform.uwv-platform.cloud keycloak.uwv-platform.cloud minio-console.uwv-platform.cloud minio.uwv-platform.cloud grafana.uwv-platform.cloud openmetadata.uwv-platform.cloud
 
-      Then browse to https://keycloak.uwv-platform.local — works on standard
-      port 443, valid TLS via the platform's self-signed CA.
+      Then browse to https://platform.uwv-platform.cloud — standard port 443,
+      TLS via the platform's self-signed CA (browser will warn — accept once).
 
   Reference values (from terraform output):
     VPN Gateway IP   : $GW_IP
