@@ -51,15 +51,18 @@ const { moduleKey, questions, certifies } = Astro.props;
   .quiz-explain.show { display: block; }
   .quiz-actions { display: flex; gap: .85rem; align-items: center; margin-top: .85rem; }
   .quiz-actions button {
-    padding: .4rem .85rem;
-    border: 1px solid var(--c-accent);
-    background: var(--c-accent);
-    color: #1a1206;
-    border-radius: var(--radius);
-    font-weight: 600;
+    padding: 10px 14px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    font-weight: var(--weight-medium);
     cursor: pointer;
+    transition: filter .15s;
   }
-  [data-theme="light"] .quiz-actions button { color: #fff; }
+  .quiz-actions button:hover { filter: brightness(1.06); }
   .quiz-result { color: var(--c-muted); font-size: .9rem; }
   .quiz-result.pass { color: var(--c-ok); }
   .quiz-result.fail { color: var(--c-bad); }

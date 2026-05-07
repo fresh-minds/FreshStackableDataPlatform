@@ -1,6 +1,8 @@
 ---
 import type { PlatformComponent } from '../data/components';
-import StatusBadge from './StatusBadge.astro';
+import StatusDot from './primitives/StatusDot.astro';
+import Eyebrow from './primitives/Eyebrow.astro';
+import Tag from './primitives/Tag.astro';
 
 interface Props {
   component: PlatformComponent;
@@ -11,79 +13,112 @@ const hasUrl = component.url !== null;
 const isExternal = hasUrl && component.url!.startsWith('http');
 ---
 <article class={`comp ${emphasis ? 'comp-emph' : ''}`} data-component={component.id}>
-  <header>
-    <img class="comp-icon" src={component.icon} alt="" width="36" height="36" />
+  <header class="comp-head">
+    <span class="comp-icon-wrap">
+      <img class="comp-icon" src={component.icon} alt="" width="24" height="24" />
+    </span>
     <div class="comp-title">
+      <Eyebrow>{component.layer}</Eyebrow>
       <h3>
         {hasUrl ? (
-          <a href={component.url} target={isExternal ? '_blank' : undefined}
+          <a href={component.url}
+             target={isExternal ? '_blank' : undefined}
              rel={isExternal ? 'noopener noreferrer' : undefined}>
-            {component.name}{isExternal ? ' ↗' : ''}
+            {component.name}{isExternal && <span class="comp-ext"> ↗</span>}
           </a>
         ) : (
           <span>{component.name}</span>
         )}
       </h3>
-      <span class="comp-stage">{component.stage}</span>
     </div>
-    {component.prometheusJob && <StatusBadge job={component.prometheusJob} label="" />}
+    {component.prometheusJob && <StatusDot job={component.prometheusJob} size="md" />}
   </header>
-  <p class="purpose">{component.purpose}</p>
-  <p class="short">{component.short}</p>
-  <footer>
-    <span class="layer">{component.layer}</span>
+  <p class="comp-purpose">{component.purpose}</p>
+  <p class="comp-short">{component.short}</p>
+  <footer class="comp-foot">
+    <Tag variant="mono">{component.stage}</Tag>
   </footer>
 </article>
 
 <style>
   .comp {
-    background: var(--c-panel);
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius);
-    padding: .85rem 1rem;
-    display: flex; flex-direction: column;
-    gap: .4rem;
-    transition: border-color .15s, transform .15s;
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: var(--space-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    transition: border-color .15s, transform .15s, box-shadow .15s;
   }
-  .comp:hover { border-color: var(--c-accent); transform: translateY(-1px); }
-  .comp-emph { border-color: var(--c-accent); }
+  .comp:hover {
+    border-color: var(--ink-4);
+    transform: translateY(-1px);
+    box-shadow: var(--card-shadow-hover);
+  }
+  .comp-emph {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
 
-  .comp header {
+  .comp-head {
     display: grid;
     grid-template-columns: auto 1fr auto;
+    gap: var(--space-3);
     align-items: center;
-    gap: .65rem;
+    margin-bottom: var(--space-1);
   }
-  .comp-icon { display: block; flex-shrink: 0; }
-  .comp-title { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
-  .comp h3 { margin: 0; font-size: .98rem; line-height: 1.2; }
-  .comp-stage {
-    font-size: .68rem;
-    text-transform: uppercase;
-    letter-spacing: .06em;
-    color: var(--c-muted);
+  .comp-icon-wrap {
+    width: 36px;
+    height: 36px;
+    background: var(--bg-sunken);
+    border-radius: var(--radius-sm);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .comp-icon { display: block; }
+  .comp-title {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+  .comp h3 {
+    margin: 0;
+    font-size: var(--text-h3);
+    font-weight: var(--weight-medium);
+    color: var(--ink-1);
+    line-height: 1.2;
+    letter-spacing: var(--tracking-tight);
+    border: 0;
+    padding: 0;
+  }
+  .comp h3 a { color: var(--ink-1); text-decoration: none; }
+  .comp h3 a:hover { color: var(--ink-1); }
+  .comp-ext {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-3);
   }
 
-  .purpose {
-    margin: .25rem 0 0;
-    color: var(--c-text);
-    font-size: .85rem;
-    line-height: 1.4;
-  }
-  .short {
+  .comp-purpose {
     margin: 0;
-    color: var(--c-muted);
-    font-size: .78rem;
-    line-height: 1.4;
+    color: var(--ink-1);
+    font-size: var(--text-meta);
+    line-height: var(--leading-tight);
+  }
+  .comp-short {
+    margin: 0;
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+    line-height: var(--leading-tight);
     flex: 1;
   }
-
-  .comp footer {
-    font-size: .68rem;
-    color: var(--c-muted);
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    margin-top: .35rem;
+  .comp-foot {
+    display: flex;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
   }
-  .layer { background: var(--c-panel-2); padding: .12rem .5rem; border-radius: 999px; }
 </style>
