@@ -1,0 +1,202 @@
+# Cloud-only ingress aliases.
+#
+# Adds `*.uwv-platform.cloud` hostnames alongside the existing
+# `*.uwv-platform.local` ingresses on AKS so it can co-exist with a
+# concurrently-running local k3d cluster (which keeps the .local mapping
+# pinned to 127.0.0.1 via /etc/hosts).
+#
+# One cert + Ingress per service (5 services).
+# All certs are signed by the same `uwv-platform-issuer` ClusterIssuer
+# the platform already uses, so trusting the UWV CA once covers both
+# .local and .cloud.
+---
+# Keycloak
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: keycloak-cloud-tls
+  namespace: uwv-auth
+spec:
+  secretName: keycloak-cloud-tls
+  issuerRef:
+    name: uwv-platform-issuer
+    kind: ClusterIssuer
+  commonName: keycloak.uwv-platform.cloud
+  dnsNames:
+    - keycloak.uwv-platform.cloud
+  duration: 8760h
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak-cloud
+  namespace: uwv-auth
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [keycloak.uwv-platform.cloud]
+      secretName: keycloak-cloud-tls
+  rules:
+    - host: keycloak.uwv-platform.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port: { number: 80 }
+---
+# Grafana
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: grafana-cloud-tls
+  namespace: uwv-monitoring
+spec:
+  secretName: grafana-cloud-tls
+  issuerRef:
+    name: uwv-platform-issuer
+    kind: ClusterIssuer
+  commonName: grafana.uwv-platform.cloud
+  dnsNames: [grafana.uwv-platform.cloud]
+  duration: 8760h
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-cloud
+  namespace: uwv-monitoring
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [grafana.uwv-platform.cloud]
+      secretName: grafana-cloud-tls
+  rules:
+    - host: grafana.uwv-platform.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus-grafana
+                port: { number: 80 }
+---
+# OpenMetadata
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: openmetadata-cloud-tls
+  namespace: uwv-meta
+spec:
+  secretName: openmetadata-cloud-tls
+  issuerRef:
+    name: uwv-platform-issuer
+    kind: ClusterIssuer
+  commonName: openmetadata.uwv-platform.cloud
+  dnsNames: [openmetadata.uwv-platform.cloud]
+  duration: 8760h
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openmetadata-cloud
+  namespace: uwv-meta
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [openmetadata.uwv-platform.cloud]
+      secretName: openmetadata-cloud-tls
+  rules:
+    - host: openmetadata.uwv-platform.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: openmetadata
+                port: { number: 8585 }
+---
+# MinIO Console (UI)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: minio-console-cloud-tls
+  namespace: uwv-platform
+spec:
+  secretName: minio-console-cloud-tls
+  issuerRef:
+    name: uwv-platform-issuer
+    kind: ClusterIssuer
+  commonName: minio-console.uwv-platform.cloud
+  dnsNames: [minio-console.uwv-platform.cloud]
+  duration: 8760h
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minio-console-cloud
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [minio-console.uwv-platform.cloud]
+      secretName: minio-console-cloud-tls
+  rules:
+    - host: minio-console.uwv-platform.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio-console
+                port: { number: 9001 }
+---
+# MinIO S3 API
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: minio-cloud-tls
+  namespace: uwv-platform
+spec:
+  secretName: minio-cloud-tls
+  issuerRef:
+    name: uwv-platform-issuer
+    kind: ClusterIssuer
+  commonName: minio.uwv-platform.cloud
+  dnsNames: [minio.uwv-platform.cloud]
+  duration: 8760h
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minio-cloud
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [minio.uwv-platform.cloud]
+      secretName: minio-cloud-tls
+  rules:
+    - host: minio.uwv-platform.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio
+                port: { number: 9000 }

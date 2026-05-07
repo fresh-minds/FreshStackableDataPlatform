@@ -1,10 +1,22 @@
 # ingress-nginx override for AKS.
 #
 # Base values use hostNetwork=true + service.type=ClusterIP because k3d's
-# serverlb routes host:80/443 straight to node ports. AKS has neither a
-# host-port pass-through nor a serverlb — we need a real Azure Standard LB.
+# serverlb routes host:80/443 straight to node ports. AKS has no such
+# pass-through — we need a real Azure Standard LB.
+#
+# We expose two LoadBalancer Services pointing at the same controller pods:
+#  - public LB  (default `controller.service`):  reachable from the internet
+#                via the LB public IP. Useful when you can punch through to
+#                Azure (firewalls allowing).
+#  - internal LB (`controller.service.internal`): private IP in the AKS VNet,
+#                reachable from anything peered to that VNet — including a
+#                VPN Gateway client. This is the one VPN users hit.
 controller:
   hostNetwork: false
   dnsPolicy: ClusterFirst
   service:
     type: LoadBalancer
+    internal:
+      enabled: true
+      annotations:
+        service.beta.kubernetes.io/azure-load-balancer-internal: "true"

@@ -75,3 +75,6 @@ infrastructure/azure/terraform/crash.log
 
 # Azure SP credentials
 scripts/azure/env.sh
+
+# VPN client certs + private keys (terraform-generated)
+infrastructure/azure/vpn-client/
