@@ -290,9 +290,6 @@ spec:
   template:
     metadata:
       labels: { app: platform-landing }
-      # rolling annotation so a portal-publish.sh re-applies ConfigMap +
-      # forces the pod to re-extract the tarball even if the Deployment
-      # spec is otherwise unchanged.
       annotations:
         portal.uwv-platform/dist-checksum: "init"
     spec:
@@ -310,6 +307,8 @@ spec:
             - { name: html, mountPath: /html }
             - { name: dist-tar, mountPath: /dist }
       containers:
+        # 1. nginx serves the static Astro dist on :8080 (only oauth2-proxy
+        #    talks to it; not exposed via Service).
         - name: nginx
           image: nginxinc/nginx-unprivileged:1.27-alpine
           ports: [{ containerPort: 8080 }]
@@ -319,15 +318,52 @@ spec:
           resources:
             requests: { cpu: 10m, memory: 32Mi }
             limits:   { memory: 96Mi }
+        # 2. oauth2-proxy sidecar — handles /oauth2/* (sign_in, sign_out,
+        #    callback, userinfo) and gates everything else behind a Keycloak
+        #    session cookie. Reuses the same ConfigMap/Secret as the .local
+        #    portal; overrides the .local-specific cookie/whitelist/redirect
+        #    bits via env vars so the same oauth2-proxy.cfg works on both.
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
+          args:
+            - --config=/etc/oauth2-proxy/oauth2-proxy.cfg
+          env:
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: portal-oauth2-proxy, key: client-secret } }
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom: { secretKeyRef: { name: portal-oauth2-proxy, key: cookie-secret } }
+            # .cloud overrides:
+            - name: OAUTH2_PROXY_COOKIE_DOMAINS
+              value: ".uwv-platform.cloud"
+            - name: OAUTH2_PROXY_WHITELIST_DOMAINS
+              value: ".uwv-platform.cloud,.uwv-platform.cloud:8443"
+            - name: OAUTH2_PROXY_REDIRECT_URL
+              value: "https://platform.uwv-platform.cloud:8443/oauth2/callback"
+            # Honour X-Forwarded-* from ingress-nginx so oauth2-proxy
+            # constructs absolute URLs with the external scheme/host/port.
+            - name: OAUTH2_PROXY_REVERSE_PROXY
+              value: "true"
+          ports: [{ containerPort: 4180 }]
+          readinessProbe:
+            httpGet: { path: /ping, port: 4180 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 10m, memory: 64Mi }
+            limits:   { memory: 256Mi }
+          volumeMounts:
+            - name: oauth2-proxy-config
+              mountPath: /etc/oauth2-proxy
+              readOnly: true
       volumes:
         - name: html
           emptyDir: {}
         - name: dist-tar
-          configMap:
-            name: platform-landing-dist
+          configMap: { name: platform-landing-dist }
         - name: nginx-conf
-          configMap:
-            name: platform-landing-nginx-conf
+          configMap: { name: platform-landing-nginx-conf }
+        - name: oauth2-proxy-config
+          configMap: { name: portal-oauth2-proxy-config }
 ---
 apiVersion: v1
 kind: Service
@@ -336,7 +372,8 @@ metadata:
   namespace: uwv-platform
 spec:
   selector: { app: platform-landing }
-  ports: [{ port: 80, targetPort: 8080 }]
+  # Front the Pod via oauth2-proxy (4180) — nginx (8080) is internal-only.
+  ports: [{ port: 80, targetPort: 4180 }]
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -359,6 +396,10 @@ metadata:
   namespace: uwv-platform
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
+    # oauth2-proxy emits a 302 to login_url (.local Keycloak) on first hit;
+    # rewrite to .cloud so the browser's tunnel resolves it.
+    nginx.ingress.kubernetes.io/proxy-redirect-from: https://keycloak.uwv-platform.local:8443/
+    nginx.ingress.kubernetes.io/proxy-redirect-to: https://keycloak.uwv-platform.cloud:8443/
 spec:
   ingressClassName: nginx
   tls:

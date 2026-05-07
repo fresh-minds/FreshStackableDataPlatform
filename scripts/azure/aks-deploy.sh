@@ -170,6 +170,7 @@ patch_uris airflow 'https://airflow.uwv-platform.cloud/*' 'https://airflow.uwv-p
 patch_uris openmetadata 'https://openmetadata.uwv-platform.cloud/*' 'https://openmetadata.uwv-platform.cloud:8443/*'
 patch_uris nifi 'https://nifi.uwv-platform.cloud/*' 'https://nifi.uwv-platform.cloud:8443/*'
 patch_uris minio 'https://minio-console.uwv-platform.cloud:8443/oauth_callback' 'https://minio-console.uwv-platform.cloud:8443/*'
+patch_uris portal 'https://platform.uwv-platform.cloud:8443/oauth2/callback' 'https://platform.uwv-platform.cloud/oauth2/callback'
 " >/dev/null 2>&1 || warn "  cloud-redirect-URI patch failed (browse Keycloak admin to fix manually)"
     log "  .cloud redirect URIs added (idempotent)"
   fi
