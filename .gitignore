@@ -51,6 +51,9 @@ desktop.ini
 *.swo
 *~
 
+# Claude Code / CCD runtime state (worktrees, scheduler locks)
+.claude/
+
 # Logs and tmp
 *.log
 tmp/
