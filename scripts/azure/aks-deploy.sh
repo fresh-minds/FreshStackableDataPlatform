@@ -137,6 +137,41 @@ for u in platform.admin wajong.arbeidsdeskundige data.engineer; do
 done
 " >/dev/null 2>&1
     log "  Keycloak realm-patches toegepast"
+
+    # ---- Add .cloud redirect URIs to OIDC clients ----
+    # The base realm-uwv.json registers only *.uwv-platform.local/* as valid
+    # redirect URIs. On AKS, ingress-nginx rewrites Location: .local Keycloak
+    # -> .cloud Keycloak (via proxy-redirect-from/-to in the cloud-ingresses
+    # manifest), so the browser ends up at .cloud — but Keycloak then rejects
+    # the .cloud redirect_uri parameter unless it's in the allowed list. Add
+    # the .cloud variants here, idempotent (skip if already present).
+    log "AKS-post: add .cloud redirect URIs to OIDC clients"
+    kubectl -n uwv-auth exec "$KCPOD" -c keycloak -- bash -c "
+T=\$(curl -fsS -d 'client_id=admin-cli' -d 'username=kcadmin' -d 'password=uwv-dev-only-CHANGE-ME-2026' -d 'grant_type=password' http://localhost:8080/realms/master/protocol/openid-connect/token | sed 's/.*access_token\":\"\\([^\"]*\\)\".*/\\1/')
+A=\"Authorization: Bearer \$T\"
+KC=http://localhost:8080
+
+patch_uris() {
+  local c=\$1; shift
+  local CID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/clients?clientId=\$c\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
+  [ -z \"\$CID\" ] && return
+  local CUR=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/clients/\$CID\" | grep -oE '\"redirectUris\":\\[[^]]*\\]' | head -1 | sed -E 's/.*\\[(.*)\\]/\\1/')
+  declare -A SEEN
+  local OUT=()
+  IFS=, read -ra ITEMS <<< \"\$CUR\"
+  for u in \"\${ITEMS[@]}\"; do u=\$(echo \"\$u\" | tr -d '\"'); SEEN[\$u]=1; OUT+=(\"\\\"\$u\\\"\"); done
+  for u in \"\$@\"; do [ -z \"\${SEEN[\$u]:-}\" ] && OUT+=(\"\\\"\$u\\\"\") && SEEN[\$u]=1; done
+  local NEW=\"[\$(IFS=,; echo \"\${OUT[*]}\")]\"
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/clients/\$CID\" -d \"{\\\"redirectUris\\\":\$NEW}\" -o /dev/null
+}
+
+patch_uris superset 'https://superset.uwv-platform.cloud/*' 'https://superset.uwv-platform.cloud:8443/*'
+patch_uris airflow 'https://airflow.uwv-platform.cloud/*' 'https://airflow.uwv-platform.cloud:8443/*'
+patch_uris openmetadata 'https://openmetadata.uwv-platform.cloud/*' 'https://openmetadata.uwv-platform.cloud:8443/*'
+patch_uris nifi 'https://nifi.uwv-platform.cloud/*' 'https://nifi.uwv-platform.cloud:8443/*'
+patch_uris minio 'https://minio-console.uwv-platform.cloud:8443/oauth_callback' 'https://minio-console.uwv-platform.cloud:8443/*'
+" >/dev/null 2>&1 || warn "  cloud-redirect-URI patch failed (browse Keycloak admin to fix manually)"
+    log "  .cloud redirect URIs added (idempotent)"
   fi
 fi
 

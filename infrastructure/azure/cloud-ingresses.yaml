@@ -109,6 +109,9 @@ metadata:
   namespace: uwv-meta
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
+    # OpenMetadata's OIDC issues 302 to .local Keycloak; rewrite to .cloud.
+    nginx.ingress.kubernetes.io/proxy-redirect-from: https://keycloak.uwv-platform.local:8443/
+    nginx.ingress.kubernetes.io/proxy-redirect-to: https://keycloak.uwv-platform.cloud:8443/
 spec:
   ingressClassName: nginx
   tls:
@@ -147,6 +150,9 @@ metadata:
   namespace: uwv-platform
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
+    # MinIO Console's SSO redirects user to .local Keycloak; rewrite.
+    nginx.ingress.kubernetes.io/proxy-redirect-from: https://keycloak.uwv-platform.local:8443/
+    nginx.ingress.kubernetes.io/proxy-redirect-to: https://keycloak.uwv-platform.cloud:8443/
 spec:
   ingressClassName: nginx
   tls:
@@ -389,9 +395,13 @@ metadata:
   namespace: uwv-platform
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
-    # Superset reads X-Forwarded-Port to build absolute redirect URLs
+    # Superset reads X-Forwarded-Port to build absolute redirect URLs.
     nginx.ingress.kubernetes.io/configuration-snippet: |
       proxy_set_header X-Forwarded-Port 8443;
+    # OIDC config bakes in the .local Keycloak URL; rewrite Location headers
+    # on Superset's 302 responses so the browser ends up on .cloud Keycloak.
+    nginx.ingress.kubernetes.io/proxy-redirect-from: https://keycloak.uwv-platform.local:8443/
+    nginx.ingress.kubernetes.io/proxy-redirect-to: https://keycloak.uwv-platform.cloud:8443/
 spec:
   ingressClassName: nginx
   tls:
@@ -428,6 +438,9 @@ metadata:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
     nginx.ingress.kubernetes.io/configuration-snippet: |
       proxy_set_header X-Forwarded-Port 8443;
+    # Airflow's OIDC bakes in .local Keycloak; rewrite the 302 Location.
+    nginx.ingress.kubernetes.io/proxy-redirect-from: https://keycloak.uwv-platform.local:8443/
+    nginx.ingress.kubernetes.io/proxy-redirect-to: https://keycloak.uwv-platform.cloud:8443/
 spec:
   ingressClassName: nginx
   tls:
@@ -504,6 +517,9 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
     nginx.ingress.kubernetes.io/configuration-snippet: |
       set $pass_server_port 8443;
+    # NiFi's OIDC sends the user to .local Keycloak; rewrite to .cloud.
+    nginx.ingress.kubernetes.io/proxy-redirect-from: https://keycloak.uwv-platform.local:8443/
+    nginx.ingress.kubernetes.io/proxy-redirect-to: https://keycloak.uwv-platform.cloud:8443/
 spec:
   ingressClassName: nginx
   tls:
