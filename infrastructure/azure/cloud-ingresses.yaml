@@ -342,11 +342,16 @@ spec:
               valueFrom: { secretKeyRef: { name: portal-oauth2-proxy, key: cookie-secret } }
             # .cloud overrides:
             - name: OAUTH2_PROXY_COOKIE_DOMAINS
-              value: ".uwv-platform.cloud"
+              value: ".uwv-platform.cloud,.uwv-platform.cloud:8443"
             - name: OAUTH2_PROXY_WHITELIST_DOMAINS
               value: ".uwv-platform.cloud,.uwv-platform.cloud:8443"
             - name: OAUTH2_PROXY_REDIRECT_URL
               value: "https://platform.uwv-platform.cloud:8443/oauth2/callback"
+            # AKS Keycloak is pinned to KC_HOSTNAME=.cloud:8443, so the iss
+            # claim in id_tokens is .cloud:8443. Override the issuer URL the
+            # base config has (.local from k3d) so token-validation matches.
+            - name: OAUTH2_PROXY_OIDC_ISSUER_URL
+              value: "https://keycloak.uwv-platform.cloud:8443/realms/uwv"
             # Honour X-Forwarded-* from ingress-nginx so oauth2-proxy
             # constructs absolute URLs with the external scheme/host/port.
             - name: OAUTH2_PROXY_REVERSE_PROXY
