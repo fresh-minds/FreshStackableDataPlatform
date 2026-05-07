@@ -368,3 +368,220 @@ spec:
               service:
                 name: platform-landing
                 port: { number: 80 }
+---
+# Superset
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: superset-cloud-tls
+  namespace: uwv-platform
+spec:
+  secretName: superset-cloud-tls
+  issuerRef: { name: uwv-platform-issuer, kind: ClusterIssuer }
+  commonName: superset.uwv-platform.cloud
+  dnsNames: [superset.uwv-platform.cloud]
+  duration: 8760h
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: superset-cloud
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+    # Superset reads X-Forwarded-Port to build absolute redirect URLs
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header X-Forwarded-Port 8443;
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [superset.uwv-platform.cloud]
+      secretName: superset-cloud-tls
+  rules:
+    - host: superset.uwv-platform.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: superset, port: { number: 8088 } }
+---
+# Airflow
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: airflow-cloud-tls
+  namespace: uwv-platform
+spec:
+  secretName: airflow-cloud-tls
+  issuerRef: { name: uwv-platform-issuer, kind: ClusterIssuer }
+  commonName: airflow.uwv-platform.cloud
+  dnsNames: [airflow.uwv-platform.cloud]
+  duration: 8760h
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: airflow-cloud
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header X-Forwarded-Port 8443;
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [airflow.uwv-platform.cloud]
+      secretName: airflow-cloud-tls
+  rules:
+    - host: airflow.uwv-platform.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: uwv-airflow-webserver, port: { number: 8080 } }
+---
+# Trino
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: trino-cloud-tls
+  namespace: uwv-platform
+spec:
+  secretName: trino-cloud-tls
+  issuerRef: { name: uwv-platform-issuer, kind: ClusterIssuer }
+  commonName: trino.uwv-platform.cloud
+  dnsNames: [trino.uwv-platform.cloud]
+  duration: 8760h
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: trino-cloud
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+    # Trino's internal listener is HTTPS with a self-signed cert.
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [trino.uwv-platform.cloud]
+      secretName: trino-cloud-tls
+  rules:
+    - host: trino.uwv-platform.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: trino, port: { number: 8443 } }
+---
+# NiFi
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: nifi-cloud-tls
+  namespace: uwv-platform
+spec:
+  secretName: nifi-cloud-tls
+  issuerRef: { name: uwv-platform-issuer, kind: ClusterIssuer }
+  commonName: nifi.uwv-platform.cloud
+  dnsNames: [nifi.uwv-platform.cloud]
+  duration: 8760h
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nifi-cloud
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+    # NiFi backend is HTTPS; it also expects pass_server_port=8443.
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      set $pass_server_port 8443;
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [nifi.uwv-platform.cloud]
+      secretName: nifi-cloud-tls
+  rules:
+    - host: nifi.uwv-platform.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: nifi, port: { number: 8443 } }
+---
+# Prometheus
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: prometheus-cloud-tls
+  namespace: uwv-monitoring
+spec:
+  secretName: prometheus-cloud-tls
+  issuerRef: { name: uwv-platform-issuer, kind: ClusterIssuer }
+  commonName: prometheus.uwv-platform.cloud
+  dnsNames: [prometheus.uwv-platform.cloud]
+  duration: 8760h
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus-cloud
+  namespace: uwv-monitoring
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [prometheus.uwv-platform.cloud]
+      secretName: prometheus-cloud-tls
+  rules:
+    - host: prometheus.uwv-platform.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: prometheus-kube-prometheus-prometheus, port: { number: 9090 } }
+---
+# OpenSearch Dashboards
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: opensearch-cloud-tls
+  namespace: uwv-meta
+spec:
+  secretName: opensearch-cloud-tls
+  issuerRef: { name: uwv-platform-issuer, kind: ClusterIssuer }
+  commonName: opensearch.uwv-platform.cloud
+  dnsNames: [opensearch.uwv-platform.cloud]
+  duration: 8760h
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: opensearch-cloud
+  namespace: uwv-meta
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [opensearch.uwv-platform.cloud]
+      secretName: opensearch-cloud-tls
+  rules:
+    - host: opensearch.uwv-platform.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: opensearch-dashboards-uwv, port: { number: 5601 } }
