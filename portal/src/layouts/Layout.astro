@@ -27,17 +27,21 @@ const { title, description = 'UWV Reference Data Platform — rol-aware launchpa
       })();
     </script>
     <script is:inline>
-      // Cross-environment URL rewrite: dezelfde Astro-build serveert k3d
-      // (*.uwv-platform.local op host 8443) én AKS (*.uwv-platform.cloud).
-      // Component- en shortcut-URLs zijn build-time hardcoded op .local;
-      // als we op .cloud zitten herschrijven we ze ter plekke.
+      // Cross-environment URL rewrite. The same Astro build serves k3d
+      // (*.uwv-platform.local on host:8443) and AKS public DNS
+      // (*.eu-sovereigndataplatform.com on standard 443). Component- and
+      // role-shortcut hrefs are build-time hardcoded as .uwv-platform.local:8443;
+      // on the AKS .com host we rewrite both the host segment and drop the
+      // explicit :8443 port so the URLs resolve over the public LB on 443.
       (function () {
         var host = window.location.hostname;
-        if (!host.endsWith('.uwv-platform.cloud')) return;
+        if (!host.endsWith('.eu-sovereigndataplatform.com')) return;
         function rewrite() {
           var anchors = document.querySelectorAll('a[href*="uwv-platform.local"]');
           for (var i = 0; i < anchors.length; i++) {
-            anchors[i].href = anchors[i].href.replace(/uwv-platform\.local/g, 'uwv-platform.cloud');
+            anchors[i].href = anchors[i].href
+              .replace(/:\/\/([a-z0-9-]+)\.uwv-platform\.local:8443/g, '://$1.eu-sovereigndataplatform.com')
+              .replace(/uwv-platform\.local/g, 'eu-sovereigndataplatform.com');
           }
         }
         if (document.readyState === 'loading') {
@@ -120,7 +124,7 @@ const { title, description = 'UWV Reference Data Platform — rol-aware launchpa
           el.innerHTML = `
             <span class="who-role">${role}</span>
             <span class="who-user">${user ?? ''}</span>
-            <a class="who-logout" href="#" onclick="sessionStorage.removeItem('uwv-portal-role');sessionStorage.removeItem('uwv-portal-user');const tld=location.hostname.endsWith('.uwv-platform.cloud')?'uwv-platform.cloud':'uwv-platform.local';const rd=encodeURIComponent('https://keycloak.'+tld+':8443/realms/uwv/protocol/openid-connect/logout?client_id=portal&post_logout_redirect_uri=https://platform.'+tld+':8443/');window.location.href='/oauth2/sign_out?rd='+rd;return false;">uitloggen</a>
+            <a class="who-logout" href="#" onclick="sessionStorage.removeItem('uwv-portal-role');sessionStorage.removeItem('uwv-portal-user');var h=location.hostname,tld='uwv-platform.local',port=':8443';if(h.endsWith('.eu-sovereigndataplatform.com')){tld='eu-sovereigndataplatform.com';port='';}const rd=encodeURIComponent('https://keycloak.'+tld+port+'/realms/uwv/protocol/openid-connect/logout?client_id=portal&post_logout_redirect_uri=https://platform.'+tld+port+'/');window.location.href='/oauth2/sign_out?rd='+rd;return false;">uitloggen</a>
           `;
         }
       }

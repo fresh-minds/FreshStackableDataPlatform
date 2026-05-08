@@ -39,11 +39,12 @@ fi
 CHECKSUM=$(shasum -a 256 "$TMP/portal-dist.tar.gz" | cut -c1-12)
 
 log "Apply ConfigMap platform-landing-dist (binaryData)"
-kubectl create configmap platform-landing-dist \
-  --namespace uwv-platform \
-  --from-file=portal-dist.tar.gz="$TMP/portal-dist.tar.gz" \
-  --dry-run=client -o yaml \
-  | kubectl apply -f -
+# kubectl apply records the whole resource as a metadata annotation (limit
+# 256 KB) — so for >256 KB tarballs we delete-and-create instead. The
+# Deployment is rolled in the next step regardless, so the brief gap is fine.
+kubectl -n uwv-platform delete configmap platform-landing-dist --ignore-not-found >/dev/null
+kubectl -n uwv-platform create configmap platform-landing-dist \
+  --from-file=portal-dist.tar.gz="$TMP/portal-dist.tar.gz" >/dev/null
 
 log "Roll the Deployment so the initContainer re-extracts the new tarball"
 kubectl -n uwv-platform patch deployment platform-landing \
