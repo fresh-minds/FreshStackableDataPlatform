@@ -18,3 +18,10 @@ controller:
       # cluster's outbound LB to it.
       service.beta.kubernetes.io/azure-pip-name: uwv-platform-ingress-pip
       service.beta.kubernetes.io/azure-load-balancer-resource-group: MC_dev-stackable-rg_uwv-platform-aks_westeurope
+      # Force LB health probe to TCP. Default for AKS Standard LB on a 443
+      # service port is HTTPS GET / — but ingress-nginx returns 404 on /
+      # without a Host header, so the probe fails, all backends get marked
+      # unhealthy, and the LB silently drops public traffic. TCP probe on
+      # the NodePort is the simplest reliable check.
+      service.beta.kubernetes.io/port_443_health-probe_protocol: tcp
+      service.beta.kubernetes.io/port_80_health-probe_protocol: tcp
