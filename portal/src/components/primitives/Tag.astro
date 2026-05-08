@@ -1,0 +1,51 @@
+---
+// Compact tag / chip. Default is sans, mono variant for technical labels
+// like BATCH / STREAM / PII / 4-EYES.
+// Status variants tint the tag in the matching status color (subtle).
+
+interface Props {
+  variant?: 'default' | 'mono';
+  tone?: 'neutral' | 'ok' | 'warn' | 'down' | 'accent';
+  class?: string;
+}
+
+const { variant = 'default', tone = 'neutral', class: className = '' } = Astro.props;
+const klass = [
+  'tag',
+  variant === 'mono' ? 'tag--mono' : '',
+  tone !== 'neutral' ? `tag--${tone}` : '',
+  className,
+].filter(Boolean).join(' ');
+---
+<span class={klass}><slot /></span>
+
+<style is:global>
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    background: var(--bg-elev);
+    color: var(--ink-2);
+    font-size: var(--text-eyebrow);
+    line-height: 1.4;
+    font-weight: var(--weight-medium);
+    white-space: nowrap;
+  }
+
+  .tag--mono {
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: var(--ink-3);
+    font-feature-settings: 'tnum';
+  }
+
+  /* Tone variants — subtle tint, lift the foreground to the status hue */
+  .tag--ok     { color: var(--status-ok); border-color: color-mix(in oklch, var(--status-ok) 35%, var(--line)); }
+  .tag--warn   { color: var(--status-warn); border-color: color-mix(in oklch, var(--status-warn) 35%, var(--line)); }
+  .tag--down   { color: var(--status-down); border-color: color-mix(in oklch, var(--status-down) 35%, var(--line)); }
+  .tag--accent { color: var(--accent); border-color: color-mix(in oklch, var(--accent) 35%, var(--line)); }
+</style>

@@ -1,0 +1,40 @@
+---
+// Top-nav link. 7px radius, 7×12 padding, ink-2 color, sunken bg when active.
+// Pass `active` explicitly, or pass nothing and the parent decides.
+
+interface Props {
+  href: string;
+  active?: boolean;
+  class?: string;
+}
+
+const { href, active = false, class: className = '' } = Astro.props;
+const klass = ['nav-link', active ? 'is-active' : '', className].filter(Boolean).join(' ');
+---
+<a class={klass} href={href} aria-current={active ? 'page' : undefined}>
+  <slot />
+</a>
+
+<style is:global>
+  .nav-link {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 12px;
+    border-radius: 7px;
+    color: var(--ink-2);
+    font-size: var(--text-meta);
+    font-weight: var(--weight-medium);
+    line-height: 1.2;
+    transition: background 0.15s, color 0.15s;
+    text-decoration: none;
+  }
+  .nav-link:hover {
+    background: var(--bg-sunken);
+    color: var(--ink-1);
+    text-decoration: none;
+  }
+  .nav-link.is-active {
+    background: var(--bg-sunken);
+    color: var(--ink-1);
+  }
+</style>

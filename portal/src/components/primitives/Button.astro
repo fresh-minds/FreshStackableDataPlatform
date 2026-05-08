@@ -1,0 +1,127 @@
+---
+// Three variants: default (ghost), primary (ink-on-ink), accent (orange).
+// Use accent SPARINGLY — at most one per screen.
+// Renders as <a> when href is given, otherwise <button>.
+// Always trails with a mono arrow glyph: → (internal) or ↗ (external).
+
+interface Props {
+  variant?: 'default' | 'primary' | 'accent';
+  href?: string;
+  target?: string;
+  rel?: string;
+  arrow?: 'internal' | 'external' | 'none';
+  type?: 'button' | 'submit';
+  size?: 'sm' | 'md';
+  disabled?: boolean;
+  class?: string;
+}
+
+const {
+  variant = 'default',
+  href,
+  target,
+  rel,
+  arrow,
+  type,
+  size = 'md',
+  disabled = false,
+  class: className = '',
+} = Astro.props;
+
+const isExternal = href ? href.startsWith('http') : false;
+const arrowKind = arrow ?? (isExternal ? 'external' : 'internal');
+const arrowGlyph =
+  arrowKind === 'external' ? '↗' :
+  arrowKind === 'internal' ? '→' : '';
+
+const klass = [
+  'btn',
+  variant !== 'default' ? `btn--${variant}` : '',
+  size !== 'md' ? `btn--${size}` : '',
+  className,
+].filter(Boolean).join(' ');
+---
+{href ? (
+  <a class={klass}
+     href={href}
+     target={target ?? (isExternal ? '_blank' : undefined)}
+     rel={rel ?? (isExternal ? 'noopener noreferrer' : undefined)}
+     aria-disabled={disabled || undefined}>
+    <span class="btn-label"><slot /></span>
+    {arrowGlyph && <span class="btn-arrow" aria-hidden="true">{arrowGlyph}</span>}
+  </a>
+) : (
+  <button class={klass} type={type ?? 'button'} disabled={disabled}>
+    <span class="btn-label"><slot /></span>
+    {arrowGlyph && <span class="btn-arrow" aria-hidden="true">{arrowGlyph}</span>}
+  </button>
+)}
+
+<style is:global>
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 10px 14px;
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--ink-1);
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    font-weight: var(--weight-medium);
+    line-height: 1.2;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .btn:hover {
+    background: var(--bg-sunken);
+    text-decoration: none;
+  }
+  .btn[aria-disabled="true"],
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn--primary {
+    background: var(--ink-1);
+    color: var(--bg);
+    border-color: var(--ink-1);
+  }
+  .btn--primary:hover {
+    background: var(--ink-2);
+    border-color: var(--ink-2);
+  }
+
+  .btn--accent {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+  }
+  .btn--accent:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    filter: brightness(1.06);
+  }
+
+  .btn--sm {
+    padding: 6px 10px;
+    font-size: var(--text-meta);
+  }
+
+  .btn-arrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1;
+    opacity: 0.85;
+  }
+
+  /* Inline button arrow stays vertically centered with x-height of label */
+  .btn-label {
+    display: inline-flex;
+    align-items: center;
+  }
+</style>

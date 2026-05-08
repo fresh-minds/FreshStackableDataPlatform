@@ -1,0 +1,138 @@
+---
+// Component tile for the architecture diagram.
+// 28px logo square + name + optional mono sub-label + optional status dot.
+// Renders as <a> when href given, else <div>.
+// Preserves the [data-component] hook used by /me/ for "mijn componenten"
+// highlight, and [data-status-job] for live status refresh.
+
+import StatusDot from './StatusDot.astro';
+
+interface Props {
+  href?: string | null;
+  name: string;
+  subLabel?: string;
+  icon?: string;
+  iconBg?: string;
+  statusJob?: string;
+  componentId?: string;
+  external?: boolean;
+  title?: string;
+  class?: string;
+}
+
+const {
+  href,
+  name,
+  subLabel,
+  icon,
+  iconBg,
+  statusJob,
+  componentId,
+  external,
+  title,
+  class: className = '',
+} = Astro.props;
+
+const isExternal = external ?? (href ? href.startsWith('http') : false);
+const klass = ['tile', className].filter(Boolean).join(' ');
+---
+{href ? (
+  <a class={klass} href={href}
+     target={isExternal ? '_blank' : undefined}
+     rel={isExternal ? 'noopener noreferrer' : undefined}
+     data-component={componentId}
+     title={title}>
+    <span class="tile-logo" style={iconBg ? `background:${iconBg}` : undefined}>
+      {icon && <img src={icon} alt="" width="20" height="20" />}
+    </span>
+    <span class="tile-body">
+      <span class="tile-name">{name}{isExternal && <span class="tile-ext" aria-hidden="true"> ↗</span>}</span>
+      {subLabel && <span class="tile-sub">{subLabel}</span>}
+    </span>
+    {statusJob && <StatusDot job={statusJob} size="sm" />}
+  </a>
+) : (
+  <div class={klass} data-component={componentId} title={title}>
+    <span class="tile-logo" style={iconBg ? `background:${iconBg}` : undefined}>
+      {icon && <img src={icon} alt="" width="20" height="20" />}
+    </span>
+    <span class="tile-body">
+      <span class="tile-name">{name}</span>
+      {subLabel && <span class="tile-sub">{subLabel}</span>}
+    </span>
+    {statusJob && <StatusDot job={statusJob} size="sm" />}
+  </div>
+)}
+
+<style is:global>
+  .tile {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    color: var(--ink-1);
+    transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+    text-decoration: none;
+    min-width: 0;
+  }
+  a.tile:hover {
+    border-color: var(--ink-4);
+    transform: translateY(-1px);
+    box-shadow: var(--card-shadow-hover);
+    text-decoration: none;
+  }
+
+  .tile-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-sunken);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .tile-logo img { display: block; }
+
+  .tile-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 1px;
+  }
+  .tile-name {
+    font-size: var(--text-meta);
+    font-weight: var(--weight-medium);
+    color: var(--ink-1);
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tile-ext {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+  .tile-sub {
+    font-family: var(--font-mono);
+    font-size: var(--text-micro);
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    line-height: 1.4;
+  }
+
+  /* Per-role highlight: when an ancestor has data-active-role, dim non-mine
+     and emphasize .is-mine. Used by /me to highlight a role's components. */
+  [data-active-role] .tile { opacity: 0.4; }
+  [data-active-role] .tile.is-mine {
+    opacity: 1;
+    border-color: var(--accent);
+  }
+</style>

@@ -31,96 +31,117 @@ const rolesPayload = roles.map((r) => ({
     </div>
   </section>
 
-  <section class="panel" hidden data-cert-error>
-    <h2>Geen certificaat</h2>
-    <p>
+  <div class="state" hidden data-cert-error>
+    <span class="state-eyebrow">Geen certificaat</span>
+    <strong class="state-title">Track nog niet afgerond</strong>
+    <p class="state-body">
       Dit certificaat wordt verleend wanneer alle modules van een rol
       (Foundation, Practitioner, Expert) zijn afgerond. Open
       <a href="/learn/me/">Mijn voortgang</a> om te zien welke modules nog openstaan.
     </p>
-  </section>
+  </div>
 
   <script type="application/json" id="cert-roles" set:html={JSON.stringify(rolesPayload)} />
 </LearnLayout>
 
 <style>
-  .cert-wrap {
-    margin: 1rem 0 0;
-  }
+  /* Paper surface — driven by --paper-* tokens in tokens.css. The
+     standalone SVG download below this style block intentionally bakes
+     the same hex literals; if you change a paper token, update both. */
+  .cert-wrap { margin: var(--space-5) 0 0; }
   .cert {
-    background: #fdfdf8;
-    color: #1a1206;
-    padding: 4rem 3rem;
-    border: 1px solid #d0c8b0;
-    border-radius: 4px;
+    background: var(--paper-bg);
+    color: var(--paper-ink-1);
+    padding: var(--space-10) var(--space-9);
+    border: 1px solid var(--paper-line);
+    border-radius: var(--radius-sm);
     aspect-ratio: 1.414 / 1;     /* A-formaat liggend */
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    box-shadow: 0 1px 6px rgba(0,0,0,.08);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+    font-family: var(--font-serif);
   }
   .cert h2 {
     border: 0;
-    font-size: 1rem;
+    font-family: var(--font-mono);
+    font-size: 14px;
     text-transform: uppercase;
-    letter-spacing: .25em;
-    color: #8b5a00;
-    margin: 0 0 .5rem;
+    letter-spacing: 0.25em;
+    color: var(--paper-accent);
+    margin: 0 0 var(--space-3);
+    font-weight: var(--weight-semibold);
   }
   .cert .cert-name {
-    font-size: 2.4rem;
-    font-weight: 600;
+    font-family: var(--font-serif);
+    font-size: 38px;
+    font-weight: var(--weight-semibold);
     line-height: 1.2;
-    margin: 1rem 0;
+    margin: var(--space-5) 0;
+    letter-spacing: var(--tracking-tight);
   }
   .cert .cert-role {
-    font-size: 1.4rem;
-    color: #8b5a00;
+    font-family: var(--font-serif);
+    font-size: 22px;
+    color: var(--paper-accent);
     font-style: italic;
     margin: 0;
   }
   .cert .cert-body {
-    font-size: 1rem;
-    line-height: 1.6;
-    margin: 1.5rem 0;
+    font-family: var(--font-sans);
+    font-size: var(--text-body-lg);
+    line-height: var(--leading-body);
+    margin: var(--space-6) 0;
     max-width: 60ch;
+    color: var(--paper-ink-1);
   }
   .cert footer {
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
-    font-size: .85rem;
-    color: #5b4520;
-    margin-top: 2rem;
-    padding-top: 1rem;
-    border-top: 1px solid #d0c8b0;
+    font-family: var(--font-sans);
+    font-size: var(--text-meta);
+    color: var(--paper-ink-2);
+    margin-top: var(--space-7);
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--paper-line);
   }
   .cert footer .cert-id {
-    font-family: ui-monospace, monospace;
-    font-size: .7rem;
-    color: #8a7d62;
+    font-family: var(--font-mono);
+    font-size: var(--text-eyebrow);
+    color: var(--paper-ink-3);
+    font-feature-settings: 'tnum';
   }
 
   .cert-actions {
     display: flex;
-    gap: .5rem;
-    margin-top: 1rem;
+    gap: var(--space-2);
+    margin-top: var(--space-5);
   }
-  .cert-actions button, .cert-actions a {
-    padding: .4rem .85rem;
-    border: 1px solid var(--c-border);
-    background: var(--c-panel);
-    color: var(--c-text);
-    border-radius: var(--radius);
+  .cert-actions button,
+  .cert-actions a {
+    padding: 10px 14px;
+    border: 1px solid var(--line);
+    background: var(--bg-elev);
+    color: var(--ink-1);
+    border-radius: var(--radius-sm);
     cursor: pointer;
     font: inherit;
+    font-size: 13.5px;
+    font-weight: var(--weight-medium);
+    text-decoration: none;
+    transition: background .15s, border-color .15s;
   }
-  .cert-actions button:hover, .cert-actions a:hover { border-color: var(--c-accent); text-decoration: none; }
+  .cert-actions button:hover,
+  .cert-actions a:hover {
+    background: var(--bg-sunken);
+    text-decoration: none;
+  }
 
   @media print {
-    .topbar, footer, .learn-crumbs, .cert-actions, [data-cert-status] { display: none !important; }
+    .topbar, footer.site-footer, .learn-crumbs, .cert-actions, [data-cert-status] { display: none !important; }
     h1 { display: none; }
-    .cert { box-shadow: none; border: 1px solid #d0c8b0; }
+    .cert { box-shadow: none; border: 1px solid var(--paper-line); }
   }
 </style>
 

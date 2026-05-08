@@ -285,27 +285,36 @@ export function componentsByStage(stage: ComponentStage): PlatformComponent[] {
 }
 
 // Stage-meta voor lane-headers in het reference-diagram en gegroepeerde
-// kaarten. Volgorde hier bepaalt de kolom-volgorde van de hoofd-pipeline.
+// kaarten. Volgorde hier bepaalt de volgorde van de swim-lanes.
+export type StageCategory = 'discovery' | 'pipeline' | 'observability' | 'identity';
+
 export interface StageMeta {
   id: ComponentStage;
   title: string;
   blurb: string;
   icon: string;
-  // 'pipeline-step' = grote middenkolom; 'overlay' = boven/onder banner;
-  // 'side' = zij-kolom (sources, identity); 'output' = eindbestemming.
+  // Legacy field used by the older diagram. 'pipeline-step' = main flow;
+  // 'overlay' = cross-cutting (discovery / pipeline / observability);
+  // 'side' = sources / identity; 'output' = consumption.
   kind: 'pipeline-step' | 'overlay' | 'side' | 'output';
+  // For the swim-lane diagram: tints the lane background and eyebrow with
+  // the matching --cat-* token. Pipeline-step / output / sources lanes
+  // stay neutral.
+  category?: StageCategory;
+  // Mono tags shown next to the lane title (BATCH / STREAM / etc.).
+  tags?: string[];
 }
 
 export const stages: StageMeta[] = [
-  { id: 'sources',        title: 'Bronnen',                  blurb: 'Synthetische UWV-bronsystemen — batches en streams.',                  icon: '/icons/stage/sources.svg',        kind: 'side' },
-  { id: 'ingestion',      title: 'Ingestie',                 blurb: 'Data binnenhalen en op een event-bus zetten.',                          icon: '/icons/stage/ingestion.svg',      kind: 'pipeline-step' },
-  { id: 'storage',        title: 'Opslag & Verwerking',      blurb: 'Lakehouse met zones en een tabel-catalog.',                              icon: '/icons/stage/storage.svg',        kind: 'pipeline-step' },
-  { id: 'transformation', title: 'Transformatie & Modellen', blurb: 'Opschonen, joinen, modelleren — met policy-checks per query.',          icon: '/icons/stage/transformation.svg', kind: 'pipeline-step' },
-  { id: 'consumption',    title: 'BI / Analytics',           blurb: 'Eindgebruikers consumeren via dashboards en SQL.',                       icon: '/icons/stage/consumption.svg',    kind: 'output' },
-  { id: 'discovery',      title: 'Data Discovery',           blurb: 'Catalog, lineage en data-kwaliteit — wat hebben we eigenlijk?',         icon: '/icons/stage/discovery.svg',      kind: 'overlay' },
-  { id: 'pipeline',       title: 'Pipeline-orkestratie',     blurb: 'Wat draait wanneer, in welke volgorde, met welke afhankelijkheid.',     icon: '/icons/stage/pipeline.svg',       kind: 'overlay' },
-  { id: 'observability',  title: 'Observability',            blurb: 'Metrics, logs en alerts om de gezondheid van het platform te zien.',    icon: '/icons/stage/observability.svg',  kind: 'overlay' },
-  { id: 'identity',       title: 'Identiteit & Toegang',     blurb: 'SSO regelt wie wat mag — elk onderdeel checkt het token.',              icon: '/icons/stage/identity.svg',       kind: 'side' },
+  { id: 'sources',        title: 'Bronnen',                  blurb: 'Synthetische UWV-bronsystemen — batches en streams.',                  icon: '/icons/stage/sources.svg',        kind: 'side',          tags: ['BATCH', 'STREAM'] },
+  { id: 'ingestion',      title: 'Ingestie',                 blurb: 'Data binnenhalen en op een event-bus zetten.',                          icon: '/icons/stage/ingestion.svg',      kind: 'pipeline-step', tags: ['BATCH', 'STREAM'] },
+  { id: 'storage',        title: 'Opslag & Verwerking',      blurb: 'Lakehouse met zones en een tabel-catalog.',                              icon: '/icons/stage/storage.svg',        kind: 'pipeline-step', tags: ['LAKEHOUSE'] },
+  { id: 'transformation', title: 'Transformatie & Modellen', blurb: 'Opschonen, joinen, modelleren — met policy-checks per query.',          icon: '/icons/stage/transformation.svg', kind: 'pipeline-step', tags: ['BATCH', 'POLICY'] },
+  { id: 'consumption',    title: 'BI / Analytics',           blurb: 'Eindgebruikers consumeren via dashboards en SQL.',                       icon: '/icons/stage/consumption.svg',    kind: 'output',        tags: ['QUERY'] },
+  { id: 'discovery',      title: 'Data Discovery',           blurb: 'Catalog, lineage en data-kwaliteit — wat hebben we eigenlijk?',         icon: '/icons/stage/discovery.svg',      kind: 'overlay',       category: 'discovery' },
+  { id: 'pipeline',       title: 'Pipeline-orkestratie',     blurb: 'Wat draait wanneer, in welke volgorde, met welke afhankelijkheid.',     icon: '/icons/stage/pipeline.svg',       kind: 'overlay',       category: 'pipeline' },
+  { id: 'observability',  title: 'Observability',            blurb: 'Metrics, logs en alerts om de gezondheid van het platform te zien.',    icon: '/icons/stage/observability.svg',  kind: 'overlay',       category: 'observability' },
+  { id: 'identity',       title: 'Identiteit & Toegang',     blurb: 'SSO regelt wie wat mag — elk onderdeel checkt het token.',              icon: '/icons/stage/identity.svg',       kind: 'side',          category: 'identity' },
 ];
 
 export function stageById(id: ComponentStage): StageMeta | undefined {

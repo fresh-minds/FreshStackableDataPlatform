@@ -2,6 +2,9 @@
 import Layout from '../layouts/Layout.astro';
 import ReferenceArchitecture from '../components/ReferenceArchitecture.astro';
 import StageSection from '../components/StageSection.astro';
+import Button from '../components/primitives/Button.astro';
+import Eyebrow from '../components/primitives/Eyebrow.astro';
+import Tag from '../components/primitives/Tag.astro';
 import { components, stages, type ComponentStage } from '../data/components';
 
 // Volgorde voor de gegroepeerde cards onder het diagram.
@@ -17,38 +20,57 @@ const cardStages: ComponentStage[] = [
 ];
 ---
 <Layout title="Architectuur">
-  <section class="panel hero">
-    <h1>Architectuur — referentie data-platform</h1>
-    <p>
-      Een data-platform bestaat uit een keten van lagen: data komt binnen
-      (<em>ingestie</em>), wordt opgeslagen (<em>lakehouse</em>), bewerkt en
-      gemodelleerd (<em>transformatie</em>) en uiteindelijk geconsumeerd in
-      dashboards en data-producten. Daaroverheen liggen drie horizontale lagen:
-      <strong>discovery</strong> (wat hebben we), <strong>pipeline</strong>
-      (wat draait wanneer) en <strong>observability</strong> (gaat het goed).
-    </p>
-    <p class="note">
-      Klik op een component om de UI te openen — SSO regelt dat je niet opnieuw
-      hoeft in te loggen. De stip toont live <code>up{`{job=…}`}</code> uit
-      Prometheus. Geïnspireerd op het
-      <a href="https://www.montecarlodata.com/blog-what-is-a-data-platform-and-how-to-build-one/" target="_blank" rel="noopener noreferrer">Monte Carlo data-platform-model</a>.
-    </p>
+  <!-- ═══════════ Hero ═══════════ -->
+  <section class="arch-hero">
+    <div class="arch-hero-lead">
+      <Eyebrow rule>Reference architecture · Monte-Carlo-stijl</Eyebrow>
+      <h1 class="arch-hero-title">
+        Een data-platform <em>van bron tot dashboard</em>.
+      </h1>
+      <p class="arch-hero-body">
+        Een data-platform is een keten van lagen: data komt binnen (<em>ingestie</em>),
+        wordt opgeslagen (<em>lakehouse</em>), bewerkt en gemodelleerd
+        (<em>transformatie</em>) en uiteindelijk geconsumeerd in dashboards en
+        data-producten. Daaroverheen liggen vier cross-cutting lagen —
+        <strong>discovery</strong>, <strong>orkestratie</strong>,
+        <strong>observability</strong> en <strong>identity</strong> — die overal
+        raken.
+      </p>
+      <div class="arch-hero-cta">
+        <Button href="/me/" variant="accent">Wat mag ik zien?</Button>
+        <Button href="https://www.montecarlodata.com/blog-what-is-a-data-platform-and-how-to-build-one/" target="_blank" rel="noopener noreferrer">Achtergrond: Monte Carlo</Button>
+      </div>
+      <p class="arch-hero-note mono">
+        Klik op een component → SSO regelt de authenticatie · status-stip toont live
+        <code>up{`{job=…}`}</code> uit Prometheus
+      </p>
+    </div>
   </section>
 
-  <ReferenceArchitecture />
+  <!-- ═══════════ Diagram ═══════════ -->
+  <section class="arch-diagram">
+    <ReferenceArchitecture />
+  </section>
 
-  <section class="panel" style="margin-top:1.5rem">
-    <h2>Componenten per laag</h2>
-    <p>
-      Live <code>up{`{job=...}`}</code> uit Prometheus. Stip wordt na een
-      seconde groen/rood; blijft hij grijs, dan is Prometheus zelf niet
-      bereikbaar of staat de portal in lokale dev.
-    </p>
+  <!-- ═══════════ Components per stage ═══════════ -->
+  <section class="arch-section">
+    <header class="arch-section-head">
+      <Eyebrow>Detail</Eyebrow>
+      <h2>Componenten per laag</h2>
+      <p>
+        Live <code>up{`{job=...}`}</code> uit Prometheus. Stip wordt na een
+        seconde groen of rood; blijft hij grijs, dan is Prometheus zelf niet
+        bereikbaar of staat de portal in lokale dev.
+      </p>
+    </header>
 
     <div class="comp-toolbar">
-      <input id="comp-search" type="search" placeholder="Zoek component, laag of doel…"
-             autocomplete="off" aria-label="Zoek componenten" />
-      <span class="comp-counter" data-comp-counter></span>
+      <div class="comp-search-wrap">
+        <span class="comp-search-icon mono" aria-hidden="true">/</span>
+        <input id="comp-search" type="search" placeholder="Zoek component, laag of doel…"
+               autocomplete="off" aria-label="Zoek componenten" />
+      </div>
+      <span class="comp-counter mono" data-comp-counter></span>
     </div>
 
     <div id="stage-sections">
@@ -60,55 +82,34 @@ const cardStages: ComponentStage[] = [
     </div>
   </section>
 
-  <section class="panel">
-    <h2>Datazones</h2>
-    <p>
-      Vier zones in MinIO + Hive: <code>bronze</code> (ruw, alleen data-engineers
-      met JIT), <code>silver</code> (geconformeerd, primair domein-toegang),
-      <code>gold</code> (marts voor BI), <code>sensitive</code> (art. 9 AVG,
-      4-eyes) en <code>sandbox</code> (gepseudonimiseerd, voor researchers).
-      Welke zone jij mag zien zie je op
-      <a href="/me/">Mijn werkplek</a>.
+  <!-- ═══════════ Datazones ═══════════ -->
+  <section class="arch-section">
+    <header class="arch-section-head">
+      <Eyebrow>Compliance</Eyebrow>
+      <h2>Datazones</h2>
+    </header>
+    <div class="zones">
+      {[
+        { name: 'bronze',    purpose: 'ruw — alleen data-engineers met JIT' },
+        { name: 'silver',    purpose: 'geconformeerd — primair domein-toegang' },
+        { name: 'gold',      purpose: 'marts voor BI' },
+        { name: 'sensitive', purpose: 'art. 9 AVG — 4-eyes' },
+        { name: 'sandbox',   purpose: 'gepseudonimiseerd — voor researchers' },
+      ].map((z) => (
+        <div class="zone">
+          <Tag variant="mono">{z.name}</Tag>
+          <span>{z.purpose}</span>
+        </div>
+      ))}
+    </div>
+    <p class="arch-section-note">
+      Welke zone jij mag zien: <a href="/me/">Mijn werkplek</a>.
     </p>
   </section>
 
   <script>
-    // Live status badges. Eén fetch per component zodat we ook bij groot
-    // aantal niet 13× tegelijk Prometheus bestoken — maar pas op dat we
-    // dit alleen doen als de proxy bereikbaar is.
-    async function refreshStatus() {
-      const els = document.querySelectorAll<HTMLElement>('[data-status-job]');
-      for (const el of els) {
-        const job = el.dataset.statusJob!;
-        try {
-          const r = await fetch(`/api/status/up?job=${encodeURIComponent(job)}`, {
-            credentials: 'include',
-          });
-          if (!r.ok) {
-            el.classList.add('warn');
-            continue;
-          }
-          const j = await r.json();
-          const up = j?.up;
-          el.classList.remove('ok', 'warn', 'bad');
-          if (up === 1) {
-            el.classList.add('ok');
-            el.title = `up{job="${job}"} = 1`;
-          } else if (up === 0) {
-            el.classList.add('bad');
-            el.title = `up{job="${job}"} = 0`;
-          } else {
-            el.classList.add('warn');
-            el.title = `Geen data voor up{job="${job}"}`;
-          }
-        } catch {
-          el.classList.add('warn');
-        }
-      }
-    }
-
-    refreshStatus();
-    setInterval(refreshStatus, 30_000);
+    import { startStatusRefresh } from '../scripts/status';
+    startStatusRefresh();
 
     // ─── Eenvoudige zoek/filter over de component-cards ───
     const search = document.getElementById('comp-search') as HTMLInputElement | null;
@@ -129,9 +130,8 @@ const cardStages: ComponentStage[] = [
         totalVisible += visibleInSection;
       });
       if (counter) {
-        counter.textContent = q
-          ? `${totalVisible} van ${document.querySelectorAll('.comp').length} componenten`
-          : '';
+        const total = document.querySelectorAll('.comp').length;
+        counter.textContent = q ? `${totalVisible} van ${total}` : `${total} componenten`;
       }
     }
     search?.addEventListener('input', applyFilter);
@@ -139,26 +139,150 @@ const cardStages: ComponentStage[] = [
   </script>
 
   <style>
-    .hero h1 { margin-bottom: .75rem; }
-    .hero em { color: var(--c-accent-2); font-style: normal; font-weight: 600; }
-    .hero strong { color: var(--c-text); }
-    .note { font-size: .82rem; color: var(--c-muted); margin-top: .75rem; }
+    /* ─── Hero ─── */
+    .arch-hero { padding: var(--space-9) 0 var(--space-7); max-width: 880px; }
+    .arch-hero-title {
+      font-size: 44px;
+      line-height: var(--leading-display);
+      letter-spacing: var(--tracking-display);
+      font-weight: var(--weight-medium);
+      color: var(--ink-1);
+      margin: var(--space-4) 0 var(--space-5);
+      text-wrap: balance;
+      border: 0;
+      padding: 0;
+    }
+    .arch-hero-title em {
+      font-family: var(--font-serif);
+      font-style: italic;
+      color: var(--ink-3);
+      font-weight: var(--weight-regular);
+    }
+    .arch-hero-body {
+      font-size: var(--text-body-lg);
+      color: var(--ink-2);
+      line-height: var(--leading-body);
+      max-width: 56ch;
+      margin: 0 0 var(--space-6);
+      text-wrap: pretty;
+    }
+    .arch-hero-body em {
+      font-style: italic;
+      color: var(--ink-3);
+      font-weight: var(--weight-regular);
+    }
+    .arch-hero-body strong { color: var(--ink-1); font-weight: var(--weight-semibold); }
+    .arch-hero-cta {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      margin-bottom: var(--space-5);
+    }
+    .arch-hero-note {
+      color: var(--ink-3);
+      font-size: var(--text-meta);
+      margin: 0;
+    }
+    .arch-hero-note code {
+      background: var(--bg-sunken);
+      color: var(--ink-2);
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+    }
 
+    /* ─── Diagram (just spacing — diagram styles itself) ─── */
+    .arch-diagram { margin-bottom: var(--space-9); }
+
+    /* ─── Sections ─── */
+    .arch-section {
+      padding: var(--space-8) 0;
+      border-top: 1px solid var(--line);
+    }
+    .arch-section-head { margin-bottom: var(--space-5); max-width: 640px; }
+    .arch-section-head h2 {
+      font-size: var(--text-h2);
+      font-weight: var(--weight-medium);
+      letter-spacing: var(--tracking-tight);
+      color: var(--ink-1);
+      margin: var(--space-3) 0 var(--space-3);
+      border: 0;
+      padding: 0;
+    }
+    .arch-section-head p {
+      color: var(--ink-2);
+      font-size: var(--text-meta);
+      line-height: var(--leading-body);
+      margin: 0;
+      text-wrap: pretty;
+    }
+    .arch-section-head p code {
+      background: var(--bg-sunken);
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      font-size: 0.92em;
+    }
+    .arch-section-note {
+      color: var(--ink-3);
+      font-size: var(--text-meta);
+      margin: var(--space-4) 0 0;
+    }
+
+    /* ─── Toolbar ─── */
     .comp-toolbar {
-      display: flex; align-items: center; gap: .75rem;
-      margin: .5rem 0 .25rem;
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin: var(--space-3) 0 var(--space-2);
       flex-wrap: wrap;
     }
-    .comp-toolbar input {
-      flex: 1; min-width: 220px;
-      background: var(--c-panel-2);
-      color: var(--c-text);
-      border: 1px solid var(--c-border);
-      border-radius: var(--radius);
-      padding: .5rem .75rem;
-      font: inherit;
+    .comp-search-wrap {
+      flex: 1;
+      min-width: 220px;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: center;
+      gap: var(--space-2);
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 0 var(--space-3);
+      transition: border-color .15s;
     }
-    .comp-toolbar input:focus { outline: none; border-color: var(--c-accent); }
-    .comp-counter { color: var(--c-muted); font-size: .82rem; }
+    .comp-search-wrap:focus-within { border-color: var(--accent); }
+    .comp-search-icon {
+      color: var(--ink-3);
+      font-size: var(--text-meta);
+    }
+    .comp-toolbar input {
+      background: transparent;
+      color: var(--ink-1);
+      border: 0;
+      padding: 8px 0;
+      font: inherit;
+      font-size: var(--text-meta);
+      outline: none;
+      min-width: 0;
+    }
+    .comp-counter { color: var(--ink-3); font-size: var(--text-eyebrow); }
+
+    /* ─── Datazones ─── */
+    .zones {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--space-2);
+    }
+    .zone {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      color: var(--ink-2);
+      font-size: var(--text-meta);
+    }
   </style>
 </Layout>
