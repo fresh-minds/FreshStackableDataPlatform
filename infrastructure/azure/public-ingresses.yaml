@@ -141,6 +141,12 @@ spec:
               value: "https://platform.eu-sovereigndataplatform.com/oauth2/callback"
             - name: OAUTH2_PROXY_OIDC_ISSUER_URL
               value: "https://keycloak.eu-sovereigndataplatform.com/realms/uwv"
+            # Base ConfigMap pins login_url to .local (skip_oidc_discovery=true);
+            # override the browser-facing URL to .com so the 302 lands on the
+            # public domain. Server-side endpoints (redeem/profile/validate/jwks)
+            # stay in-cluster via the CoreDNS hosts-override.
+            - name: OAUTH2_PROXY_LOGIN_URL
+              value: "https://keycloak.eu-sovereigndataplatform.com/realms/uwv/protocol/openid-connect/auth"
             - name: OAUTH2_PROXY_REVERSE_PROXY
               value: "true"
           ports: [{ containerPort: 4180 }]
@@ -298,33 +304,11 @@ spec:
     - host: prometheus.eu-sovereigndataplatform.com
       http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: prometheus-kube-prometheus-prometheus, port: { number: 9090 } } } }] }
 ---
-# --- Alertmanager ---
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: alertmanager-public-tls
-  namespace: uwv-monitoring
-spec:
-  secretName: alertmanager-public-tls
-  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
-  commonName: alertmanager.eu-sovereigndataplatform.com
-  dnsNames: [alertmanager.eu-sovereigndataplatform.com]
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: alertmanager-public
-  namespace: uwv-monitoring
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts: [alertmanager.eu-sovereigndataplatform.com]
-      secretName: alertmanager-public-tls
-  rules:
-    - host: alertmanager.eu-sovereigndataplatform.com
-      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: prometheus-kube-prometheus-alertmanager, port: { number: 9093 } } } }] }
+# Note: Alertmanager intentionally disabled in helm-overrides for AKS
+# (alertmanager.enabled=false in prometheus-stack values). The DNS CNAME
+# and Ingress are intentionally absent here. Re-enable in
+# infrastructure/helm/prometheus-stack/values.yaml + add an Ingress block
+# back if you start using it.
 ---
 # --- MinIO Console (UI) ---
 apiVersion: cert-manager.io/v1
