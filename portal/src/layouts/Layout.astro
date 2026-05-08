@@ -29,29 +29,48 @@ const { title, description = 'UWV Reference Data Platform — rol-aware launchpa
     <script is:inline>
       // Cross-environment URL rewrite. The same Astro build serves k3d
       // (*.uwv-platform.local on host:8443) and AKS public DNS
-      // (*.eu-sovereigndataplatform.com on standard 443). Component- and
-      // role-shortcut hrefs are build-time hardcoded as .uwv-platform.local:8443;
-      // on the AKS .com host we rewrite both the host segment and drop the
-      // explicit :8443 port so the URLs resolve over the public LB on 443.
+      // (eu-sovereigndataplatform.com + *.eu-sovereigndataplatform.com on
+      // standard 443). Component-, role-shortcut, and academy-MDX hrefs
+      // are build-time hardcoded as https://<svc>.uwv-platform.local:8443;
+      // on the .com host we rewrite to https://<svc>.eu-sovereigndataplatform.com
+      // (drop the :8443 — public LB is on 443).
       (function () {
         var host = window.location.hostname;
-        if (!host.endsWith('.eu-sovereigndataplatform.com')) return;
+        if (host !== 'eu-sovereigndataplatform.com' &&
+            !host.endsWith('.eu-sovereigndataplatform.com')) return;
+
+        function rewriteHref(href) {
+          return href
+            .replace(/:\/\/([a-z0-9-]+)\.uwv-platform\.local(:8443)?/g,
+                     '://$1.eu-sovereigndataplatform.com');
+        }
+
         function rewrite() {
           var anchors = document.querySelectorAll('a[href*="uwv-platform.local"]');
           for (var i = 0; i < anchors.length; i++) {
-            anchors[i].href = anchors[i].href
-              .replace(/:\/\/([a-z0-9-]+)\.uwv-platform\.local:8443/g, '://$1.eu-sovereigndataplatform.com')
-              .replace(/uwv-platform\.local/g, 'eu-sovereigndataplatform.com');
+            var a = anchors[i];
+            // Don't touch mailto / tel / etc. — only http(s) URLs.
+            if (!/^https?:\/\//i.test(a.href)) continue;
+            a.href = rewriteHref(a.href);
           }
         }
+
         if (document.readyState === 'loading') {
           document.addEventListener('DOMContentLoaded', rewrite);
         } else {
           rewrite();
         }
-        // Architecture/me/role pages render some links via client-side JS;
-        // a single MutationObserver catches those without per-page hooks.
-        new MutationObserver(rewrite).observe(document.documentElement, { childList: true, subtree: true });
+        // Catch dynamically-rendered links (status badges, role-shortcut JS).
+        new MutationObserver(rewrite).observe(document.documentElement,
+          { childList: true, subtree: true });
+
+        // Final safety net: even if the MutationObserver misses (e.g. an
+        // anchor whose href is set programmatically right before a click),
+        // intercept the click and rewrite once more.
+        document.addEventListener('click', function (ev) {
+          var a = ev.target && ev.target.closest && ev.target.closest('a[href*="uwv-platform.local"]');
+          if (a && /^https?:\/\//i.test(a.href)) a.href = rewriteHref(a.href);
+        }, true);
       })();
     </script>
   </head>
