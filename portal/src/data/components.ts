@@ -18,7 +18,6 @@ export type ComponentId =
   | 'dbt-docs'
   | 'prometheus'
   | 'opensearch'
-  | 'nanitics'
   | 'multica';
 
 // Legacy "layer" — fijne granulariteit voor de oude card-tag.
@@ -273,18 +272,6 @@ export const components: PlatformComponent[] = [
     rolesUsing: ['platform_admin', 'data_steward'],
   },
   {
-    id: 'nanitics',
-    name: 'Nanitics Observatory',
-    layer: 'ai-agents',
-    stage: 'agents',
-    // Runtime-lane: agents draaien IN het platform, deze UI laat ze zien.
-    short: 'Trace-viewer voor runtime-agents (ReAct/ReWOO/Reflexion/LATS) — span trees, plan, MCTS.',
-    purpose: 'Agents bouwen die platform-tools aanroepen (Trino, Airflow) en hun runs inspecteren.',
-    icon: '/icons/brand/nanitics.svg',
-    url: 'https://nanitics.uwv-platform.local:8443/api/observatory/',
-    rolesUsing: ['platform_admin', 'data_engineer'],
-  },
-  {
     id: 'multica',
     name: 'Multica',
     layer: 'ai-agents',
@@ -337,10 +324,10 @@ export const stages: StageMeta[] = [
   { id: 'pipeline',       title: 'Pipeline-orkestratie',     blurb: 'Wat draait wanneer, in welke volgorde, met welke afhankelijkheid.',     icon: '/icons/stage/pipeline.svg',       kind: 'overlay' },
   { id: 'observability',  title: 'Observability',            blurb: 'Metrics, logs en alerts om de gezondheid van het platform te zien.',    icon: '/icons/stage/observability.svg',  kind: 'overlay' },
   { id: 'identity',       title: 'Identiteit & Toegang',     blurb: 'SSO regelt wie wat mag — elk onderdeel checkt het token.',              icon: '/icons/stage/identity.svg',       kind: 'side' },
-  // Twee lanes naast elkaar: Nanitics observeert runtime-agents IN het
-  // platform; Multica coördineert coding agents die op de laptop draaien.
-  // Eén bouwt, de ander observeert. Zie docs/explorations/multica-vs-nanitics.md.
-  { id: 'agents',         title: 'Agents & AI-tooling',      blurb: 'Twee lanes: runtime-agent observability (Nanitics) en dev-loop coding agents (Multica).', icon: '/icons/stage/agents.svg',         kind: 'overlay' },
+  // Coding agents lane: coördineert agents die op de laptop van de developer
+  // draaien (Multica). De voormalige runtime-agent lane (Nanitics) is uit het
+  // platform gehaald en bewaard op de feature/nanitics branch.
+  { id: 'agents',         title: 'Agents & AI-tooling',      blurb: 'Coördinatie van coding agents (Multica) en gerelateerde dev-loop tooling.', icon: '/icons/stage/agents.svg',         kind: 'overlay' },
 ];
 
 export function stageById(id: ComponentStage): StageMeta | undefined {
