@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>UWV Agent Chat</title>
+<style>
+  :root {
+    --bg: oklch(0.99 0 0);
+    --panel: oklch(0.97 0.01 250);
+    --border: oklch(0.90 0.01 250);
+    --text: oklch(0.20 0.02 250);
+    --muted: oklch(0.50 0.02 250);
+    --accent: oklch(0.55 0.20 250);
+    --accent-on: oklch(0.99 0 0);
+    --ok: oklch(0.65 0.15 145);
+    --warn: oklch(0.70 0.15 75);
+    --err: oklch(0.60 0.20 25);
+    --code: oklch(0.95 0.01 250);
+  }
+  html.dark {
+    --bg: oklch(0.18 0.01 250);
+    --panel: oklch(0.22 0.01 250);
+    --border: oklch(0.30 0.01 250);
+    --text: oklch(0.92 0.01 250);
+    --muted: oklch(0.65 0.02 250);
+    --accent: oklch(0.70 0.18 250);
+    --accent-on: oklch(0.15 0.01 250);
+    --ok: oklch(0.75 0.18 145);
+    --warn: oklch(0.78 0.16 75);
+    --err: oklch(0.72 0.20 25);
+    --code: oklch(0.25 0.01 250);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    font-size: 14px; line-height: 1.5;
+  }
+  header {
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  header .links a {
+    color: var(--accent); text-decoration: none; margin-left: 16px; font-size: 13px;
+  }
+  header .links a:hover { text-decoration: underline; }
+  main {
+    max-width: 1100px; margin: 0 auto; padding: 24px;
+    display: grid; grid-template-columns: 320px 1fr; gap: 24px;
+  }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px;
+  }
+  .panel h2 {
+    margin: 0 0 12px 0; font-size: 13px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
+  }
+  .agent-list { display: flex; flex-direction: column; gap: 8px; }
+  .agent-card {
+    padding: 12px; border: 1px solid var(--border); border-radius: 6px;
+    cursor: pointer; transition: border-color 80ms;
+  }
+  .agent-card:hover { border-color: var(--accent); }
+  .agent-card.selected {
+    border-color: var(--accent); background: color-mix(in oklch, var(--accent) 10%, transparent);
+  }
+  .agent-card input[type=radio] { display: none; }
+  .agent-card .label { font-weight: 600; margin-bottom: 4px; }
+  .agent-card .desc { font-size: 12px; color: var(--muted); }
+  textarea {
+    width: 100%; min-height: 80px; padding: 10px; font-family: inherit; font-size: 14px;
+    background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+    resize: vertical;
+  }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+  button {
+    padding: 8px 16px; font-size: 14px; font-weight: 600; cursor: pointer;
+    background: var(--accent); color: var(--accent-on); border: none; border-radius: 6px;
+    transition: filter 80ms;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.1); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .submit-row { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 12px; }
+  .feed {
+    min-height: 400px; max-height: 70vh; overflow-y: auto;
+    padding: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  }
+  .feed .placeholder { color: var(--muted); font-style: italic; padding: 40px; text-align: center; }
+  .ev {
+    display: flex; gap: 12px; padding: 8px 0;
+    border-bottom: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+  }
+  .ev:last-child { border-bottom: none; }
+  .ev .icon { font-size: 18px; flex-shrink: 0; line-height: 1.5; }
+  .ev .body { flex: 1; min-width: 0; }
+  .ev .label { font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace; }
+  .ev .content { font-size: 14px; word-wrap: break-word; }
+  .ev pre {
+    background: var(--code); padding: 8px 10px; border-radius: 4px;
+    font-size: 12px; overflow-x: auto; white-space: pre-wrap; margin: 4px 0 0 0;
+  }
+  .ev.divider { border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 8px; }
+  .final {
+    margin-top: 16px; padding: 14px; background: color-mix(in oklch, var(--ok) 12%, var(--panel));
+    border: 1px solid var(--ok); border-radius: 8px;
+  }
+  .final .label { font-size: 11px; color: var(--ok); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .final .content { white-space: pre-wrap; }
+  .err-banner {
+    margin-top: 16px; padding: 14px; background: color-mix(in oklch, var(--err) 12%, var(--panel));
+    border: 1px solid var(--err); border-radius: 8px; color: var(--err);
+  }
+  .meta { color: var(--muted); font-size: 12px; margin-top: 8px; font-family: ui-monospace, monospace; }
+  .toggle {
+    background: transparent; color: var(--text); border: 1px solid var(--border);
+    padding: 4px 10px; font-size: 13px; font-weight: 400;
+  }
+  .spinner {
+    display: inline-block; width: 14px; height: 14px; border: 2px solid var(--accent);
+    border-bottom-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+<script>
+  // Apply theme as early as possible to avoid flash.
+  (function () {
+    try {
+      var stored = localStorage.getItem("uwv-chat-theme");
+      var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      if (stored === "dark" || (stored !== "light" && prefersDark)) {
+        document.documentElement.classList.add("dark");
+      }
+    } catch (_) { /* no-op */ }
+  })();
+</script>
+</head>
+<body>
+<header>
+  <h1>🤖 UWV Agent Chat</h1>
+  <div class="links">
+    <button class="toggle" id="themeToggle">🌓 Theme</button>
+    <a href="/api/observatory/" target="_blank">Observatory →</a>
+    <a href="/agents" target="_blank">/agents</a>
+  </div>
+</header>
+<main>
+  <aside>
+    <section class="panel">
+      <h2>Agent</h2>
+      <div class="agent-list" id="agents"><span class="meta">Loading…</span></div>
+    </section>
+  </aside>
+  <section>
+    <div class="panel">
+      <h2>Task</h2>
+      <textarea id="task" placeholder="What would you like the agent to do?"></textarea>
+      <div class="submit-row">
+        <span class="meta" id="status"></span>
+        <button id="submit">Run agent</button>
+      </div>
+    </div>
+    <div class="feed" id="feed">
+      <div class="placeholder">Pick an agent and a task — events will stream here as it works.</div>
+    </div>
+    <div id="finalBox"></div>
+  </section>
+</main>
+<script>
+(() => {
+  const $agents = document.getElementById("agents");
+  const $task = document.getElementById("task");
+  const $submit = document.getElementById("submit");
+  const $status = document.getElementById("status");
+  const $feed = document.getElementById("feed");
+  const $finalBox = document.getElementById("finalBox");
+  const $theme = document.getElementById("themeToggle");
+
+  let selectedAgent = null;
+  let agentsMap = {};
+  let activeStream = null;
+
+  // Theme toggle.
+  $theme.addEventListener("click", () => {
+    const isDark = document.documentElement.classList.toggle("dark");
+    try { localStorage.setItem("uwv-chat-theme", isDark ? "dark" : "light"); } catch (_) {}
+  });
+
+  // Event-type → icon + label
+  const RENDER = {
+    "agent.start":              { icon: "🚀", label: "agent started" },
+    "agent.complete":           { icon: "🏁", label: "agent finished" },
+    "agent.step":               { icon: "▸",  label: "step" },
+    "llm.request":              { icon: "💭", label: "thinking…" },
+    "llm.response":             { icon: "💬", label: "response" },
+    "tool.invoke":              { icon: "🔧", label: "tool call" },
+    "tool.result":              { icon: "📦", label: "tool result" },
+    "planning.plan.created":    { icon: "📋", label: "plan created" },
+    "planning.step.updated":    { icon: "📝", label: "plan step" },
+    "evaluation.result":        { icon: "⚖️", label: "evaluation" },
+    "tree_search.node.created": { icon: "🌿", label: "branch" },
+    "tree_search.node.evaluated": { icon: "🔬", label: "branch evaluated" },
+    "tree_search.node.pruned":  { icon: "✂️", label: "branch pruned" },
+    "tree_search.complete":     { icon: "🌳", label: "tree search complete" },
+    "mcts.iteration":           { icon: "🔄", label: "MCTS iteration" },
+    "mcts.backpropagation":     { icon: "⬆️", label: "backpropagation" },
+    "reflection.generated":     { icon: "🪞", label: "reflection" },
+    "span.start":               null,  // suppress: too noisy
+    "span.end":                 null,
+  };
+
+  // Load agents.
+  async function loadAgents() {
+    try {
+      const r = await fetch("/agents");
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const list = await r.json();
+      $agents.innerHTML = "";
+      list.forEach((a, idx) => {
+        agentsMap[a.slug] = a;
+        const card = document.createElement("label");
+        card.className = "agent-card" + (idx === 0 ? " selected" : "");
+        card.innerHTML = `
+          <input type="radio" name="agent" value="${a.slug}" ${idx === 0 ? "checked" : ""}>
+          <div class="label">${a.label}</div>
+          <div class="desc">${a.description}</div>
+        `;
+        card.addEventListener("click", () => selectAgent(a.slug));
+        $agents.appendChild(card);
+        if (idx === 0) selectAgent(a.slug);
+      });
+    } catch (e) {
+      $agents.innerHTML = `<div class="err-banner">Failed to load agents: ${e.message}</div>`;
+    }
+  }
+
+  function selectAgent(slug) {
+    selectedAgent = slug;
+    document.querySelectorAll(".agent-card").forEach(c => {
+      c.classList.toggle("selected", c.querySelector("input").value === slug);
+    });
+    if (agentsMap[slug] && !$task.value.trim()) {
+      $task.placeholder = agentsMap[slug].default_task || "Type a task…";
+    }
+  }
+
+  function appendEvent(eventObj) {
+    const type = eventObj.event_type || eventObj.type || "?";
+    const cfg = RENDER[type];
+    if (cfg === null) return;  // suppressed
+    const renderCfg = cfg || { icon: "•", label: type };
+
+    const row = document.createElement("div");
+    row.className = "ev";
+    const payload = eventObj.payload || {};
+    let content = "";
+
+    if (type === "tool.invoke") {
+      const args = JSON.stringify(payload.arguments || {});
+      content = `<code>${escape(payload.tool_name || "?")}(${escape(args)})</code>`;
+    } else if (type === "tool.result") {
+      const r = String(payload.result ?? "").slice(0, 240);
+      content = `<pre>${escape(r)}</pre>`;
+    } else if (type === "llm.response") {
+      const usage = payload.usage || {};
+      const c = (payload.content || "").slice(0, 240);
+      const tokens = (usage.input_tokens != null) ? `<span class="meta">  ${usage.input_tokens} in / ${usage.output_tokens} out</span>` : "";
+      content = (c ? `<div>${escape(c)}</div>` : `<span class="meta">tool calls only</span>`) + tokens;
+    } else if (type === "llm.request") {
+      content = `<span class="meta">model: ${escape(payload.model || "")}</span>`;
+    } else if (type === "evaluation.result") {
+      const v = payload.verdict || "?";
+      const s = payload.score != null ? ` (score=${payload.score})` : "";
+      content = `<code>${escape(v)}${s}</code> <span class="meta">${escape(payload.evaluator_name || "")}</span>`;
+    } else if (type === "planning.plan.created") {
+      content = `<span class="meta">${payload.step_count || 0} steps</span>`;
+    } else if (type === "planning.step.updated") {
+      content = `<span class="meta">${escape(payload.step_description || "")} → ${escape(payload.new_status || "")}</span>`;
+    } else if (type === "tree_search.node.created") {
+      content = `<span class="meta">depth=${payload.depth ?? "?"} ${payload.action ? "action=" + escape(payload.action) : ""}</span>`;
+    } else if (type === "tree_search.node.evaluated") {
+      content = `<span class="meta">score=${payload.score ?? "?"}</span>`;
+    } else if (type === "mcts.iteration") {
+      content = `<span class="meta">iteration ${payload.iteration_number ?? "?"}, best=${payload.best_value_so_far ?? "?"}</span>`;
+    } else if (type === "agent.complete") {
+      content = `<span class="meta">${escape(payload.termination_reason || "complete")}</span>`;
+    } else {
+      content = "";
+    }
+
+    row.innerHTML = `
+      <div class="icon">${renderCfg.icon}</div>
+      <div class="body">
+        <div class="label">${renderCfg.label}</div>
+        <div class="content">${content}</div>
+      </div>`;
+    $feed.appendChild(row);
+    $feed.scrollTop = $feed.scrollHeight;
+  }
+
+  function escape(s) {
+    return String(s)
+      .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+  }
+
+  function clearFeed() {
+    $feed.innerHTML = "";
+    $finalBox.innerHTML = "";
+  }
+
+  function showFinal(runId, result, agentType) {
+    const traceUrl = `/api/observatory/#/runs/${runId}`;
+    $finalBox.innerHTML = `
+      <div class="final">
+        <div class="label">${agentType} answered</div>
+        <div class="content">${escape(result)}</div>
+        <div class="meta">run: <code>${runId}</code> · <a href="${traceUrl}" target="_blank" style="color: inherit; text-decoration: underline;">open in Observatory</a></div>
+      </div>`;
+  }
+
+  function showError(msg) {
+    $finalBox.innerHTML = `<div class="err-banner">${escape(msg)}</div>`;
+  }
+
+  async function fetchRunResult(runId) {
+    // run_complete only carries {status}; result lives on the run row.
+    const r = await fetch(`/api/observatory/runs?limit=10`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    const found = (data.runs || []).find(x => x.run.id === runId);
+    return found ? found.run : null;
+  }
+
+  $submit.addEventListener("click", async () => {
+    const task = $task.value.trim();
+    if (!task) { $status.textContent = "Type a task first."; return; }
+    if (!selectedAgent) { $status.textContent = "Pick an agent."; return; }
+    if (activeStream) { activeStream.close(); activeStream = null; }
+
+    clearFeed();
+    $submit.disabled = true;
+    $status.innerHTML = `<span class="spinner"></span> running…`;
+    let evCount = 0;
+    const t0 = performance.now();
+
+    try {
+      // 1. Kick off the agent in the background; get run_id back immediately.
+      const r = await fetch(`/run/${selectedAgent}/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+      const { run_id: runId, agent_type } = await r.json();
+
+      // 2. Tail the existing Observatory SSE endpoint for live events.
+      const es = new EventSource(`/api/observatory/runs/${runId}/stream?min_level=debug`);
+      activeStream = es;
+
+      es.addEventListener("trace", (e) => {
+        try {
+          const ev = JSON.parse(e.data);
+          appendEvent(ev);
+          evCount++;
+          $status.innerHTML = `<span class="spinner"></span> ${evCount} events…`;
+        } catch (err) {
+          console.error("Failed to parse trace event", err, e.data);
+        }
+      });
+
+      es.addEventListener("run_complete", async () => {
+        es.close();
+        activeStream = null;
+        const run = await fetchRunResult(runId);
+        const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+        if (run && run.status === "completed") {
+          showFinal(runId, run.result || "(no result)", agent_type);
+          $status.textContent = `done in ${elapsed}s · ${evCount} events`;
+        } else if (run && run.status === "failed") {
+          showError(`Run failed: ${run.error || "(no error message)"}`);
+          $status.textContent = `failed in ${elapsed}s`;
+        } else {
+          showError("Run finished with unknown status.");
+          $status.textContent = "unknown";
+        }
+        $submit.disabled = false;
+      });
+
+      es.onerror = () => {
+        if (es.readyState === EventSource.CLOSED) {
+          $submit.disabled = false;
+        } else {
+          // Transient — EventSource auto-reconnects.
+          $status.textContent = "reconnecting…";
+        }
+      };
+    } catch (e) {
+      showError("Run failed to start: " + e.message);
+      $status.textContent = "failed";
+      $submit.disabled = false;
+    }
+  });
+
+  loadAgents();
+})();
+</script>
+</body>
+</html>

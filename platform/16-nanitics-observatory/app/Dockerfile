@@ -34,8 +34,9 @@ RUN pip install \
 # static_dir=None — handled in app.py).
 COPY observatory-ui /srv/observatory-ui
 
-# Application glue.
+# Application glue + chat UI static assets.
 COPY app.py /srv/app.py
+COPY static /srv/static
 
 # Drop privileges.
 RUN useradd --system --uid 1000 --create-home --shell /usr/sbin/nologin app \
