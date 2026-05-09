@@ -190,6 +190,25 @@ multica daemon start
 
 (See upstream `SELF_HOSTING.md` step 3 for the full agent-CLI list.)
 
+### 5a. (Optional) Point `codex` at Azure AI Foundry
+
+Multica's server doesn't speak LLM — each agent CLI talks to its own
+provider. To run codex against your Foundry deployment instead of
+OpenAI's hosted API:
+
+```sh
+export AZURE_OPENAI_API_KEY="<your-foundry-key>"
+export MULTICA_CODEX_MODEL=gpt-4o     # or whatever you deployed
+multica daemon start
+```
+
+Codex picks the provider up from your existing `~/.codex/config.toml`
+(`model_provider = "azure"`); `MULTICA_CODEX_MODEL` overrides the
+per-task model. Verified end-to-end against `gpt-4o` —
+[full memo in `docs/explorations/multica-foundry.md`](../../docs/explorations/multica-foundry.md).
+Same trick won't work for Claude / Gemini / Cursor — those CLIs don't
+have a swap-base_url hook.
+
 ---
 
 ## Day-2 ops
