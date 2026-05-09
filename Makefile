@@ -42,8 +42,14 @@ bootstrap: ## Installeer Helm-charts: cert-manager, MinIO, Postgres, Keycloak, S
 	bash scripts/bootstrap.sh
 
 .PHONY: deploy-platform
-deploy-platform: render-catalogs ## Deploy alle platform-manifests onder platform/
+deploy-platform: render-catalogs portal-image dbt-image ## Deploy alle platform-manifests onder platform/ (incl. portal + dbt images)
 	bash scripts/deploy-platform.sh
+
+.PHONY: portal-image
+portal-image: ## Build uwv-platform/portal:dev (Astro static site + nginx) en importeer in k3d
+	docker build -f portal/Dockerfile -t uwv-platform/portal:dev .
+	k3d image import uwv-platform/portal:dev -c $(CLUSTER_NAME)
+	@echo "[portal-image] image gebouwd + geïmporteerd."
 
 .PHONY: render-catalogs
 render-catalogs: ## Render Trino-catalog templates op basis van platform-config.yaml

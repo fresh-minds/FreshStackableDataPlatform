@@ -61,6 +61,37 @@ done
 # is dat fataal — ze proberen verbinding te maken met hun eigen loopback.
 # Fix: laat CoreDNS *.uwv-platform.local naar de keycloak-external Service
 # in ingress-nginx wijzen (die mappt 8443 → 443 op ingress-nginx-controller).
+# uwv-ca-bundle uitbreiden met de Stackable secret-operator self-signed CA.
+# Bootstrap probeert dit ook (via een trigger-pod), maar als de operator dan
+# nog niet klaar is om certs uit te delen, blijft de bundle alleen het
+# uwv-platform-issuer CA en faalt later TLS-verify naar Trino/Hive
+# (Superset → Trino, OM Java truststore, etc). Hier zijn alle pods al
+# een tijdje TLS aan het opvragen, dus secret-provisioner-tls-ca bestaat.
+log "uwv-ca-bundle uitbreiden met Stackable secret-operator CA"
+if kubectl -n stackable-operators get secret secret-provisioner-tls-ca >/dev/null 2>&1; then
+  TMPCA=$(mktemp); TMPCAS=$(mktemp)
+  kubectl -n cert-manager get secret uwv-platform-ca -o jsonpath='{.data.ca\.crt}' 2>/dev/null | base64 -d > "$TMPCA"
+  kubectl -n stackable-operators get secret secret-provisioner-tls-ca \
+    -o jsonpath='{.data.0\.ca\.crt}' | base64 -d > "$TMPCAS"
+  if [[ -s "$TMPCA" && -s "$TMPCAS" ]]; then
+    cat "$TMPCA" "$TMPCAS" > "$TMPCA.combined"
+    kubectl -n uwv-platform create configmap uwv-ca-bundle \
+      --from-file=ca.crt="$TMPCA.combined" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    # OM mountt deze ook in uwv-meta. Roll-out van Superset/OM zorgt dat de
+    # Java truststore her-importContaineren de bijgewerkte bundle.
+    kubectl -n uwv-meta create configmap uwv-ca-bundle \
+      --from-file=ca.crt="$TMPCA.combined" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    n=$(grep -c "BEGIN CERT" "$TMPCA.combined")
+    printf '\033[1;32mOK\033[0m uwv-ca-bundle bevat nu %s CA(s) (uwv-platform-issuer + Stackable secret-op)\n' "$n"
+    # Roll Superset + OM zodat ze de nieuwe truststore initContainer-en.
+    kubectl -n uwv-platform delete pod -l app.kubernetes.io/name=superset --ignore-not-found >/dev/null 2>&1 || true
+    kubectl -n uwv-meta delete pod -l app.kubernetes.io/name=openmetadata --ignore-not-found >/dev/null 2>&1 || true
+  fi
+  rm -f "$TMPCA" "$TMPCAS" "$TMPCA.combined"
+else
+  printf '\033[1;33m!!\033[0m secret-provisioner-tls-ca nog niet aanwezig (Stackable operators staan nog niet TLS uit te delen?). Re-run deploy-platform later.\n'
+fi
+
 log "CoreDNS-override voor *.uwv-platform.local"
 KC_SVC_IP=""
 for i in {1..30}; do
@@ -131,6 +162,53 @@ with app.app_context():
                 db.session.commit()
                 print(f"upgraded {u.username} -> Admin")
 ' 2>&1 | tail -10 || true
+fi
+
+# dbt-manifest ConfigMap voor Cosmos LoadMode.DBT_MANIFEST.
+# De originele dbt-manifest-render Job (platform/11-airflow/jobs/) gebruikt
+# git-sync tegen een private GitHub-repo, en het rauwe manifest.json (~1.4MB)
+# overschrijdt de ConfigMap data-limiet (1MB). De Airflow-scheduler heeft
+# echter al een `manifest-decompress` initContainer die `manifest.json.gz`
+# en `dbt-project.tar.gz` uit binaryData uitpakt — we leveren die hier
+# direct vanaf de host via de uwv/dbt-trino:1.9.0-uwv image (~135KB gzipd).
+# Superset-init Job re-runt zodat hij na de CA-bundle update + Superset
+# pod-roll de Trino-databases registreert. Backoff van een eerdere Failed
+# Job blokkeert anders een retry.
+log "superset-init Job opnieuw triggeren (na CA-bundle update + pod-roll)"
+kubectl -n uwv-platform delete job superset-init --ignore-not-found >/dev/null 2>&1 || true
+kubectl apply -k "$ROOT/platform/12-superset" >/dev/null 2>&1 || true
+
+log "dbt-manifest ConfigMap renderen via uwv/dbt-trino:1.9.0-uwv"
+if docker image inspect uwv/dbt-trino:1.9.0-uwv >/dev/null 2>&1; then
+  TMP=$(mktemp -d)
+  docker run --rm -v "$TMP:/out" --entrypoint sh uwv/dbt-trino:1.9.0-uwv -c '
+    cd /opt/uwv/dbt
+    cp profiles.yml.template profiles.yml 2>/dev/null || true
+    DBT_PROFILES_DIR=/opt/uwv/dbt \
+    TRINO_HOST=placeholder TRINO_PORT=8443 \
+    TRINO_USER=placeholder TRINO_PASSWORD=placeholder \
+    TABLE_FORMAT=delta \
+    dbt parse --target dev >/tmp/dbt.log 2>&1 || cat /tmp/dbt.log >&2
+    cp target/manifest.json /out/manifest.json 2>/dev/null || true
+    tar -czf /out/dbt-project.tar.gz \
+      --exclude=target --exclude=logs --exclude=dbt_packages . 2>/dev/null
+  ' 2>&1 | tail -3 || true
+  if [[ -s "$TMP/manifest.json" ]]; then
+    gzip -f -c "$TMP/manifest.json" > "$TMP/manifest.json.gz"
+    kubectl -n uwv-platform create configmap dbt-manifest \
+      --from-file=manifest.json.gz="$TMP/manifest.json.gz" \
+      --from-file=dbt-project.tar.gz="$TMP/dbt-project.tar.gz" \
+      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    # Forceer Airflow scheduler-rollout zodat manifest-decompress init opnieuw runt.
+    kubectl -n uwv-platform delete pod -l app.kubernetes.io/component=scheduler --ignore-not-found >/dev/null 2>&1 || true
+    printf '\033[1;32mOK\033[0m dbt-manifest ConfigMap geseed (manifest.json.gz=%s, dbt-project.tar.gz=%s)\n' \
+      "$(du -h "$TMP/manifest.json.gz" | cut -f1)" "$(du -h "$TMP/dbt-project.tar.gz" | cut -f1)"
+  else
+    printf '\033[1;33m!!\033[0m dbt parse leverde geen manifest.json op — Cosmos draait in fallback (lege DAG-set)\n'
+  fi
+  rm -rf "$TMP"
+else
+  printf '\033[1;33m!!\033[0m uwv/dbt-trino:1.9.0-uwv image niet gevonden — `make dbt-image` eerst draaien\n'
 fi
 
 log "Deploy-platform fase 1 stub klaar."
