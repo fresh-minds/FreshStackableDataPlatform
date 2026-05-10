@@ -57,8 +57,10 @@ spec:
         app.kubernetes.io/name: multica-backend
     spec:
       automountServiceAccountToken: false
+      # NOTE: upstream multica-backend runs as root (uid 0). We don't enforce
+      # runAsNonRoot here — would require a custom image rebuild upstream.
+      # File ownership of the uploads PVC is owned by uid 0 anyway.
       securityContext:
-        runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       containers:

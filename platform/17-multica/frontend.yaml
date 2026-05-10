@@ -46,7 +46,12 @@ spec:
     spec:
       automountServiceAccountToken: false
       securityContext:
+        # Upstream image declares `USER nextjs` (uid 1001) — kubelet rejects
+        # `runAsNonRoot: true` without a numeric user, so we set the UID
+        # explicitly to satisfy the check.
         runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 65533
         seccompProfile:
           type: RuntimeDefault
       containers:
