@@ -26,6 +26,9 @@ resources:
   - backend-config.yaml
   - backend.yaml
   - frontend.yaml
+  - configmap-oauth2-proxy.yaml
+  - secret-oauth2-proxy.yaml
+  - oauth2-proxy.yaml
   - ingress.yaml
 
 commonLabels:

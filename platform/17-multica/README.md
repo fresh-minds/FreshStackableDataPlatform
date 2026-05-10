@@ -36,15 +36,18 @@ for the full design memo.
 
 ```
 platform/17-multica/
-├── README.md              ← this file
-├── kustomization.yaml     ← excludes both *-secret.yaml on purpose
-├── uploads-pvc.yaml       ← PVC for backend attachment uploads
-├── postgres.yaml          ← StatefulSet + headless Service (pgvector/pgvector:pg17)
-├── backend-config.yaml    ← non-sensitive env (PORT, METRICS_ADDR, CORS, …)
-├── backend.yaml           ← Deployment + ClusterIP Service + metrics Service
-├── frontend.yaml          ← Deployment + ClusterIP Service (Next.js 16)
-├── ingress.yaml           ← multica.uwv-platform.local — single host, path-based
-└── secrets.template.yaml  ← TEMPLATE — apply via kubectl create secret (filename avoids the *-secret.yaml gitignore)
+├── README.md                       ← this file
+├── kustomization.yaml              ← excludes secrets.template.yaml on purpose
+├── uploads-pvc.yaml                ← PVC for backend attachment uploads
+├── postgres.yaml                   ← StatefulSet + headless Service (pgvector/pgvector:pg17)
+├── backend-config.yaml             ← non-sensitive env (PORT, METRICS_ADDR, CORS, …)
+├── backend.yaml                    ← Deployment + ClusterIP Service + metrics Service
+├── frontend.yaml                   ← Deployment + ClusterIP Service (Next.js 16)
+├── configmap-oauth2-proxy.yaml     ← oauth2-proxy config — front-door SSO via Keycloak
+├── secret-oauth2-proxy.yaml        ← dev-only client-secret + cookie-secret (committed; Mirror of 15-portal)
+├── oauth2-proxy.yaml               ← oauth2-proxy Deployment + Service (separate, multi-upstream)
+├── ingress.yaml                    ← multica.uwv-platform.local — alles via oauth2-proxy
+└── secrets.template.yaml           ← TEMPLATE — postgres + backend secrets, apply out-of-band
 ```
 
 ---
@@ -78,18 +81,35 @@ fewer `/etc/hosts` entries. The browser hits
 `/auth`, `/uploads`, `/ws`, `/health`, `/readyz` to the backend; `/`
 to the frontend.
 
-### v1 uses Multica's native email-code auth, not Keycloak
+### oauth2-proxy in front of Multica — front-door SSO only
 
-Multica has no native OIDC. Adding oauth2-proxy + Keycloak (mirroring
-[15-portal](../15-portal/)) is technically straightforward but creates
-a layered model: oauth2-proxy gates network access, Multica still has
-its own email-code login on top. That's confusing and not better than
-the status quo until we control the upstream user-provisioning flow.
+Multica has no native OIDC. We use the same oauth2-proxy + Keycloak
+pattern as [15-portal](../15-portal/), but **only gate the Next.js
+bundle** (path `/`). All API + auth + WebSocket paths bypass
+oauth2-proxy:
 
-For v1: leave Multica's email-code login in place, set
-`RESEND_API_KEY` empty so codes print to the backend logs. Document
-oauth2-proxy as v2 after we've evaluated whether it's worth the dual-auth
-weight, or whether to push for OIDC support upstream.
+```
+skip_auth_routes = ["^/api/", "^/auth/", "^/ws", "^/uploads/", "^/health", "^/readyz"]
+```
+
+Why: Multica's daemon path (`/api/daemon/*`, `/ws`) authenticates with
+its own JWT. The browser-side API calls (`/api/*`) use Multica's own
+session cookie. Multica's email-code login (`/auth/*`) must keep
+working for users to actually log in *into* Multica. Putting
+oauth2-proxy in front of all of those would either break the daemon or
+require a Keycloak-cookie ↔ Multica-JWT bridge.
+
+**Effect**: random network users can't even *see* the Multica UI —
+they hit Keycloak first. Once authenticated, they still need a
+one-time email-code login for Multica's own user model (codes printed
+to backend logs since `RESEND_API_KEY` is empty). This is "front-door
+SSO," not full SSO.
+
+**Full SSO (future)** requires either upstream Multica adding OIDC, or
+a custom user-provisioning bridge that consumes the
+`X-Forwarded-Email` header oauth2-proxy sets and auto-creates the
+Multica user. Out of scope for now — see
+[`docs/explorations/multica-vs-nanitics.md`](../../docs/explorations/multica-vs-nanitics.md).
 
 ### Storage: PVC for uploads in v1, MinIO bucket in v2
 

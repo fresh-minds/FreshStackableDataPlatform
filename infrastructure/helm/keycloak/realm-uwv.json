@@ -562,6 +562,63 @@
       "attributes": {
         "use.refresh.tokens": "false"
       }
+    },
+    {
+      "clientId": "multica",
+      "name": "UWV Platform — Multica",
+      "description": "OIDC-client voor de oauth2-proxy voor https://multica.uwv-platform.local — gates de Next.js bundle (front-door SSO). Multica's eigen email-code login draait nog op API-niveau.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-multica-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://multica.uwv-platform.local:8443/oauth2/callback",
+        "https://multica.uwv-platform.local/oauth2/callback"
+      ],
+      "webOrigins": [
+        "https://multica.uwv-platform.local:8443",
+        "https://multica.uwv-platform.local"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "https://multica.uwv-platform.local:8443/*##https://multica.uwv-platform.local/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "username-as-email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "username",
+            "claim.name": "email",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "audience-multica",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "multica",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "clientScopes": [

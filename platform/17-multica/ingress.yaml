@@ -1,14 +1,14 @@
-# Single host, path-based routing — exact mirror of the upstream Nginx
-# example in SELF_HOSTING_ADVANCED.md, adapted to nginx-ingress.
+# Single host — alles via de multica-oauth2-proxy Service.
+# oauth2-proxy splitst path-based naar backend/frontend (zie
+# configmap-oauth2-proxy.yaml `upstreams = [...]`) en gates alleen `/`.
 #
 # Browser → multica.uwv-platform.local:8443
-#   /                → multica-frontend (Next.js)
-#   /api, /auth, /uploads, /ws → multica-backend (Go)
+#   ingress → multica-oauth2-proxy:80 (oauth2-proxy:4180)
+#     /                → Keycloak SSO check → multica-frontend (Next.js)
+#     /api, /auth, /uploads, /ws, /health, /readyz → multica-backend (skip-auth)
 #
-# WebSocket upgrade is handled by the nginx-ingress automatically when
-# the Service path matches; no special annotation is required for
-# nginx-ingress >= 1.0. We add a generous read-timeout so SSE / WS
-# streams stay open.
+# WebSocket-upgrade is OK: oauth2-proxy proxiet WS-traffic transparant.
+# Generous read-timeout zodat SSE / WS streams open blijven.
 
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -18,7 +18,6 @@ metadata:
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
     nginx.ingress.kubernetes.io/proxy-body-size: "25m"
-    # SSE + WebSocket: keep connections alive for 1h.
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
 spec:
@@ -30,53 +29,10 @@ spec:
     - host: multica.uwv-platform.local
       http:
         paths:
-          # Order matters: more-specific paths first.
-          - path: /api
-            pathType: Prefix
-            backend:
-              service:
-                name: multica-backend
-                port:
-                  number: 80
-          - path: /auth
-            pathType: Prefix
-            backend:
-              service:
-                name: multica-backend
-                port:
-                  number: 80
-          - path: /uploads
-            pathType: Prefix
-            backend:
-              service:
-                name: multica-backend
-                port:
-                  number: 80
-          - path: /ws
-            pathType: Prefix
-            backend:
-              service:
-                name: multica-backend
-                port:
-                  number: 80
-          - path: /health
-            pathType: Prefix
-            backend:
-              service:
-                name: multica-backend
-                port:
-                  number: 80
-          - path: /readyz
-            pathType: Prefix
-            backend:
-              service:
-                name: multica-backend
-                port:
-                  number: 80
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: multica-frontend
+                name: multica-oauth2-proxy
                 port:
                   number: 80
