@@ -23,7 +23,9 @@ set -euo pipefail
 
 KC_NAMESPACE="${KC_NAMESPACE:-uwv-auth}"
 KC_REALM="${KC_REALM:-uwv}"
-KC_ADMIN_USER="${KC_ADMIN_USER:-admin}"
+# Bitnami Keycloak chart defaults to KEYCLOAK_ADMIN=kcadmin (not 'admin').
+# Pinned in infrastructure/helm/keycloak/values.yaml: adminUser: kcadmin.
+KC_ADMIN_USER="${KC_ADMIN_USER:-kcadmin}"
 KC_ADMIN_PW_SECRET="${KC_ADMIN_PW_SECRET:-keycloak}"
 KC_SVC="${KC_SVC:-keycloak}"
 
