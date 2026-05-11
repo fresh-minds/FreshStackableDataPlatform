@@ -99,10 +99,15 @@ openmetadata:
         tenant: ""
         maxClockSkew: ""
         tokenValidity: "3600"
-        # customParams: chart-schema vraagt string, OM-config-class vraagt
-        # LinkedHashMap. `""` faalt de Jackson-coerce; `"{}"` is een geldige
-        # JSON-Map-as-string die Jackson wel naar LinkedHashMap omzet.
+        # OM 1.12 default `customParams: '{}'` werkt out-of-the-box; in 1.5
+        # was de chart-default `""` (lege string) wat Jackson niet naar
+        # LinkedHashMap kon coercen → daar moest een post-deploy patch op
+        # OIDC_CUSTOM_PARAMS. Niet meer nodig vanaf 1.12.
         customParams: "{}"
+        # 1.12-only velden (genegeerd door 1.5):
+        promptType: "login"
+        maxAge: "0"
+        sessionExpiry: "604800"
 
     authorizer:
       className: org.openmetadata.service.security.DefaultAuthorizer
@@ -127,18 +132,29 @@ extraInitContainers:
   - name: import-uwv-ca
     image: eclipse-temurin:17-jre-jammy
     command:
-      - sh
+      - bash
       - -c
       - |
         set -eu
         cp "$JAVA_HOME/lib/security/cacerts" /shared-truststore/cacerts
         chmod u+w /shared-truststore/cacerts
-        keytool -importcert -noprompt -trustcacerts \
-          -keystore /shared-truststore/cacerts \
-          -storepass changeit \
-          -alias uwv-platform-ca \
-          -file /uwv-ca/ca.crt
-        echo "uwv-platform CA imported into truststore"
+        # uwv-ca-bundle is een GECONCATENEERDE PEM (Mozilla public roots +
+        # uwv-platform-CA). `keytool -importcert -alias X -file <multi-pem>`
+        # importeert ALLEEN de eerste cert — alle andere worden genegeerd
+        # zonder warning. Daarom split én loop, met een unieke alias per cert.
+        cd /tmp
+        csplit -z -f om-cert- -b "%03d.pem" /uwv-ca/ca.crt '/-----BEGIN CERTIFICATE-----/' '{*}' >/dev/null
+        i=0
+        for cert in om-cert-*.pem; do
+          [ -s "$cert" ] || continue
+          keytool -importcert -noprompt -trustcacerts \
+            -keystore /shared-truststore/cacerts \
+            -storepass changeit \
+            -alias "uwv-ca-$i" \
+            -file "$cert" >/dev/null 2>&1 || true
+          i=$((i+1))
+        done
+        echo "Imported $i certificates into truststore"
     volumeMounts:
       - name: uwv-ca
         mountPath: /uwv-ca
@@ -163,8 +179,15 @@ extraEnvs:
   # entrypoint /openmetadata-start.sh) automatisch toegepast — dit is
   # de standaard manier om extra JVM-args mee te geven zonder image-
   # specifieke env-vars als JAVA_OPTS / JAVA_OPTS_APPEND te gebruiken.
+  #
+  # `preferIPv4Stack=true` voorkomt UnknownHostException bij OIDC-discovery:
+  # CoreDNS' hosts-plugin geeft AAAA-queries SERVFAIL ipv NOERROR-empty,
+  # waardoor Java's getaddrinfo de IPv4-fallback nooit probeert.
   - name: JAVA_TOOL_OPTIONS
-    value: "-Djavax.net.ssl.trustStore=/shared-truststore/cacerts -Djavax.net.ssl.trustStorePassword=changeit"
+    value: >-
+      -Djavax.net.ssl.trustStore=/shared-truststore/cacerts
+      -Djavax.net.ssl.trustStorePassword=changeit
+      -Djava.net.preferIPv4Stack=true
 
 resources:
   requests:

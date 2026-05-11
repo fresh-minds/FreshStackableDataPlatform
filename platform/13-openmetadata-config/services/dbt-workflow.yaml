@@ -19,7 +19,7 @@ source:
           awsAccessKeyId: uwvadmin
           awsSecretAccessKey: ${MINIO_SECRET_KEY}
           awsRegion: eu-nl-1
-          endPointURL: http://minio.uwv-platform.svc.cluster.local:9000
+          endPointURL: https://minio.uwv-platform.svc.cluster.local:9000
         dbtPrefixConfig:
           dbtBucketName: uwv-meta
           dbtObjectPrefix: dbt/latest/

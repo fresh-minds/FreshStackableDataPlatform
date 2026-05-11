@@ -133,5 +133,38 @@ with app.app_context():
 ' 2>&1 | tail -10 || true
 fi
 
+# uwv-ca-bundle aanvullen met Stackable's secret-operator CA, NU Stackable
+# pods (TrinoCluster, HiveCluster, KafkaCluster, ...) hebben gevraagd om
+# certs uit de `tls` SecretClass. Bij bootstrap-tijd was deze CA nog niet
+# gegenereerd; pas na deploy-platform bestaat `secret-provisioner-tls-ca`
+# in stackable-operators NS.
+#
+# Zonder dit append faalt OpenMetadata's dbt-ingest + Trino-ingest met
+# 'self-signed certificate in certificate chain' op TLS naar
+# https://uwv-trino-coordinator:8443.
+log "uwv-ca-bundle (post-deploy): append Stackable secret-operator CA"
+if kubectl -n stackable-operators get secret secret-provisioner-tls-ca >/dev/null 2>&1; then
+  TMPCA=$(mktemp); TMPCAS=$(mktemp); TMPCOMBINED=$(mktemp)
+  kubectl -n uwv-platform get cm uwv-ca-bundle -o jsonpath='{.data.ca\.crt}' > "$TMPCA"
+  kubectl -n stackable-operators get secret secret-provisioner-tls-ca \
+    -o jsonpath='{.data.0\.ca\.crt}' | base64 -d > "$TMPCAS"
+  STACKABLE_CN=$(openssl x509 -noout -subject -in "$TMPCAS" 2>/dev/null | grep -oE 'CN *= *[^,]*' | head -1 | sed 's/CN *= *//')
+  if [[ -n "$STACKABLE_CN" ]] && grep -q "$STACKABLE_CN" "$TMPCA" 2>/dev/null; then
+    echo "  Stackable CA al in bundle (idempotent skip)"
+  else
+    cat "$TMPCA" "$TMPCAS" > "$TMPCOMBINED"
+    kubectl -n uwv-platform delete configmap uwv-ca-bundle --ignore-not-found >/dev/null
+    kubectl -n uwv-platform create configmap uwv-ca-bundle --from-file=ca.crt="$TMPCOMBINED" >/dev/null
+    kubectl -n uwv-meta delete configmap uwv-ca-bundle --ignore-not-found >/dev/null 2>&1 || true
+    kubectl -n uwv-meta create configmap uwv-ca-bundle --from-file=ca.crt="$TMPCOMBINED" >/dev/null 2>&1 || true
+    # Restart OpenMetadata zodat init-container de truststore herbouwt
+    kubectl -n uwv-meta rollout restart deploy/openmetadata >/dev/null 2>&1 || true
+    echo "  Stackable CA appended; OM-deployment restart getriggerd"
+  fi
+  rm -f "$TMPCA" "$TMPCAS" "$TMPCOMBINED"
+else
+  warn "secret-provisioner-tls-ca niet gevonden — Stackable services hebben nog geen cert gevraagd"
+fi
+
 log "Deploy-platform fase 1 stub klaar."
 echo "Run wordt pas zinvol vanaf fase 2. Zie WORKLOG.md."
