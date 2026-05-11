@@ -1,0 +1,96 @@
+# Dedicated Postgres for Multica.
+#
+# Why not share the platform's existing Postgres operator?
+#   - Multica needs the pgvector extension. The official image is
+#     pgvector/pgvector:pg17 — vanilla Postgres operators in this cluster
+#     do not preinstall the extension.
+#   - Agent / issue / chat data is its own data domain; mixing it with
+#     Hive Metastore or OpenMetadata schemas adds blast-radius for no gain.
+#
+# Single replica, scaled-down profile (matches platform-config.yaml).
+# Production: swap for CloudNativePG with a custom image that bundles
+# pgvector, or run multiple replicas behind a service.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: multica-postgres
+  namespace: uwv-platform
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: multica-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: multica-postgres
+  namespace: uwv-platform
+spec:
+  serviceName: multica-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: multica-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: multica-postgres
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg17
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: multica
+            - name: POSTGRES_USER
+              value: multica
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: multica-postgres
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "multica", "-d", "multica"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "multica", "-d", "multica"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 1000m, memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

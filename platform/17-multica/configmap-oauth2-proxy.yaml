@@ -1,0 +1,98 @@
+# oauth2-proxy config voor Multica.
+#
+# Patroon volgt platform/15-portal/configmap-oauth2-proxy.yaml — split
+# OIDC-discovery (issuer extern voor browser-redirect, token-endpoints
+# intern via cluster-DNS) lost het k3d-probleem op dat
+# 'keycloak.uwv-platform.local' alleen via /etc/hosts op de host
+# resolveert.
+#
+# Front-door-model: oauth2-proxy gates ALLEEN '/' (de Next.js bundle).
+# /api, /auth, /ws, /uploads, /health, /readyz bypassen oauth2-proxy
+# omdat:
+#   - Multica's eigen email-code login (/auth/*) moet werken
+#   - de daemon (/api/daemon/*, /ws) JWT-auth gebruikt, geen Keycloak-cookie
+#   - browser-side API calls (/api/*) gebruiken Multica's eigen sessie-cookie
+#
+# Dit is "minimal SSO" — gates wie de UI kan ZIEN, niet wie de API kan
+# bellen. Voor volledige SSO is upstream OIDC-support nodig (zie
+# docs/explorations/multica-vs-nanitics.md).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: multica-oauth2-proxy-config
+  namespace: uwv-platform
+data:
+  oauth2-proxy.cfg: |
+    # Provider
+    provider                = "keycloak-oidc"
+    client_id               = "multica"
+    oidc_issuer_url         = "https://keycloak.uwv-platform.local:8443/realms/uwv"
+
+    # Split discovery
+    skip_oidc_discovery     = true
+    login_url               = "https://keycloak.uwv-platform.local:8443/realms/uwv/protocol/openid-connect/auth"
+    redeem_url              = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/token"
+    profile_url             = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/userinfo"
+    validate_url            = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/userinfo"
+    oidc_jwks_url           = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/certs"
+
+    # Sessiebeleid
+    cookie_name             = "_uwv_multica"
+    cookie_secure           = true
+    cookie_httponly         = true
+    cookie_samesite         = "lax"
+    cookie_expire           = "8h"
+    cookie_refresh          = "30m"
+    cookie_domains          = ["multica.uwv-platform.local"]
+    whitelist_domains       = [".uwv-platform.local", ".uwv-platform.local:8443"]
+
+    # Listen — ingress wijst hierheen
+    http_address            = "0.0.0.0:4180"
+
+    # Multi-upstream — longest-prefix wint.
+    # /api, /auth, /uploads, /ws, /health, /readyz → backend
+    # /                                            → frontend
+    upstreams = [
+      "http://multica-backend.uwv-platform.svc.cluster.local/api/",
+      "http://multica-backend.uwv-platform.svc.cluster.local/auth/",
+      "http://multica-backend.uwv-platform.svc.cluster.local/uploads/",
+      "http://multica-backend.uwv-platform.svc.cluster.local/ws",
+      "http://multica-backend.uwv-platform.svc.cluster.local/health",
+      "http://multica-backend.uwv-platform.svc.cluster.local/readyz",
+      "http://multica-frontend.uwv-platform.svc.cluster.local/",
+    ]
+
+    redirect_url            = "https://multica.uwv-platform.local:8443/oauth2/callback"
+
+    # Identity headers — niet gebruikt door Multica zelf, wel handig
+    # als debug-pijp of voor toekomstige bridge.
+    pass_user_headers       = true
+    pass_access_token       = false
+    set_xauthrequest        = true
+    set_authorization_header = false
+
+    email_domains           = ["*"]
+    skip_provider_button    = true
+
+    # Realm definieert alleen 'roles' scope; 'email' wordt mapper-bepaald.
+    scope                   = "openid roles"
+    insecure_oidc_allow_unverified_email = true
+    oidc_groups_claim       = "roles"
+
+    # Front-door-model: alleen / wordt gegated.
+    # Daemon én browser-side API calls bypassen oauth2-proxy en
+    # vertrouwen op Multica's eigen JWT-auth (cookie of bearer).
+    skip_auth_routes = [
+      "^/api/",
+      "^/auth/",
+      "^/ws",
+      "^/uploads/",
+      "^/health",
+      "^/readyz",
+    ]
+
+    # Logging
+    standard_logging        = true
+    request_logging         = true
+    auth_logging            = true
+    silence_ping_logging    = true

@@ -31,7 +31,7 @@ KEYCLOAK_VERSION="${KEYCLOAK_VERSION:-22.2.6}"
 PROM_VERSION="${PROM_VERSION:-65.5.1}"
 OPENSEARCH_VERSION="${OPENSEARCH_VERSION:-2.27.1}"
 OPENSEARCH_DASHBOARDS_VERSION="${OPENSEARCH_DASHBOARDS_VERSION:-2.26.0}"
-OPENMETADATA_VERSION="${OPENMETADATA_VERSION:-1.5.0}"
+OPENMETADATA_VERSION="${OPENMETADATA_VERSION:-1.12.6}"
 VECTOR_VERSION="${VECTOR_VERSION:-0.36.1}"
 
 log()   { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -152,9 +152,26 @@ kubectl -n uwv-platform create secret generic minio-ca-bundle \
   --dry-run=client -o yaml | \
   sed 's|^metadata:|metadata:\n  labels:\n    secrets.stackable.tech/class: minio-ca|' | \
   kubectl apply -f -
+# uwv-ca-bundle: initial bundle = UWV self-signed CA + public roots (Mozilla
+# bundle from curl.se/cacert.pem). Public roots are required so workloads
+# that point REQUESTS_CA_BUNDLE/SSL_CERT_FILE at /etc/uwv-ca/ca.crt (Airflow,
+# Superset) can verify Let's Encrypt-issued certs on
+# {keycloak,airflow,...}.eu-sovereigndataplatform.com. Without this, Airflow's
+# OIDC token exchange fails with 'unable to get local issuer certificate'.
+# Stackable secret-operator's CA gets appended further down this script.
+#
+# We use delete+create (not `apply`) because the bundle exceeds 256KB once
+# concatenated; `apply` records the whole resource as a metadata annotation
+# (limit 256 KB) and rejects it. Delete+create avoids that path.
+TMPPUB=$(mktemp)
+log "Fetching Mozilla CA bundle (public roots) for uwv-ca-bundle"
+curl -fsSL https://curl.se/ca/cacert.pem -o "$TMPPUB"
+TMPCOMBINED=$(mktemp)
+cat "$TMPPUB" "$TMPCA" > "$TMPCOMBINED"
+kubectl -n uwv-platform delete configmap uwv-ca-bundle --ignore-not-found >/dev/null
 kubectl -n uwv-platform create configmap uwv-ca-bundle \
-  --from-file=ca.crt="$TMPCA" --dry-run=client -o yaml | kubectl apply -f -
-rm -f "$TMPCRT" "$TMPKEY" "$TMPCA"
+  --from-file=ca.crt="$TMPCOMBINED" >/dev/null
+rm -f "$TMPCRT" "$TMPKEY" "$TMPCA" "$TMPPUB" "$TMPCOMBINED"
 
 # 5. MinIO
 log "Install MinIO ${MINIO_VERSION}"
@@ -267,8 +284,11 @@ if [[ "$SECRET_READY" == "true" ]]; then
   kubectl -n stackable-operators get secret secret-provisioner-tls-ca \
     -o jsonpath='{.data.0\.ca\.crt}' | base64 -d > "$TMPCAS"
   cat "$TMPCA" "$TMPCAS" > "$TMPCA.combined"
+  # delete+create (apply hits 256KB annotation limit — bundle now contains
+  # 150+ public roots + UWV CA + Stackable CA).
+  kubectl -n uwv-platform delete configmap uwv-ca-bundle --ignore-not-found >/dev/null
   kubectl -n uwv-platform create configmap uwv-ca-bundle \
-    --from-file=ca.crt="$TMPCA.combined" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    --from-file=ca.crt="$TMPCA.combined" >/dev/null
   rm -f "$TMPCA" "$TMPCAS" "$TMPCA.combined"
 else
   warn "secret-provisioner-tls-ca niet verschenen binnen 3m — uwv-ca-bundle bevat alleen platform-CA."
@@ -301,10 +321,12 @@ helm upgrade --install opensearch-dashboards-uwv opensearch/opensearch-dashboard
 # een initContainer; daarvoor moet de uwv-ca-bundle ConfigMap óók in de
 # uwv-meta namespace bestaan.
 log "uwv-ca-bundle ConfigMap kopiëren naar uwv-meta (voor OM Java truststore)"
-kubectl -n uwv-platform get configmap uwv-ca-bundle -o yaml \
-  | sed -e 's/namespace: uwv-platform/namespace: uwv-meta/' \
-        -e '/resourceVersion:/d' -e '/uid:/d' -e '/creationTimestamp:/d' \
-  | kubectl apply -f - >/dev/null
+# delete+create — bundle is >256KB so `apply` rejects it (annotation limit).
+TMPCAYAML=$(mktemp)
+kubectl -n uwv-platform get configmap uwv-ca-bundle -o jsonpath='{.data.ca\.crt}' > "$TMPCAYAML"
+kubectl -n uwv-meta delete configmap uwv-ca-bundle --ignore-not-found >/dev/null
+kubectl -n uwv-meta create configmap uwv-ca-bundle --from-file=ca.crt="$TMPCAYAML" >/dev/null
+rm -f "$TMPCAYAML"
 
 # OpenMetadata helm-chart hardcodes db-credential secret naam `mysql-secrets`
 # met key `openmetadata-mysql-password`, ook bij Postgres. Aanmaken vóór

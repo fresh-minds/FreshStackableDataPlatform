@@ -8,7 +8,7 @@ source:
     config:
       type: Profiler
       profileSample: 30  # 30% sample voor scaled-down k3d
-      generateSampleData: false
+      # `generateSampleData` is verwijderd in OM 1.6+
       schemaFilterPattern:
         includes:
           - polisadm

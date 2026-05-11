@@ -1,0 +1,38 @@
+# Single host — alles via de multica-oauth2-proxy Service.
+# oauth2-proxy splitst path-based naar backend/frontend (zie
+# configmap-oauth2-proxy.yaml `upstreams = [...]`) en gates alleen `/`.
+#
+# Browser → multica.uwv-platform.local:8443
+#   ingress → multica-oauth2-proxy:80 (oauth2-proxy:4180)
+#     /                → Keycloak SSO check → multica-frontend (Next.js)
+#     /api, /auth, /uploads, /ws, /health, /readyz → multica-backend (skip-auth)
+#
+# WebSocket-upgrade is OK: oauth2-proxy proxiet WS-traffic transparant.
+# Generous read-timeout zodat SSE / WS streams open blijven.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: multica
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+    nginx.ingress.kubernetes.io/proxy-body-size: "25m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["multica.uwv-platform.local"]
+      secretName: multica-tls
+  rules:
+    - host: multica.uwv-platform.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: multica-oauth2-proxy
+                port:
+                  number: 80

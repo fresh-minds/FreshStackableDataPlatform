@@ -2,10 +2,25 @@
 # Start a kubectl port-forward to the AKS ingress-nginx, bound to 127.0.0.2
 # so it doesn't conflict with a concurrently-running k3d cluster on 127.0.0.1.
 #
+# Why use this when there's a public DNS + Let's Encrypt? Because some
+# corp networks block outbound to Azure public IP ranges, so the public LB
+# IP times out from the user's machine. The kubectl PF tunnels through the
+# AKS API server (typically allowed because that's how `kubectl` works at
+# all), so it's the reliable fallback when public access is blocked.
+#
 # /etc/hosts mapping (one-time setup — run on your Mac with sudo):
-#   echo "127.0.0.2 keycloak.uwv-platform.cloud minio-console.uwv-platform.cloud \\
-#         minio.uwv-platform.cloud grafana.uwv-platform.cloud \\
-#         openmetadata.uwv-platform.cloud" | sudo tee -a /etc/hosts
+#   sudo bash -c 'echo "127.0.0.2 platform.eu-sovereigndataplatform.com \\
+#       keycloak.eu-sovereigndataplatform.com \\
+#       grafana.eu-sovereigndataplatform.com \\
+#       prometheus.eu-sovereigndataplatform.com \\
+#       minio.eu-sovereigndataplatform.com \\
+#       minio-api.eu-sovereigndataplatform.com \\
+#       superset.eu-sovereigndataplatform.com \\
+#       airflow.eu-sovereigndataplatform.com \\
+#       dbt-docs.eu-sovereigndataplatform.com" >> /etc/hosts'
+#
+# Then browse to https://platform.eu-sovereigndataplatform.com:8443/.
+# (Browsers warn about the cert because it's issued for port 443; accept once.)
 #
 # 127.0.0.2 is not bound to lo0 by default on macOS. This script adds it
 # automatically (will prompt for sudo password if missing).
@@ -45,7 +60,13 @@ case "$cmd" in
     if kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
       printf '\033[1;32mOK\033[0m  AKS port-forward running on %s:8443 / %s:8080 (pid %s)\n' "$ADDR" "$ADDR" "$(cat "$PIDFILE")"
       echo "  log:        $LOG"
-      echo "  hostnames:  https://{keycloak,grafana,minio,minio-console,openmetadata}.uwv-platform.cloud:8443"
+      echo "  hostnames:  https://{platform,keycloak,grafana,prometheus,minio,minio-api,superset,airflow,dbt-docs}.eu-sovereigndataplatform.com:8443"
+      if ! grep -q "eu-sovereigndataplatform.com" /etc/hosts 2>/dev/null; then
+        echo
+        echo "  /etc/hosts is missing the .com entries. Run once:"
+        echo
+        echo "    sudo bash -c 'echo \"127.0.0.2 platform.eu-sovereigndataplatform.com keycloak.eu-sovereigndataplatform.com grafana.eu-sovereigndataplatform.com prometheus.eu-sovereigndataplatform.com minio.eu-sovereigndataplatform.com minio-api.eu-sovereigndataplatform.com superset.eu-sovereigndataplatform.com airflow.eu-sovereigndataplatform.com dbt-docs.eu-sovereigndataplatform.com\" >> /etc/hosts'"
+      fi
     else
       echo "FAIL: port-forward died. See $LOG"
       exit 1

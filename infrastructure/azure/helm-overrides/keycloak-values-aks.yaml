@@ -15,11 +15,15 @@ postgresql:
 # URLs are pinned to .cloud.
 auth:
   realm: master
-  frontendUrl: "https://keycloak.uwv-platform.cloud:8443"
+  frontendUrl: "https://keycloak.eu-sovereigndataplatform.com"
 
+# AKS Keycloak's frontend URL is now the public DNS hostname on standard 443
+# (no port suffix). Browsers using the public DNS get URLs that resolve and
+# load straight off the Let's Encrypt-served LB; cookies are set on
+# .eu-sovereigndataplatform.com.
 extraEnvVars:
   - name: KC_HOSTNAME
-    value: "https://keycloak.uwv-platform.cloud:8443"
+    value: "https://keycloak.eu-sovereigndataplatform.com"
   - name: KC_HOSTNAME_STRICT
     value: "false"
   - name: KC_HOSTNAME_STRICT_BACKCHANNEL
@@ -27,10 +31,10 @@ extraEnvVars:
   - name: KC_PROXY_HEADERS
     value: "xforwarded"
 
-# NB: tokens issued here have iss=https://keycloak.uwv-platform.cloud:8443/
-# regardless of whether the call came via .cloud (browser) or the in-cluster
-# .local hostname (apps' backchannel). Apps with .local hardcoded as their
-# OIDC issuer config (Superset, Airflow, OpenMetadata) will need their
-# helm values updated to expect .cloud iss too — see the cloud-overrides
-# for those charts. Until then the iss-claim mismatch will fail SSO on
-# those apps even though the portal login works.
+# NB: tokens issued here have iss=https://keycloak.eu-sovereigndataplatform.com/
+# regardless of whether the call came via the public domain (browser) or the
+# in-cluster keycloak Service hostname (apps' backchannel). Apps with .local
+# hardcoded as their OIDC issuer config (Superset, Airflow, OpenMetadata) —
+# their helm values would need updating to expect the .com iss too. The
+# portal works because oauth2-proxy auto-discovers the issuer URL from
+# /.well-known/openid-configuration.
