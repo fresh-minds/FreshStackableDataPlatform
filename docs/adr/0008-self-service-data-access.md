@@ -43,7 +43,7 @@ Componenten:
    `reviewers` en een `owner`. De init-Job POST de reviewers nu ook mee
    (was eerder `name + description` only).
 2. **`om-access-bridge`** — kleine FastAPI-service in
-   `platform/17-om-access-bridge/`. Ontvangt OM webhook-events op
+   `platform/18-om-access-bridge/`. Ontvangt OM webhook-events op
    `POST /webhooks/om`, valideert HMAC-signature, en bij `entityType=task` +
    `eventType=taskResolved` + `status=approved` patcht de target-user in
    Keycloak: nieuwe realm-role `data_access:<catalog>.<schema>` toevoegen.
@@ -119,7 +119,7 @@ Componenten:
   `owner` mee voor elke glossary-term (regel ~115).
 - `platform/13-openmetadata-config/glossary-cgm.yaml` — `dataOwner` en
   `reviewers` per term waar relevant.
-- `platform/17-om-access-bridge/` — nieuwe service-directory met
+- `platform/18-om-access-bridge/` — nieuwe service-directory met
   `app/`, `deployment.yaml`, `service.yaml`, `configmap.yaml`,
   `secret.yaml`, `kustomization.yaml`.
 - `infrastructure/helm/keycloak/realm-uwv.json` — nieuwe client

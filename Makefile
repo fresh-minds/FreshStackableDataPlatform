@@ -74,18 +74,18 @@ dbt-image: ## Build uwv/dbt-trino:1.9.0-uwv (project + dbt_packages baked in) en
 
 .PHONY: om-bridge-image
 om-bridge-image: ## Build uwv-platform/om-access-bridge:dev en importeer in k3d
-	bash platform/17-om-access-bridge/build-and-load.sh
+	bash platform/18-om-access-bridge/build-and-load.sh
 
 .PHONY: deploy-om-bridge
 deploy-om-bridge: om-bridge-image ## Deploy de OM→Keycloak access-bridge (ADR-0008)
 	@if ! kubectl -n uwv-platform get secret om-access-bridge-secret >/dev/null 2>&1; then \
 	  echo "[deploy-om-bridge] om-access-bridge-secret bestaat nog niet — bootstrappen met dev-placeholders."; \
-	  echo "                    Voor productie: zie platform/17-om-access-bridge/secret.yaml"; \
+	  echo "                    Voor productie: zie platform/18-om-access-bridge/secret.yaml"; \
 	  kubectl -n uwv-platform create secret generic om-access-bridge-secret \
 	    --from-literal=KEYCLOAK_CLIENT_SECRET='uwv-dev-only-CHANGE-ME-om-access-bridge-secret' \
 	    --from-literal=OM_WEBHOOK_SECRET='uwv-dev-only-CHANGE-ME-om-webhook-secret'; \
 	fi
-	kubectl apply -k platform/17-om-access-bridge/
+	kubectl apply -k platform/18-om-access-bridge/
 	kubectl -n uwv-platform rollout status deploy/om-access-bridge --timeout=120s
 
 .PHONY: seed

@@ -7,7 +7,7 @@ architectuur.
 
 **Update 2026-05-11** — self-service data access opgepakt via
 [ADR-0008](adr/0008-self-service-data-access.md): nieuwe service
-`platform/17-om-access-bridge/` brugt OpenMetadata Request Access-Tasks naar
+`platform/18-om-access-bridge/` brugt OpenMetadata Request Access-Tasks naar
 Keycloak realm-roles; OPA-Rego herkent `data_access:<catalog>.<schema>`
 als grant. Punt 1.2 (`gdpr_request`) blijft open — access-request-flow ≠
 inzage-/wisrecht-flow.
