@@ -116,6 +116,12 @@
   --cat-identity-soft:      oklch(0.97 0.025 25);
   --cat-identity-line:      oklch(0.88 0.05 25);
 
+  /* Coding-agents lane (Multica + dev-loop tooling). Teal-cyan to keep
+     it visibly outside the data-flow categories above. */
+  --cat-agents:             oklch(0.58 0.16 195);
+  --cat-agents-soft:        oklch(0.97 0.025 195);
+  --cat-agents-line:        oklch(0.88 0.05 195);
+
   /* Paper surface — Academy certificate. Mirrors the warm-light palette
      but with a stronger line color so a printed cert reads as paper.
      The standalone SVG download in learn/cert/index.astro bakes these

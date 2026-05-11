@@ -25,7 +25,7 @@ import Tag from './primitives/Tag.astro';
 // because it has no components in the current data set.
 const laneOrder: ReadonlyArray<string> = [
   'ingestion', 'storage', 'transformation', 'consumption',
-  'discovery', 'pipeline', 'observability', 'identity',
+  'discovery', 'pipeline', 'observability', 'identity', 'agents',
 ];
 
 interface Lane {
@@ -121,16 +121,19 @@ const lanes: Lane[] = (() => {
   .lane--cat-pipeline      { background: color-mix(in oklch, var(--cat-pipeline-soft)      45%, transparent); }
   .lane--cat-observability { background: color-mix(in oklch, var(--cat-observability-soft) 45%, transparent); }
   .lane--cat-identity      { background: color-mix(in oklch, var(--cat-identity-soft)      45%, transparent); }
+  .lane--cat-agents        { background: color-mix(in oklch, var(--cat-agents-soft)        45%, transparent); }
 
   [data-theme="dark"] .lane--cat-discovery     { background: color-mix(in oklch, var(--cat-discovery)     8%, transparent); }
   [data-theme="dark"] .lane--cat-pipeline      { background: color-mix(in oklch, var(--cat-pipeline)      8%, transparent); }
   [data-theme="dark"] .lane--cat-observability { background: color-mix(in oklch, var(--cat-observability) 8%, transparent); }
   [data-theme="dark"] .lane--cat-identity      { background: color-mix(in oklch, var(--cat-identity)      8%, transparent); }
+  [data-theme="dark"] .lane--cat-agents        { background: color-mix(in oklch, var(--cat-agents)        8%, transparent); }
 
   .lane--cat-discovery     .eyebrow { color: var(--cat-discovery); }
   .lane--cat-pipeline      .eyebrow { color: var(--cat-pipeline); }
   .lane--cat-observability .eyebrow { color: var(--cat-observability); }
   .lane--cat-identity      .eyebrow { color: var(--cat-identity); }
+  .lane--cat-agents        .eyebrow { color: var(--cat-agents); }
 
   .lane-label {
     display: flex;
