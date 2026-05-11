@@ -190,8 +190,13 @@ if docker image inspect uwv/dbt-trino:1.9.0-uwv >/dev/null 2>&1; then
     TABLE_FORMAT=delta \
     dbt parse --target dev >/tmp/dbt.log 2>&1 || cat /tmp/dbt.log >&2
     cp target/manifest.json /out/manifest.json 2>/dev/null || true
+    # NB: --exclude pattern moet `./<naam>` zijn (niet kale `<naam>`) en
+    # vóór de bron staan. .venv (~107MB) sluipt anders mee uit nieuwere
+    # dbt-images en blaast de tarball over de 3MB etcd-record-limiet.
     tar -czf /out/dbt-project.tar.gz \
-      --exclude=target --exclude=logs --exclude=dbt_packages . 2>/dev/null
+      --exclude=./target --exclude=./logs --exclude=./dbt_packages \
+      --exclude=./.venv --exclude=./.user.yml --exclude=./.dockerignore \
+      . 2>/dev/null
   ' 2>&1 | tail -3 || true
   if [[ -s "$TMP/manifest.json" ]]; then
     gzip -f -c "$TMP/manifest.json" > "$TMP/manifest.json.gz"
