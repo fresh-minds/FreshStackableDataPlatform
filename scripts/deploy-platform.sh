@@ -178,6 +178,43 @@ log "superset-init Job opnieuw triggeren (na CA-bundle update + pod-roll)"
 kubectl -n uwv-platform delete job superset-init --ignore-not-found >/dev/null 2>&1 || true
 kubectl apply -k "$ROOT/platform/12-superset" >/dev/null 2>&1 || true
 
+# OpenMetadata: seed admin JWT + re-trigger openmetadata-init Job.
+# Bootstrap probeert dit ook (fail-soft), maar OM is dan vaak nog niet up
+# → JWT-secret blijft leeg → openmetadata-init API-calls krijgen 401
+# en classifications/glossary worden niet geladen. Hier is OM Ready.
+log "OpenMetadata: decrypt ingestion-bot JWT + re-trigger init-Job"
+if kubectl -n uwv-meta rollout status deploy/openmetadata --timeout=5m >/dev/null 2>&1; then
+  FERNET=$(kubectl -n uwv-meta get secret openmetadata-fernetkey-secret -o jsonpath='{.data}' 2>/dev/null \
+    | python3 -c 'import json,sys,base64;d=json.load(sys.stdin);print(next(iter(base64.b64decode(v).decode() for v in d.values())))' 2>/dev/null || true)
+  ENCRYPTED=$(kubectl -n uwv-data exec postgres-postgresql-0 -c postgresql -- \
+    env PGPASSWORD="$(kubectl -n uwv-data get secret postgres-postgresql -o jsonpath='{.data.password}' | base64 -d)" \
+    psql -U postgres -d openmetadata -t -A -c \
+    "SELECT json->'authenticationMechanism'->'config'->>'JWTToken' FROM user_entity WHERE name='ingestion-bot' LIMIT 1;" \
+    2>/dev/null | sed 's/^fernet://' || true)
+  JWT=""
+  if [[ -n "$FERNET" && -n "$ENCRYPTED" ]]; then
+    JWT=$(python3 -c "
+from cryptography.fernet import MultiFernet, Fernet
+mf = MultiFernet([Fernet(k.encode()) for k in '${FERNET}'.split(',')])
+print(mf.decrypt(b'${ENCRYPTED}').decode())
+" 2>/dev/null || true)
+  fi
+  if [[ -n "$JWT" ]]; then
+    JWT_B64=$(printf '%s' "$JWT" | base64 | tr -d '\n')
+    kubectl -n uwv-meta patch secret openmetadata-admin --type='json' \
+      -p="[{\"op\":\"replace\",\"path\":\"/data/jwtToken\",\"value\":\"${JWT_B64}\"}]" >/dev/null 2>&1 || true
+    kubectl -n uwv-platform create secret generic openmetadata-admin \
+      --from-literal=jwtToken="$JWT" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    kubectl -n uwv-meta delete job openmetadata-init --ignore-not-found >/dev/null 2>&1 || true
+    kubectl apply -k "$ROOT/platform/13-openmetadata-config" >/dev/null 2>&1 || true
+    printf '\033[1;32mOK\033[0m OpenMetadata admin-JWT geseed + init-Job opnieuw getriggerd\n'
+  else
+    printf '\033[1;33m!!\033[0m JWT-decrypt faalde (OM nog niet klaar?) — re-run deploy-platform later\n'
+  fi
+else
+  printf '\033[1;33m!!\033[0m OpenMetadata deployment niet Ready binnen 5m — JWT-seed overgeslagen\n'
+fi
+
 log "dbt-manifest ConfigMap renderen via uwv/dbt-trino:1.9.0-uwv"
 if docker image inspect uwv/dbt-trino:1.9.0-uwv >/dev/null 2>&1; then
   TMP=$(mktemp -d)
@@ -190,8 +227,13 @@ if docker image inspect uwv/dbt-trino:1.9.0-uwv >/dev/null 2>&1; then
     TABLE_FORMAT=delta \
     dbt parse --target dev >/tmp/dbt.log 2>&1 || cat /tmp/dbt.log >&2
     cp target/manifest.json /out/manifest.json 2>/dev/null || true
+    # NB: --exclude pattern moet `./<naam>` zijn (niet kale `<naam>`) en
+    # vóór de bron staan. .venv (~107MB) sluipt anders mee uit nieuwere
+    # dbt-images en blaast de tarball over de 3MB etcd-record-limiet.
     tar -czf /out/dbt-project.tar.gz \
-      --exclude=target --exclude=logs --exclude=dbt_packages . 2>/dev/null
+      --exclude=./target --exclude=./logs --exclude=./dbt_packages \
+      --exclude=./.venv --exclude=./.user.yml --exclude=./.dockerignore \
+      . 2>/dev/null
   ' 2>&1 | tail -3 || true
   if [[ -s "$TMP/manifest.json" ]]; then
     gzip -f -c "$TMP/manifest.json" > "$TMP/manifest.json.gz"

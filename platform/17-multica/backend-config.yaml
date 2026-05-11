@@ -1,0 +1,42 @@
+# Non-sensitive backend configuration.
+# Sensitive keys (JWT_SECRET, DATABASE_URL with password) live in the
+# multica-backend Secret, created out-of-band — see kustomization.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: multica-backend-config
+  namespace: uwv-platform
+data:
+  PORT: "8080"
+
+  # Prometheus metrics. Bind to all interfaces inside the pod; the metrics
+  # Service is ClusterIP-only and is NOT routed via ingress, per upstream
+  # guidance ("do not expose this endpoint through the public app/API
+  # ingress" — SELF_HOSTING_ADVANCED.md).
+  METRICS_ADDR: "0.0.0.0:9090"
+
+  # The frontend talks to the backend via the same ingress origin. The
+  # browser hits multica.uwv-platform.local:8443 — the ingress rewrites
+  # /api, /auth, /uploads, /ws to this Service.
+  FRONTEND_ORIGIN: "https://multica.uwv-platform.local:8443"
+  CORS_ALLOWED_ORIGINS: "https://multica.uwv-platform.local:8443"
+  MULTICA_APP_URL: "https://multica.uwv-platform.local:8443"
+
+  # Account creation. With oauth2-proxy + Keycloak in front, network access
+  # to the signup endpoint is already gated. Leaving SIGNUP=true so the
+  # email-code flow works for any user who has already passed Keycloak SSO.
+  # For tighter scoping use ALLOWED_EMAIL_DOMAINS (also read by the backend).
+  ALLOW_SIGNUP: "true"
+
+  # Production-mode safety checks ON. Means MULTICA_DEV_VERIFICATION_CODE
+  # is ignored even if accidentally set — codes are random per request and
+  # printed to logs.
+  APP_ENV: "production"
+
+  # S3 / CloudFront — disabled in v1, uploads land on the multica-uploads
+  # PVC. v2 will point S3_BUCKET at MinIO (uwv-multica bucket).
+  S3_BUCKET: ""
+
+  # PostHog / Resend / Google OAuth — intentionally empty. No telemetry
+  # egress, no email egress, no third-party identity.
+  GOOGLE_CLIENT_ID: ""

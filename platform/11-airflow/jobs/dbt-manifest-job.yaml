@@ -29,6 +29,9 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -140,6 +143,57 @@ spec:
                 --from-file=manifest.json=/artifacts/manifest.json \
                 --dry-run=client -o yaml | kubectl apply -f -
               echo "ConfigMap dbt-manifest geüpdatet."
+          volumeMounts:
+            - name: artifacts
+              mountPath: /artifacts
+              readOnly: true
+        - name: minio-uploader
+          # Pusht manifest.json + (optioneel) catalog.json/run_results.json
+          # naar s3://uwv-meta/dbt/latest/. OpenMetadata's dbt-workflow
+          # (zie platform/13-openmetadata-config/services/dbt-workflow.yaml)
+          # leest deze bestanden en bouwt model→table lineage.
+          image: python:3.11-slim
+          command:
+            - bash
+            - -euo
+            - pipefail
+            - -c
+            - |
+              # Wacht tot artifacts/manifest.json bestaat (cm-writer schrijft
+              # niet, maar de dbt-parse initContainer wel). Beide containers
+              # in deze pod zien hetzelfde emptyDir 'artifacts'.
+              for i in {1..30}; do
+                [[ -s /artifacts/manifest.json ]] && break
+                sleep 2
+              done
+              [[ -s /artifacts/manifest.json ]] || { echo "manifest.json ontbreekt"; exit 1; }
+              pip install --quiet --disable-pip-version-check minio
+              python3 - <<EOF
+              import os
+              from minio import Minio
+              endpoint = os.environ["MINIO_ENDPOINT"].replace("https://","").replace("http://","")
+              secure = os.environ["MINIO_ENDPOINT"].startswith("https://")
+              m = Minio(endpoint, os.environ["MINIO_ACCESS"], os.environ["MINIO_SECRET"],
+                       secure=secure, cert_check=False)
+              for fn in ("manifest.json", "catalog.json", "run_results.json"):
+                  src = f"/artifacts/{fn}"
+                  if os.path.exists(src):
+                      m.fput_object("uwv-meta", f"dbt/latest/{fn}", src)
+                      print(f"uploaded dbt/latest/{fn}")
+              EOF
+          env:
+            - name: MINIO_ENDPOINT
+              value: "https://minio.uwv-platform.svc.cluster.local:9000"
+            - name: MINIO_ACCESS
+              valueFrom:
+                secretKeyRef:
+                  name: minio-s3-credentials
+                  key: accessKey
+            - name: MINIO_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: minio-s3-credentials
+                  key: secretKey
           volumeMounts:
             - name: artifacts
               mountPath: /artifacts

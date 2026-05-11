@@ -1,0 +1,86 @@
+# Multica frontend — Next.js 16, prebuilt image.
+#
+# Known limitation: NEXT_PUBLIC_WS_URL is a BUILD-TIME variable. The
+# prebuilt image bakes in ws://localhost:8080/ws, which does not work
+# from a browser hitting multica.uwv-platform.local:8443. HTTP works
+# fine (Next.js rewrites /api, /auth, /uploads to the backend at
+# request time), but real-time features (chat streaming, live issue
+# updates) will fail to connect.
+#
+# Fix: rebuild the web image with the correct NEXT_PUBLIC_WS_URL baked
+# in. Mirrors 16-nanitics-observatory's build-and-load.sh pattern. See
+# v2 in this directory's README.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: multica-frontend
+  namespace: uwv-platform
+spec:
+  selector:
+    app.kubernetes.io/name: multica-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multica-frontend
+  namespace: uwv-platform
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: multica-frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: multica-frontend
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        # Upstream image declares `USER nextjs` (uid 1001) — kubelet rejects
+        # `runAsNonRoot: true` without a numeric user, so we set the UID
+        # explicitly to satisfy the check.
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 65533
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: frontend
+          image: ghcr.io/multica-ai/multica-web:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: HOSTNAME
+              value: "0.0.0.0"
+          # Next.js doesn't ship a dedicated health route; the root path
+          # serves the SPA shell quickly. Cheap enough for liveness.
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits:   { cpu: 500m, memory: 768Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
