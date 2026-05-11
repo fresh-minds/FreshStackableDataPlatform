@@ -1,0 +1,15 @@
+# Non-secret runtime config voor de OM access-bridge.
+#
+# `OM_WEBHOOK_SECRET` en `KEYCLOAK_CLIENT_SECRET` zitten in de aparte
+# Secret `om-access-bridge-secret` (zie README.md voor bootstrap).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: om-access-bridge-config
+  namespace: uwv-platform
+data:
+  KEYCLOAK_URL: "http://keycloak.uwv-auth.svc.cluster.local:8080"
+  KEYCLOAK_REALM: "uwv"
+  KEYCLOAK_CLIENT_ID: "om-access-bridge"
+  REPLAY_WINDOW_SECONDS: "300"
+  LOG_LEVEL: "INFO"
