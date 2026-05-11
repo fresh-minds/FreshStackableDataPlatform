@@ -35,17 +35,26 @@ def get_spark_with_lakehouse_config(app_name: str) -> "SparkSession":
         # Hive Metastore
         .config("spark.sql.catalogImplementation", "hive")
         .config("hive.metastore.uris", HMS_URI)
-        # S3A
-        .config("spark.hadoop.fs.s3a.endpoint", S3_ENDPOINT)
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-        .config("spark.hadoop.fs.s3a.access.key", S3_ACCESS_KEY)
-        .config("spark.hadoop.fs.s3a.secret.key", S3_SECRET_KEY)
-        .config("spark.hadoop.fs.s3a.aws.credentials.provider",
-                "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
         # Performance
         .config("spark.sql.shuffle.partitions", "8")
     )
+
+    # S3A — alleen overrides als de SparkApplication GEEN s3connection-ref
+    # heeft (i.e. lokale dev runs zonder Stackable-controller). In cluster
+    # injecteert `spark.stackable.tech_sparkapplication` al endpoint, ssl,
+    # truststore en credentials uit de S3Connection. Overrides hier
+    # overschrijven die en breken TLS naar HTTPS-MinIO.
+    if os.getenv("STACKABLE_S3_AUTOCONFIG", "true").lower() != "true":
+        builder = (
+            builder
+            .config("spark.hadoop.fs.s3a.endpoint", S3_ENDPOINT)
+            .config("spark.hadoop.fs.s3a.path.style.access", "true")
+            .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+            .config("spark.hadoop.fs.s3a.access.key", S3_ACCESS_KEY)
+            .config("spark.hadoop.fs.s3a.secret.key", S3_SECRET_KEY)
+            .config("spark.hadoop.fs.s3a.aws.credentials.provider",
+                    "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
+        )
 
     if TABLE_FORMAT == "delta":
         builder = (
@@ -99,8 +108,14 @@ def write_stream_to_table(df: "DataFrame", table_name: str, checkpoint_path: str
 
 
 def ensure_bronze_schema(spark: "SparkSession") -> None:
-    """Maak bronze.uwv schema aan (idempotent)."""
-    spark.sql("CREATE DATABASE IF NOT EXISTS bronze")
-    # Hive 'database' = Trino 'schema'; structuur: catalog=bronze, schema=uwv
-    spark.sql("CREATE SCHEMA IF NOT EXISTS bronze.uwv "
+    """Maak Hive-database `uwv` aan voor bronze-Delta-tabellen (idempotent).
+
+    Trino's `bronze` catalog mapt op deze Hive-metastore, dus Trino ziet
+    `bronze.uwv.<table>`. Spark spreekt 2-level (`uwv.<table>`); de
+    eerdere `CREATE SCHEMA bronze.uwv` faalde met
+    `_LEGACY_ERROR_TEMP_1055` omdat Spark `bronze.uwv` als één
+    database-naam met dot interpreteert (geen catalog-registratie voor
+    `bronze` in spark_catalog).
+    """
+    spark.sql("CREATE SCHEMA IF NOT EXISTS uwv "
               "LOCATION 's3a://uwv-bronze/uwv/'")
