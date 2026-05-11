@@ -191,16 +191,17 @@ for c in superset airflow nifi openmetadata minio; do
   done
 done
 
-# 3b. Lange access-tokens + geen-refresh voor de openmetadata client.
-# Pac4j (OM 1.5) probeert id_token te refreshen; bij Keycloak-pod-restart
-# zijn in-memory sessies weg en faalt de refresh met 'Session not active'.
-# Met use.refresh.tokens=false probeert Pac4j niet te refreshen, en met
-# access.token.lifespan=86400 hoeft het ook niet binnen een werkdag.
+# 3b. Lange access-tokens voor de openmetadata client.
+# access.token.lifespan=86400 (24h) zodat een werkdag zonder
+# re-auth doorgaat. use.refresh.tokens=true is verplicht voor OM 1.12+
+# (Pac4j slaat het refresh-token op in z'n session; bij /api/v1/auth/login
+# raadpleegt het die en faalt loggedInUser met 401 'No refresh token
+# found against session' als refresh-tokens uit staan).
 # (Deze attributes staan ook in realm-uwv.json voor verse deploys; deze
 # patch dekt clusters waar realm-import al was uitgevoerd.)
 OM_CID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/clients?clientId=openmetadata\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
 if [ -n \"\$OM_CID\" ]; then
-  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/clients/\$OM_CID\" -d '{\"attributes\":{\"access.token.lifespan\":\"86400\",\"client.session.max.lifespan\":\"86400\",\"client.session.idle.timeout\":\"28800\",\"use.refresh.tokens\":\"false\"}}' -o /dev/null
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/clients/\$OM_CID\" -d '{\"attributes\":{\"access.token.lifespan\":\"86400\",\"client.session.max.lifespan\":\"86400\",\"client.session.idle.timeout\":\"28800\",\"use.refresh.tokens\":\"true\"}}' -o /dev/null
 fi
 
 # 4. Unmanaged-attribute-policy enablen — Keycloak 24+ heeft Declarative
