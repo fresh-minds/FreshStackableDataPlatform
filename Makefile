@@ -77,7 +77,7 @@ om-bridge-image: ## Build uwv-platform/om-access-bridge:dev en importeer in k3d
 	bash platform/18-om-access-bridge/build-and-load.sh
 
 .PHONY: deploy-om-bridge
-deploy-om-bridge: om-bridge-image ## Deploy de OM→Keycloak access-bridge (ADR-0008)
+deploy-om-bridge: om-bridge-image ## Deploy de OM→Keycloak access-bridge (ADR-0008) — incl. Keycloak-client + OM-subscription setup
 	@if ! kubectl -n uwv-platform get secret om-access-bridge-secret >/dev/null 2>&1; then \
 	  echo "[deploy-om-bridge] om-access-bridge-secret bestaat nog niet — bootstrappen met dev-placeholders."; \
 	  echo "                    Voor productie: zie platform/18-om-access-bridge/secret.yaml"; \
@@ -87,6 +87,9 @@ deploy-om-bridge: om-bridge-image ## Deploy de OM→Keycloak access-bridge (ADR-
 	fi
 	kubectl apply -k platform/18-om-access-bridge/
 	kubectl -n uwv-platform rollout status deploy/om-access-bridge --timeout=120s
+	@echo "[deploy-om-bridge] Idempotent setup van Keycloak-client + OM-subscription"
+	bash scripts/setup-om-bridge-keycloak.sh
+	bash scripts/setup-om-bridge-subscription.sh
 
 .PHONY: seed
 seed: ## Genereer en laad synthetische data (10k cliënten)

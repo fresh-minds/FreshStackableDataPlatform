@@ -211,6 +211,25 @@ def _parse_grant(event: dict[str, Any]) -> tuple[str, str, str]:
     if not requester:
         raise HTTPException(status_code=400, detail="Task mist 'createdBy'")
 
+    # Convention guard (ADR-0008 / access-request-guide.md): alleen Tasks die
+    # expliciet "request access" in titel of description noemen worden als
+    # access-request behandeld. Dit voorkomt dat een RequestDescription-Task
+    # voor een puur description-doel per ongeluk een grant triggert.
+    title_or_msg = " ".join(filter(None, [
+        task.get("description"),
+        task.get("message"),
+        task.get("taskName"),
+    ])).lower()
+    if "request access" not in title_or_msg:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Task is niet als access-request gemarkeerd. Conventie: voeg "
+                "'Request Access' toe aan de Task-description om de bridge te "
+                "triggeren — zie docs/access-request-guide.md (ADR-0008)."
+            ),
+        )
+
     about = task.get("about") or ""
     parts = about.split(".")
     if len(parts) < 3 or parts[0] not in SUPPORTED_SERVICES:
