@@ -296,6 +296,19 @@
       "realmRoles": [
         "proactief_dienstverlener"
       ]
+    },
+    {
+      "username": "service-account-om-access-bridge",
+      "enabled": true,
+      "emailVerified": false,
+      "serviceAccountClientId": "om-access-bridge",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users",
+          "view-realm"
+        ]
+      }
     }
   ],
   "clients": [
@@ -549,6 +562,28 @@
       "protocol": "openid-connect",
       "publicClient": false,
       "secret": "uwv-dev-only-CHANGE-ME-portal-backend-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": [
+        "profile",
+        "roles"
+      ],
+      "fullScopeAllowed": false,
+      "attributes": {
+        "use.refresh.tokens": "false"
+      }
+    },
+    {
+      "clientId": "om-access-bridge",
+      "name": "OpenMetadata Access Bridge (service account)",
+      "description": "Service-account voor de om-access-bridge; kent realm-roles 'data_access:<catalog>.<schema>' toe na approval in OpenMetadata. Zie ADR-0008.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-om-access-bridge-secret",
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,

@@ -98,29 +98,116 @@ data:
                 )
 
 
+    # OM 1.5+ verwacht in EntityReferences een UUID `id`; alleen `name` geeft
+    # "query param id must not be null". Cache lookups om HTTP-round-trips te
+    # beperken.
+    _USER_ID_CACHE: dict[str, str] = {}
+
+
+    def _lookup_user_id(username: str) -> str | None:
+        if username in _USER_ID_CACHE:
+            return _USER_ID_CACHE[username]
+        r = requests.get(
+            f"{OM_URL}/api/v1/users/name/{username}",
+            headers=HEADERS,
+            timeout=10,
+        )
+        if r.status_code == 200:
+            uid = r.json().get("id")
+            if uid:
+                _USER_ID_CACHE[username] = uid
+                return uid
+        log(f"  ? user {username} niet vindbaar voor reference (status={r.status_code})")
+        return None
+
+
+    def _user_refs(usernames):
+        refs = []
+        for u in usernames or []:
+            uid = _lookup_user_id(u)
+            if uid:
+                refs.append({"type": "user", "id": uid, "name": u})
+        return refs
+
+
+    def _collect_glossary_users(data: dict) -> set[str]:
+        users: set[str] = set()
+        g = data.get("glossary", {})
+        users.update(g.get("reviewers", []) or [])
+        if g.get("owner", {}).get("name"):
+            users.add(g["owner"]["name"])
+        for term in data.get("terms", []):
+            users.update(term.get("reviewers", []) or [])
+            if term.get("dataOwner"):
+                users.add(term["dataOwner"])
+        return users
+
+
+    def apply_users(usernames) -> None:
+        # Reviewer/Owner-refs in OM falen op 404 als de user niet bestaat. We
+        # seeden minimale user-records (display-only); echte authenticatie blijft
+        # via Keycloak SSO. Idempotent op 409/422.
+        log("Users seeden voor reviewers/owners")
+        for u in sorted(usernames):
+            email_local = u.replace(".", "")
+            post_or_skip(
+                "/api/v1/users",
+                {
+                    "name": u,
+                    "displayName": u.replace(".", " ").title(),
+                    "email": f"{email_local}@uwv-platform.local",
+                    "isBot": False,
+                    "isAdmin": False,
+                },
+                f"user {u}",
+            )
+
+
     def apply_glossary() -> None:
         log("Glossary CGM toepassen")
         with open(GLOSSARY_PATH) as f:
             data = yaml.safe_load(f)
+        apply_users(_collect_glossary_users(data))
         g = data["glossary"]
-        post_or_skip(
-            "/api/v1/glossaries",
-            {
-                "name": g["name"],
-                "displayName": g.get("displayName", g["name"]),
-                "description": g["description"],
-            },
-            f"glossary {g['name']}",
-        )
+
+        # OM 1.5+ gebruikt `owners` (lijst van EntityReference) ipv `owner`.
+        glossary_reviewers = _user_refs(g.get("reviewers"))
+        glossary_owners = []
+        if g.get("owner"):
+            glossary_owners = _user_refs([g["owner"]["name"]])
+
+        glossary_body = {
+            "name": g["name"],
+            "displayName": g.get("displayName", g["name"]),
+            "description": g["description"],
+        }
+        if glossary_reviewers:
+            glossary_body["reviewers"] = glossary_reviewers
+        if glossary_owners:
+            glossary_body["owners"] = glossary_owners
+
+        post_or_skip("/api/v1/glossaries", glossary_body, f"glossary {g['name']}")
+
+        # Per-term: reviewers vallen terug op glossary-default als de term er
+        # geen heeft. owners = dataOwner uit term (mag afwijken van glossary-default).
         for term in data.get("terms", []):
+            term_body = {
+                "glossary": g["name"],
+                "name": term["name"],
+                "displayName": term.get("displayName", term["name"]),
+                "description": term["description"],
+            }
+            term_reviewers = _user_refs(term.get("reviewers")) or glossary_reviewers
+            if term_reviewers:
+                term_body["reviewers"] = term_reviewers
+            if term.get("dataOwner"):
+                term_body["owners"] = _user_refs([term["dataOwner"]])
+            elif glossary_owners:
+                term_body["owners"] = glossary_owners
+
             post_or_skip(
                 "/api/v1/glossaryTerms",
-                {
-                    "glossary": g["name"],
-                    "name": term["name"],
-                    "displayName": term.get("displayName", term["name"]),
-                    "description": term["description"],
-                },
+                term_body,
                 f"glossary-term CGM.{term['name']}",
             )
 

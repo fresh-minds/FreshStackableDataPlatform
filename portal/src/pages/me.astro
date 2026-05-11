@@ -94,6 +94,21 @@ const payload = {
     </details>
   </section>
 
+  <section class="me-section" id="role-access-request" hidden>
+    <header class="me-section-head">
+      <Eyebrow>Toegang</Eyebrow>
+      <h2>Andere data nodig?</h2>
+      <p>
+        Vraag toegang aan in de catalogus. De data-owner van de dataset
+        krijgt een Task in OpenMetadata; na goedkeuring krijg je
+        automatisch de juiste rol toegekend.
+      </p>
+    </header>
+    <div class="help-cta">
+      <Button href="/go/openmetadata">Vraag toegang aan in de catalogus</Button>
+    </div>
+  </section>
+
   <section class="me-section" id="role-help" hidden>
     <header class="me-section-head">
       <Eyebrow>Hulp</Eyebrow>
@@ -169,7 +184,7 @@ const payload = {
       const grid = document.getElementById('picker-grid')!;
       grid.innerHTML = pickerHtml();
       document.getElementById('role-picker')!.hidden = false;
-      ['role-view','role-caps','role-shortcuts-section','role-arch','role-tools','role-help'].forEach((id) => {
+      ['role-view','role-caps','role-shortcuts-section','role-arch','role-tools','role-access-request','role-help'].forEach((id) => {
         document.getElementById(id)!.hidden = true;
       });
     }
@@ -233,7 +248,7 @@ const payload = {
         return;
       }
 
-      ['role-view','role-caps','role-shortcuts-section','role-arch','role-tools','role-help'].forEach((id) => {
+      ['role-view','role-caps','role-shortcuts-section','role-arch','role-tools','role-access-request','role-help'].forEach((id) => {
         document.getElementById(id)!.hidden = false;
       });
       document.getElementById('role-picker')!.hidden = true;

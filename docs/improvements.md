@@ -5,6 +5,13 @@ maar inventariseert verbeterruimte op alle vlakken: security, betrouwbaarheid,
 performance, observability, compliance, data-kwaliteit, dev-ex en
 architectuur.
 
+**Update 2026-05-11** — self-service data access opgepakt via
+[ADR-0008](adr/0008-self-service-data-access.md): nieuwe service
+`platform/18-om-access-bridge/` brugt OpenMetadata Request Access-Tasks naar
+Keycloak realm-roles; OPA-Rego herkent `data_access:<catalog>.<schema>`
+als grant. Punt 1.2 (`gdpr_request`) blijft open — access-request-flow ≠
+inzage-/wisrecht-flow.
+
 **Notatie**:
 
 - **Prio**: 🔴 productie-blocker · 🟠 hoog-waarde · 🟡 polish
@@ -20,7 +27,7 @@ voor opvolg-werk.
 | # | Item | Locatie | Prio | Effort |
 |---|---|---|---|---|
 | 1.1 | **5 mart-directories leeg**: UC-02, UC-03, UC-08, UC-09, UC-10 | `dbt/models/marts/uc{02,03,08,09,10}*/` | 🟠 | M |
-| 1.2 | **`gdpr_request` DAG ontbreekt** ondanks referentie in [compliance-mapping R-AVG-10](compliance-mapping.md) | `platform/11-airflow/dags/` | 🔴 | M |
+| 1.2 | **`gdpr_request` DAG ontbreekt** ondanks referentie in [compliance-mapping R-AVG-10](compliance-mapping.md) — inzage- en wisrecht-flow. (Self-service *access-request* is sinds ADR-0008 wél aanwezig — andere R-AVG-10-aspect.) | `platform/11-airflow/dags/` | 🔴 | M |
 | 1.3 | **Geen NetworkPolicies** — pods kunnen vrij cross-namespace praten | `platform/00-namespaces/` | 🔴 | M |
 | 1.4 | **Geen PodDisruptionBudgets / HPA** | `platform/*/` | 🟠 | S |
 | 1.5 | **Geen ResourceQuota / LimitRange** per namespace | `platform/00-namespaces/` | 🟠 | S |
