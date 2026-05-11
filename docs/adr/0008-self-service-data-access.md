@@ -32,10 +32,17 @@ en een effectieve grant in OPA-Rego.
 
 ## Beslissing
 
-**Self-service data access loopt via OpenMetadata's Request Access-flow.
-Een nieuwe service `om-access-bridge` vertaalt goedgekeurde Tasks naar
-realm-roles in Keycloak; OPA-Rego herkent een `data_access:<catalog>.<schema>`
-rol als geldige grant en accepteert de bijbehorende purposes.**
+**Self-service data access loopt via OpenMetadata-Tasks (conventie:
+description bevat `Request Access`). Een nieuwe service `om-access-bridge`
+vertaalt goedgekeurde Tasks naar realm-roles in Keycloak; OPA-Rego
+herkent een `data_access:<catalog>.<schema>` rol als geldige grant en
+accepteert de bijbehorende purposes.**
+
+> **Conventie** — OM 1.5 heeft géén ingebouwd "Request Access"-task-type.
+> We hergebruiken `RequestDescription` met een **convention guard** in de
+> bridge: alleen Tasks waarvan de description of message de string
+> `request access` (case-insensitive) bevat worden als grant verwerkt.
+> Volledige UI-stappen + voorbeelden: [docs/access-request-guide.md](../access-request-guide.md).
 
 Componenten:
 

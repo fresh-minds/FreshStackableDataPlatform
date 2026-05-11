@@ -99,9 +99,19 @@ const payload = {
       <Eyebrow>Toegang</Eyebrow>
       <h2>Andere data nodig?</h2>
       <p>
-        Vraag toegang aan in de catalogus. De data-owner van de dataset
-        krijgt een Task in OpenMetadata; na goedkeuring krijg je
-        automatisch de juiste rol toegekend.
+        Vraag toegang aan via de catalogus. Korte versie:
+      </p>
+      <ol class="access-steps">
+        <li>Klik hieronder — opent OpenMetadata.</li>
+        <li>Zoek de dataset (Explore → filter Tables).</li>
+        <li>Tab <em>Activity Feed</em> → <em>Add Task</em> → type <em>Request Description</em>.</li>
+        <li>Description <strong>moet beginnen met</strong> <code>Request Access</code> — anders triggert de bridge niet.</li>
+        <li>Assignee = de Owner / Reviewer rechts op de asset-pagina.</li>
+      </ol>
+      <p>
+        Na approval krijg je automatisch een rol
+        <code>data_access:&lt;catalog&gt;.&lt;schema&gt;</code> toegekend.
+        Volledige gids: <a href="/docs/access-request-guide.html">Toegang aanvragen</a>.
       </p>
     </header>
     <div class="help-cta">
