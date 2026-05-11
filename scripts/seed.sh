@@ -22,6 +22,26 @@ fi
 
 command -v kubectl >/dev/null || fail "kubectl niet gevonden"
 
+# Wacht tot Kafka echt bereikbaar is. `make deploy-platform` returnt zodra
+# kustomize klaar is, maar de KafkaCluster pod heeft daarna nog tijd nodig:
+# Stackable operator moet de StatefulSet maken, pod moet ~370MB image pullen,
+# Kafka moet ZooKeeper-quorum vinden. Als seed daarvoor draait, krijgt-ie
+# `NoBrokersAvailable` en faalt de Job na backoffLimit=1.
+log "Wacht tot Kafka broker Ready is (max 10 min)"
+if ! kubectl -n "$NS" rollout status statefulset/uwv-kafka-broker-default \
+       --timeout=10m >/dev/null 2>&1; then
+  warn "Kafka broker StatefulSet niet Ready binnen 10 min — seed gaat waarschijnlijk falen."
+fi
+# Extra: bootstrap-service moet endpoints hebben voor de Kafka API.
+log "Wacht tot uwv-kafka-broker-default-bootstrap endpoints heeft"
+for i in {1..60}; do
+  eps=$(kubectl -n "$NS" get endpoints uwv-kafka-broker-default-bootstrap \
+          -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
+  [[ -n "$eps" ]] && break
+  sleep 5
+done
+[[ -z "${eps:-}" ]] && warn "Bootstrap-service nog steeds zonder endpoints — seed kan falen."
+
 log "ConfigMap data-generation-generators (uit data-generation/generators/)"
 kubectl -n "$NS" create configmap data-generation-generators \
   --from-file="$ROOT/data-generation/generators/" \

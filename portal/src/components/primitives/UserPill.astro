@@ -1,0 +1,91 @@
+---
+// Identity pill in the topbar. Empty by default ("Niet ingelogd"); the
+// renderWho() script in Layout.astro fills in role / user / logout
+// once /oauth2/userinfo returns a Keycloak token.
+// 22px circular avatar with a subtle accent gradient, mono role tag,
+// regular sans user name, ghost logout link.
+// Markup is mirrored in Layout.astro's renderWho() — keep them in sync.
+---
+<div class="user-pill user-pill--empty" data-who>
+  <span class="user-pill-empty-label">Niet ingelogd</span>
+</div>
+
+<style is:global>
+  .user-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 4px 10px 4px 4px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    background: var(--bg-elev);
+    color: var(--ink-2);
+    font-size: var(--text-meta);
+    line-height: 1.2;
+    min-height: 32px;
+  }
+
+  .user-pill--empty {
+    padding: 6px 12px;
+  }
+  .user-pill-empty-label {
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+  }
+
+  .user-pill-avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-pill);
+    background: linear-gradient(135deg, var(--accent), var(--accent-soft));
+    color: var(--accent-ink);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: var(--weight-semibold);
+    flex-shrink: 0;
+    text-transform: uppercase;
+  }
+
+  .user-pill-body {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .user-pill-role {
+    font-family: var(--font-mono);
+    font-size: var(--text-eyebrow);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: var(--ink-2);
+    font-feature-settings: 'tnum';
+  }
+
+  .user-pill-user {
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 16ch;
+  }
+
+  .user-pill-logout {
+    color: var(--ink-3);
+    font-size: var(--text-eyebrow);
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    margin-left: var(--space-2);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+  }
+  .user-pill-logout:hover {
+    color: var(--ink-1);
+    background: var(--bg-sunken);
+    text-decoration: none;
+  }
+</style>
