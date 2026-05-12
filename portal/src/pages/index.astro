@@ -1,13 +1,12 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import ReferenceArchitecture from '../components/ReferenceArchitecture.astro';
 import Button from '../components/primitives/Button.astro';
 import Eyebrow from '../components/primitives/Eyebrow.astro';
 import StatusDot from '../components/primitives/StatusDot.astro';
 import Tag from '../components/primitives/Tag.astro';
 import { roles } from '../data/roles';
-import { components, stages } from '../data/components';
-import { DOCS_URL, docsArchitectureUrl } from '../data/external-links';
+import { components } from '../data/components';
+import { DOCS_URL } from '../data/external-links';
 
 // Components surfaced in the hero status card. These are the ones a
 // platform user is most likely to spot a regression on.
@@ -26,11 +25,11 @@ const statusHighlights = statusHighlightIds
         <em>elf rollen, één bron van waarheid.</em>
       </h1>
       <p class="hero-body">
-        Een klikbare landkaart van het UWV-referentieplatform. Je ziet hoe
-        data binnenkomt, wordt opgeslagen, gemodelleerd en gebruikt — en
-        je springt direct door naar de tool die bij <strong>jouw rol</strong>
-        hoort. Toegang en data-zichtbaarheid komen uit OPA-policies en
-        Keycloak-rollen.
+        Het launchpad voor het UWV-referentieplatform. Log in en spring
+        direct door naar de tool die bij <strong>jouw rol</strong>
+        hoort — Trino, Superset, OpenMetadata, dbt docs. Toegang en
+        data-zichtbaarheid komen uit OPA-policies en Keycloak-rollen;
+        de architectuur en achtergrond staan in de documentatie.
       </p>
 
       <div class="hero-cta">
@@ -61,48 +60,14 @@ const statusHighlights = statusHighlightIds
       </ul>
       <footer class="hero-status-foot mono">
         <span><span class="hero-status-count" data-status-count>{statusHighlights.length}</span> services</span>
-        <a href="#dataflow" class="hero-status-link">all →</a>
       </footer>
     </aside>
-  </section>
-
-  <!-- ═══════════ Architecture diagram ═══════════ -->
-  <section id="dataflow" class="section">
-    <header class="section-head">
-      <Eyebrow>01 · Dataflow</Eyebrow>
-      <h2>Hoe het platform in elkaar zit</h2>
-      <p class="section-lead">
-        Data komt binnen, wordt opgeslagen, getransformeerd en geserveerd.
-        Daaroverheen liggen vier <em>cross-cutting</em> lagen — discovery,
-        orkestratie, observability en identity — die overal raken. Klik op
-        een component om de UI te openen.
-      </p>
-    </header>
-    <ReferenceArchitecture />
-  </section>
-
-  <!-- ═══════════ Layers in one line ═══════════ -->
-  <section class="section">
-    <header class="section-head">
-      <Eyebrow>02 · Lagen</Eyebrow>
-      <h2>De {stages.length - 1} lagen op een rij</h2>
-    </header>
-    <div class="stage-grid">
-      {stages.filter((s) => s.id !== 'sources').map((s) => (
-        <a class={`stage-card ${s.category ? `stage-card--cat-${s.category}` : ''}`}
-           href={docsArchitectureUrl(s.id)} target="_blank" rel="noopener noreferrer">
-          <Eyebrow>{s.id}</Eyebrow>
-          <strong class="stage-card-title">{s.title}</strong>
-          <span class="stage-card-blurb">{s.blurb}</span>
-        </a>
-      ))}
-    </div>
   </section>
 
   <!-- ═══════════ Two ways to navigate ═══════════ -->
   <section class="section">
     <header class="section-head">
-      <Eyebrow>03 · Navigatie</Eyebrow>
+      <Eyebrow>01 · Navigatie</Eyebrow>
       <h2>Twee manieren om hier door te bewegen</h2>
     </header>
     <div class="duo">
@@ -137,7 +102,7 @@ const statusHighlights = statusHighlightIds
   <!-- ═══════════ Roles grid ═══════════ -->
   <section class="section">
     <header class="section-head">
-      <Eyebrow>04 · Rollen</Eyebrow>
+      <Eyebrow>02 · Rollen</Eyebrow>
       <h2>Rollen op dit platform</h2>
       <p class="section-lead">
         Klik op een rol om een demo van „Mijn werkplek" te openen — de
@@ -260,8 +225,6 @@ const statusHighlights = statusHighlightIds
     font-size: var(--text-eyebrow);
   }
   .hero-status-count { color: var(--ink-1); font-weight: var(--weight-semibold); }
-  .hero-status-link { color: var(--ink-2); }
-  .hero-status-link:hover { color: var(--ink-1); text-decoration: none; }
 
   /* ─── Sections ─── */
   .section {
@@ -291,40 +254,6 @@ const statusHighlights = statusHighlightIds
     color: var(--ink-3);
     font-weight: var(--weight-regular);
   }
-
-  /* ─── Stage grid ─── */
-  .stage-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: var(--space-3);
-  }
-  .stage-card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-4);
-    background: var(--bg-elev);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    color: var(--ink-1);
-    transition: border-color .15s, transform .15s, box-shadow .15s;
-  }
-  .stage-card:hover {
-    border-color: var(--ink-4);
-    transform: translateY(-1px);
-    box-shadow: var(--card-shadow-hover);
-    text-decoration: none;
-  }
-  .stage-card-title { font-size: var(--text-meta); font-weight: var(--weight-medium); }
-  .stage-card-blurb {
-    color: var(--ink-3);
-    font-size: var(--text-meta);
-    line-height: var(--leading-tight);
-  }
-  .stage-card--cat-discovery     .eyebrow { color: var(--cat-discovery); }
-  .stage-card--cat-pipeline      .eyebrow { color: var(--cat-pipeline); }
-  .stage-card--cat-observability .eyebrow { color: var(--cat-observability); }
-  .stage-card--cat-identity      .eyebrow { color: var(--cat-identity); }
 
   /* ─── Two-card duo ─── */
   .duo {
