@@ -25,12 +25,16 @@ source:
   sourceConfig:
     config:
       type: DatabaseMetadata
+      # `sensitive` bewust uitgesloten: smoketest (ingestion-user) heeft
+      # geen toegang tot sensitive (art. 9 AVG-zone) — een SELECT op
+      # `sensitive.information_schema.schemata` levert OPA-deny en faalt
+      # de hele workflow. Sensitive-metadata-ingest vereist een aparte
+      # workflow met een break-glass / sensitive-bot user (zie roadmap).
       databaseFilterPattern:
         includes:
           - bronze
           - silver
           - gold
-          - sensitive
       schemaFilterPattern:
         includes:
           - uwv                       # bronze
