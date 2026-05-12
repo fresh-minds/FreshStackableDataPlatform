@@ -142,6 +142,6 @@ fi
 section "E2E full-flow-uc01: ALLE STAGES GROEN"
 echo
 pass "Compleet. UC-01 dashboard kan nu interactief gebouwd worden in Superset"
-echo "  http://superset.uwv-platform.local:8080"
+echo "  https://superset.uwv-platform.local:8443"
 echo "  Login: uwvplatform / uwv-dev-only-CHANGE-ME-2026"
 echo "  Dataset: gold.uc01_wia_funnel.mart_uc01_wia_funnel_daily (na dbt-run)"

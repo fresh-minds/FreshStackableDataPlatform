@@ -122,9 +122,9 @@ TODO (fase 9): troubleshooting "policy lijkt niet actief".
 
 ## 9. Observability dashboards
 
-- Grafana: `http://grafana.uwv-platform.local:8080`
-- OpenSearch Dashboards: `http://logs.uwv-platform.local:8080`
-- OpenMetadata: `http://openmetadata.uwv-platform.local:8080`
+- Grafana: `https://grafana.uwv-platform.local:8443`
+- OpenSearch Dashboards: `https://opensearch.uwv-platform.local:8443`
+- OpenMetadata: `https://openmetadata.uwv-platform.local:8443`
 
 TODO (fase 1/8): default-credentials uit secrets ophalen, voorbeeld-queries.
 
