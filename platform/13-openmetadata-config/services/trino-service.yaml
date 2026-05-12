@@ -17,20 +17,23 @@ source:
       # authenticator. Auth komt via X-Trino-User header (impersonation),
       # autorisatie via OPA. Daarom GEEN authType.password hier; de DBAPI
       # gebruikt dan alleen de username-header.
-      catalog: bronze
-      # `http_scheme: https` gaat als kwarg naar de trino-python-client
-      # (via SQLAlchemy `connect_args`); onze Trino-coordinator luistert
-      # alleen op port 8443/HTTPS. `verify: "False"` schakelt cert-
-      # validation uit voor de zelf-signed Stackable-cert.
+      # `catalog:` bewust niet gezet — we willen alle medallion-zones zien;
+      # de databaseFilterPattern hieronder beperkt het.
       verify: "False"
       connectionArguments:
         http_scheme: https
   sourceConfig:
     config:
       type: DatabaseMetadata
+      databaseFilterPattern:
+        includes:
+          - bronze
+          - silver
+          - gold
+          - sensitive
       schemaFilterPattern:
         includes:
-          - uwv
+          - uwv                       # bronze
           - persoon
           - polisadm
           - ww
@@ -39,12 +42,17 @@ source:
           - zw
           - crm
           - fez
-          - intermediate
-          - uc01_wia_funnel
+          - klantcontact
+          - intermediate              # silver
+          - uc01_wia_funnel           # gold
           - uc04_tw_eligibility
           - uc05_client_360
           - uc06_lastprognose
           - uc07_dq_polisadm
+          - uc09_reint_effect
+          - uc11_klantreis
+          - uc_klant_tev
+          - dq_overview
           - seed
       includeTables: true
       includeViews: true

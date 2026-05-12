@@ -1,6 +1,6 @@
 {{ config(
     materialized='table',
-    properties=table_format_properties(partition_columns=['event_date'])
+    properties=table_format_properties()
 ) }}
 
 -- UC-11 — Integrale Klantreis (event-stream).

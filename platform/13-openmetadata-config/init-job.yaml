@@ -191,19 +191,18 @@ data:
         # Per-term: reviewers vallen terug op glossary-default als de term er
         # geen heeft. owners = dataOwner uit term (mag afwijken van glossary-default).
         for term in data.get("terms", []):
+            # OM 1.5+: een term met reviewers/owners triggert automatisch een
+            # approval-Task. Bots mogen geen Tasks aanmaken
+            # ("Task cannot be created by bot only by user or teams").
+            # Bootstrap seedt daarom minimal term-records (name + description);
+            # reviewers/dataOwner zijn documentatie-metadata, kan later via UI
+            # gezet worden door een echte user.
             term_body = {
                 "glossary": g["name"],
                 "name": term["name"],
                 "displayName": term.get("displayName", term["name"]),
                 "description": term["description"],
             }
-            term_reviewers = _user_refs(term.get("reviewers")) or glossary_reviewers
-            if term_reviewers:
-                term_body["reviewers"] = term_reviewers
-            if term.get("dataOwner"):
-                term_body["owners"] = _user_refs([term["dataOwner"]])
-            elif glossary_owners:
-                term_body["owners"] = glossary_owners
 
             post_or_skip(
                 "/api/v1/glossaryTerms",
