@@ -12,3 +12,25 @@ models:
         tests: [not_null]
       - name: inkomen_maand_eur
         tests: [not_null]
+
+  - name: int_klantreis_events
+    description: |
+      UC-11 — Geünificeerde event-stream over alle cliënt-domeinen. Eén rij
+      per gebeurtenis met velden (bsn, event_ts, domein, event_type,
+      event_label, event_status, regio_code, numeric_value, source_ref_id).
+      View; UNION ALL over zeven staging-views — geen nieuwe brondata.
+    config:
+      tags: ["intermediate", "uc11"]
+    columns:
+      - name: bsn
+        tests:
+          - not_null
+          - bsn_valid
+      - name: event_ts
+        tests: [not_null]
+      - name: domein
+        tests:
+          - accepted_values:
+              values: [persoon, polisadm, ww, zw, wia, wajong, crm]
+      - name: event_type
+        tests: [not_null]

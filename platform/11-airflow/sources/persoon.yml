@@ -51,7 +51,7 @@ sla:
 
 # Cross-references — welke UCs hebben deze bron nodig?
 # Wordt door gold_factory gelezen om schedule-deps te bouwen.
-used_by_use_cases: [uc04, uc05, uc09]
+used_by_use_cases: [uc04, uc05, uc09, uc11]
 
 # Anchor — alle andere domeinen leunen op deze BSN-set.
 # bronze-watch DAG gebruikt dit om persoon eerst te bevestigen.

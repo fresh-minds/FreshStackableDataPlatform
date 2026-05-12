@@ -51,15 +51,38 @@ portal-image: ## Build uwv-platform/portal:dev (Astro static site + nginx) en im
 	k3d image import uwv-platform/portal:dev -c $(CLUSTER_NAME)
 	@echo "[portal-image] image gebouwd + geïmporteerd."
 
+.PHONY: portal-publish-dbt-docs
+portal-publish-dbt-docs: dbt-docs-offline portal-image ## Genereer dbt-docs → bake in portal-image → rollout (k3d)
+	kubectl -n uwv-platform rollout restart deploy/portal
+	kubectl -n uwv-platform rollout status  deploy/portal --timeout=120s
+	@echo "[portal-publish-dbt-docs] klaar — open https://platform.uwv-platform.local:8443/dbt-docs.html"
+
+.PHONY: pdf-uc11
+pdf-uc11: ## Exporteer UC-11 docs (UC-spec + walkthrough) naar PDF (Chrome headless)
+	python3 scripts/md-to-pdf.py docs/use-cases/uc11-klantreis.md
+	python3 scripts/md-to-pdf.py docs/use-cases/uc11-klantreis-walkthrough.md
+	@echo "[pdf-uc11] PDFs naast de .md-bronnen in docs/use-cases/"
+
+.PHONY: deck-uc11
+deck-uc11: ## Bouw UC-11 PowerPoint-deck (12 slides, donker UWV-amber thema)
+	@command -v node >/dev/null 2>&1 || { echo "node niet gevonden — installeer Node.js"; exit 1; }
+	@if [ ! -d /tmp/uc11-deck/node_modules/pptxgenjs ]; then \
+	  echo "[deck-uc11] eerste run — pptxgenjs installeren in /tmp/uc11-deck/"; \
+	  mkdir -p /tmp/uc11-deck && cd /tmp/uc11-deck && npm install pptxgenjs >/dev/null; \
+	fi
+	NODE_PATH=/tmp/uc11-deck/node_modules node scripts/build-uc11-deck.js
+	@echo "[deck-uc11] docs/use-cases/uc11-klantreis-deck.pptx bijgewerkt"
+
 .PHONY: render-catalogs
 render-catalogs: ## Render Trino-catalog templates op basis van platform-config.yaml
 	python3 scripts/render-trino-catalogs.py
 
 .PHONY: opa-test
-opa-test: ## Run opa fmt + opa test op opa-policies-src/
+opa-test: ## Run opa fmt + opa test op opa-policies-src/ (data wrapped onder Stackable bundle-pad)
 	@command -v opa >/dev/null 2>&1 || { echo "opa niet geïnstalleerd — zie scripts/doctor.sh"; exit 1; }
 	opa fmt --diff opa-policies-src/trino/
-	opa test opa-policies-src/trino/ opa-policies-src/data/uwv_role_mappings.json -v
+	@python3 scripts/opa-test-data-wrap.py --dst /tmp/uwv-opa-test-data.json
+	opa test opa-policies-src/trino/ /tmp/uwv-opa-test-data.json -v
 
 .PHONY: opa-bundle
 opa-bundle: opa-test ## Build OPA-bundle: sync rego + data naar platform/10-opa/policies/
@@ -106,6 +129,19 @@ smoke: ## Run smoke tests onder tests/smoke/
 e2e: ## Run e2e test (UC-01 full flow)
 	bash tests/e2e/full-flow-uc01.sh
 
+.PHONY: e2e-uc11
+e2e-uc11: ## Run e2e test (UC-11 Integrale Klantreis) — vereist bestaand cluster
+	bash tests/e2e/uc11-flow.sh
+
+.PHONY: dbt-build-uc11
+dbt-build-uc11: ## Build alle UC-11 modellen (tag:uc11) — vereist Trino-bereik
+	cd dbt && $(DBT) deps && $(DBT) run -s tag:uc11
+	cd dbt && $(DBT) test -s tag:uc11
+
+.PHONY: test-uc11
+test-uc11: ## UC-11 smoke (rego-tests + optionele OPA-decision-calls)
+	bash tests/smoke/11-uc11-klantreis.sh
+
 .PHONY: clean
 clean: ## Verwijder de k3d-cluster
 	bash scripts/clean.sh
@@ -146,13 +182,22 @@ DBT ?= $(shell test -x $$HOME/.dbt-core-venv/bin/dbt && echo $$HOME/.dbt-core-ve
 TRINO_TLS_CERT_PATH ?= $$HOME/.uwv-platform-ca.crt
 
 .PHONY: dbt-docs
-dbt-docs: ## dbt docs generate --static, en sync naar portal/public/dbt-docs.html
+dbt-docs: ## dbt docs generate --static, en sync naar portal/public/dbt-docs.html (vereist live Trino)
 	cd dbt && $(DBT) deps && \
 	  REQUESTS_CA_BUNDLE=$(TRINO_TLS_CERT_PATH) SSL_CERT_FILE=$(TRINO_TLS_CERT_PATH) \
 	  $(DBT) docs generate --static
 	@mkdir -p portal/public
 	@cp dbt/target/static_index.html portal/public/dbt-docs.html
 	@echo "[dbt-docs] portal/public/dbt-docs.html bijgewerkt — open in dev via http://localhost:4321/dbt-docs.html"
+
+.PHONY: dbt-docs-offline
+dbt-docs-offline: ## dbt docs (lineage-only, geen warehouse-introspection) — werkt zonder cluster
+	cd dbt && $(DBT) deps && $(DBT) docs generate --static --no-compile --empty-catalog
+	@mkdir -p portal/public
+	@cp dbt/target/static_index.html portal/public/dbt-docs.html
+	@echo "[dbt-docs-offline] portal/public/dbt-docs.html bijgewerkt (zonder kolom-types — lineage werkt wel)."
+	@echo "  Open direct in browser:  file://$(PWD)/portal/public/dbt-docs.html"
+	@echo "  Of via portal dev-server: http://localhost:4321/dbt-docs.html"
 
 ##@ Maintenance
 

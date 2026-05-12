@@ -116,3 +116,30 @@ terms:
   - name: Doelgroepregister
     displayName: "Doelgroepregister Banenafspraak"
     description: "Indicaties art. 38d Wfsv."
+
+  # Cross-domein klantreis (UC-11)
+  - name: Klantreis
+    displayName: "Integrale Klantreis"
+    description: |
+      Cross-domein aggregaat: chronologische reeks van fase-overgangen van een
+      cliënt door UWV-wetten heen (werknemer → ziek → WIA → re-integratie → ...).
+      Afgeleid uit events in IKV, WW, ZW, WIA, Wajong en Contact. Eigenaar is
+      divisie_klantcontact; OPA filtert per rol op kolom + rij.
+    relatedTerms: [Client, IKV, Aanvraag, Beoordeling, Uitkering, Contact, Traject, Werkhervatting]
+    dataOwner: crm.medewerker
+    reviewers:
+      - crm.medewerker
+      - data.steward
+  - name: Fase
+    displayName: "Klantreis-fase"
+    description: |
+      Periode in de klantreis waarin de cliënt in een bepaalde status
+      verkeert (werknemer, ziek, ww_aanvraag, ww_uitkering, wia_in_behandeling,
+      wga, iva, wajong_actief, tussen_dienstverband).
+    relatedTerms: [Klantreis]
+  - name: EventStream
+    displayName: "Event-stream"
+    description: |
+      Tijdgeordende reeks van cliënt-gebeurtenissen, geünificeerd over
+      domeinen. Basis voor klantreis-tijdlijn-visualisaties.
+    relatedTerms: [Klantreis, Contact]

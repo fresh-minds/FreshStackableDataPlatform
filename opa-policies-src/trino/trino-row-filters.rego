@@ -35,3 +35,25 @@ rowFilters := [{"expression": "opt_out = false"}] if {
 rowFilters := [{"expression": "bsn_pseudo IS NOT NULL"}] if {
 	resource_catalog == "sandbox"
 }
+
+# UC-11 — wia_beoordelaar ziet klantreis-events alleen voor eigen regio.
+# `regio_code` is alleen gevuld voor WIA-events; non-WIA events (regio_code IS NULL)
+# blijven zichtbaar zodat de tijdlijn niet onnodig leeg is.
+rowFilters := [{"expression": expr}] if {
+	some r in user_roles
+	r == "wia_beoordelaar"
+	resource_schema == "uc11_klantreis"
+	regio := lower(input.context.identity.extraCredentials.regio)
+	regio != ""
+	regex.match("^[a-z]{3}$", regio)
+	expr := sprintf("regio_code = '%s' OR regio_code IS NULL", [upper(regio)])
+}
+
+# UC-11 — ww_handhaver mag geen medische WIA-status-events zien (IVA = duurzaam).
+# Filter sluit medische uitkomst-events uit; aanvraag-meta blijft zichtbaar.
+rowFilters := [{"expression": expr}] if {
+	some r in user_roles
+	r == "ww_handhaver"
+	resource_schema == "uc11_klantreis"
+	expr := "NOT (domein = 'wia' AND event_status IN ('TOEGEKEND_WGA', 'TOEGEKEND_IVA'))"
+}

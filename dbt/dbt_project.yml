@@ -78,6 +78,8 @@ models:
         +schema: uc07_dq_polisadm
       uc09_reint_effect:
         +schema: uc09_reint_effect
+      uc11_klantreis:
+        +schema: uc11_klantreis
       uc_klant_tev:
         +schema: uc_klant_tev
       dq_overview:

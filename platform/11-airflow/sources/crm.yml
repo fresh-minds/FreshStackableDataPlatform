@@ -36,5 +36,5 @@ sla:
   max_acceptable_lag_seconds: 60
   alert_threshold_seconds: 300
 
-used_by_use_cases: [uc05]
+used_by_use_cases: [uc05, uc11]
 anchor: false

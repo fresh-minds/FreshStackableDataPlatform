@@ -118,3 +118,42 @@ test_iban_visible_for_ww_handhaver if {
 		},
 	}
 }
+
+# UC-11 — event_label gesanitized voor crm_medewerker (geen can_see_medical).
+test_uc11_event_label_sanitized_for_crm_medewerker if {
+	mask := columnMask with input as {
+		"context": {"identity": {
+			"user": "crm.medewerker",
+			"groups": ["crm_medewerker"],
+		}},
+		"action": {
+			"operation": "SelectFromColumns",
+			"resource": {"column": {
+				"catalogName": "gold",
+				"schemaName": "uc11_klantreis",
+				"tableName": "mart_uc11_klantreis_events",
+				"columnName": "event_label",
+			}},
+		},
+	}
+	mask.expression == "concat(domein, '.', event_type)"
+}
+
+# UC-11 — event_label cleartext voor wia_beoordelaar (heeft can_see_medical).
+test_uc11_event_label_visible_for_wia_beoordelaar if {
+	columnMask == {} with input as {
+		"context": {"identity": {
+			"user": "wia.beoordelaar",
+			"groups": ["wia_beoordelaar"],
+		}},
+		"action": {
+			"operation": "SelectFromColumns",
+			"resource": {"column": {
+				"catalogName": "gold",
+				"schemaName": "uc11_klantreis",
+				"tableName": "mart_uc11_klantreis_events",
+				"columnName": "event_label",
+			}},
+		},
+	}
+}

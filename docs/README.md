@@ -23,7 +23,7 @@ deze map dieper.
 
 ### Use cases
 
-Tien use-case-specs onder [`use-cases/`](use-cases/), elk met scope, CGM-
+Elf use-case-specs onder [`use-cases/`](use-cases/), elk met scope, CGM-
 entiteiten, doelbinding, AI-Act-classificatie en Definition-of-Done-anchors.
 
 | ID | Titel | Status |
@@ -38,6 +38,27 @@ entiteiten, doelbinding, AI-Act-classificatie en Definition-of-Done-anchors.
 | [UC-08](use-cases/uc08-smz-planning.md) | SMZ-capaciteitsplanning | Placeholder |
 | [UC-09](use-cases/uc09-reint-effect.md) | Re-integratie-effectmeting | Mart aanwezig |
 | [UC-10](use-cases/uc10-gegevensdiensten.md) | Gegevensdiensten-API | Placeholder |
+| [UC-11](use-cases/uc11-klantreis.md) | Integrale Klantreis (event-stream + fasen) | Mart aanwezig · [walkthrough](use-cases/uc11-klantreis-walkthrough.md) |
+
+UC-11 heeft een aparte **demo-walkthrough** in
+[uc11-klantreis-walkthrough.md](use-cases/uc11-klantreis-walkthrough.md) —
+stap-voor-stap rondleiding door alle platform-onderdelen, met directe
+links naar de live UI's (portal, dbt-docs, OpenMetadata, Trino, Airflow,
+Superset). Handig als presentatie-script of als onboarding-tour.
+
+#### Presentatie-artefacten voor UC-11
+
+| Artefact | Pad | Regenereren |
+|---|---|---|
+| Demo-walkthrough (markdown) | [uc11-klantreis-walkthrough.md](use-cases/uc11-klantreis-walkthrough.md) | — |
+| Walkthrough als PDF | [uc11-klantreis-walkthrough.pdf](use-cases/uc11-klantreis-walkthrough.pdf) | `make pdf-uc11` |
+| UC-spec als PDF | [uc11-klantreis.pdf](use-cases/uc11-klantreis.pdf) | `make pdf-uc11` |
+| PowerPoint-deck (12 slides) | [uc11-klantreis-deck.pptx](use-cases/uc11-klantreis-deck.pptx) | `make deck-uc11` |
+
+De PDF-generator gebruikt Chrome headless (script
+[scripts/md-to-pdf.py](../scripts/md-to-pdf.py)). Het deck wordt gebouwd
+met PptxGenJS (script [scripts/build-uc11-deck.js](../scripts/build-uc11-deck.js)).
+Beide hebben geen externe service nodig.
 
 ### Operationeel
 
