@@ -152,14 +152,26 @@ data:
         return None
 
 
-    def build_position_json(charts: List[Tuple[int, str]]) -> str:
+    def build_position_json(
+        charts: List[Tuple[int, str]],
+        widths: Optional[List[int]] = None,
+        heights: Optional[List[int]] = None,
+    ) -> str:
         """Bouw een Superset dashboard layout-tree (12-kolom grid).
 
-        Eén CHART per ROW, full-width (12 cols). Geeft een geldige tree
-        met ROOT → GRID → ROW(s) → CHART(s). Zonder dit blijft de canvas
-        leeg ook al staan de slices in de M2M-tabel, want het frontend
-        leest position_json om de chart-componenten te plaatsen.
+        Charts worden in rijen geplaatst; charts vullen een rij tot
+        som(widths)<=12, daarna start een nieuwe rij. `widths` is een lijst
+        met breedtes (1..12) per chart; default is full-width (12).
+        `heights` werkt analoog (default 50). Geeft een geldige tree met
+        ROOT → GRID → ROW(s) → CHART(s). Zonder dit blijft de canvas leeg
+        ook al staan de slices in de M2M-tabel, want het frontend leest
+        position_json om de chart-componenten te plaatsen.
         """
+        if widths is None:
+            widths = [12] * len(charts)
+        if heights is None:
+            heights = [50] * len(charts)
+
         layout = {
             "DASHBOARD_VERSION_KEY": "v2",
             "ROOT_ID": {"type": "ROOT", "id": "ROOT_ID", "children": ["GRID_ID"]},
@@ -168,37 +180,50 @@ data:
                 "parents": ["ROOT_ID"],
             },
         }
-        for idx, (chart_id, slice_name) in enumerate(charts):
-            row_id = f"ROW-{idx + 1}"
+        row_idx = 0
+        current_row_id = None
+        current_row_used = 0
+        for idx, ((chart_id, slice_name), width, height) in enumerate(
+            zip(charts, widths, heights),
+        ):
+            width = max(1, min(12, int(width)))
+            if current_row_id is None or current_row_used + width > 12:
+                row_idx += 1
+                current_row_id = f"ROW-{row_idx}"
+                current_row_used = 0
+                layout["GRID_ID"]["children"].append(current_row_id)
+                layout[current_row_id] = {
+                    "type": "ROW", "id": current_row_id, "children": [],
+                    "parents": ["ROOT_ID", "GRID_ID"],
+                    "meta": {"background": "BACKGROUND_TRANSPARENT"},
+                }
             chart_block_id = f"CHART-{idx + 1}"
-            layout["GRID_ID"]["children"].append(row_id)
-            layout[row_id] = {
-                "type": "ROW", "id": row_id, "children": [chart_block_id],
-                "parents": ["ROOT_ID", "GRID_ID"],
-                "meta": {"background": "BACKGROUND_TRANSPARENT"},
-            }
+            layout[current_row_id]["children"].append(chart_block_id)
             layout[chart_block_id] = {
                 "type": "CHART", "id": chart_block_id, "children": [],
-                "parents": ["ROOT_ID", "GRID_ID", row_id],
+                "parents": ["ROOT_ID", "GRID_ID", current_row_id],
                 "meta": {
                     "chartId": chart_id,
-                    "width": 12,
-                    "height": 50,
+                    "width": width,
+                    "height": int(height),
                     "sliceName": slice_name,
                 },
             }
+            current_row_used += width
         return json.dumps(layout)
 
 
     def upsert_dashboard(s, title: str, slug: str,
-                         charts: List[Tuple[int, str]]) -> int:
+                         charts: List[Tuple[int, str]],
+                         widths: Optional[List[int]] = None,
+                         heights: Optional[List[int]] = None) -> int:
         """Maak of update dashboard met slices + position_json.
 
         Idempotent: bestaand dashboard wordt ook ge-PUT zodat charts +
         layout altijd in sync zijn met dit script.
         """
         chart_ids = [c[0] for c in charts]
-        position_json = build_position_json(charts)
+        position_json = build_position_json(charts, widths, heights)
 
         did = find_dashboard_id(s, slug)
         if did is None:
@@ -438,6 +463,141 @@ data:
                     }),
                 ],
             },
+            # ─────────────── UC-11 Integrale Klantreis ───────────────
+            # Multi-mart dashboard: events-mart als default, phases-mart als
+            # per-chart override. Layout is 5 rijen: KPI-strip, temporal,
+            # distribution, drill-down, detail-tabel.
+            {
+                "slug": "uc11-klantreis",
+                "title": "UC-11 — Integrale Klantreis",
+                "dataset": "mart_uc11_klantreis_events",
+                "charts": [
+                    # ── Rij 1: KPI strip ── (4 × width 3)
+                    ("Unieke cliënten in klantreis", "big_number_total", {
+                        "metric": {"expressionType": "SIMPLE",
+                                   "column": {"column_name": "bsn", "type": "VARCHAR"},
+                                   "aggregate": "COUNT_DISTINCT",
+                                   "label": "Unieke BSN's"},
+                    }, {"width": 3, "height": 30}),
+                    ("Totaal events", "big_number_total", {
+                        "metric": {"expressionType": "SIMPLE",
+                                   "column": {"column_name": "event_seq", "type": "BIGINT"},
+                                   "aggregate": "COUNT",
+                                   "label": "Events"},
+                    }, {"width": 3, "height": 30}),
+                    ("Totaal fase-overgangen", "big_number_total", {
+                        "metric": {"expressionType": "SIMPLE",
+                                   "column": {"column_name": "fase_volgnr", "type": "BIGINT"},
+                                   "aggregate": "COUNT",
+                                   "label": "Fases"},
+                    }, {"dataset": "mart_uc11_klantreis_phases",
+                        "width": 3, "height": 30}),
+                    ("Gem. fase-duur (dagen)", "big_number_total", {
+                        "metric": metric("duur_dagen", "AVG", "BIGINT", "Avg dagen"),
+                    }, {"dataset": "mart_uc11_klantreis_phases",
+                        "width": 3, "height": 30}),
+
+                    # ── Rij 2: Temporal ── (2 × width 6)
+                    ("Events per maand — alle domeinen", "line", {
+                        "granularity_sqla": "event_ts",
+                        "time_grain_sqla": "P1M",
+                        "metrics": [{"expressionType": "SIMPLE",
+                                     "column": {"column_name": "event_seq", "type": "BIGINT"},
+                                     "aggregate": "COUNT",
+                                     "label": "Events"}],
+                        "groupby": ["domein"],
+                        "color_scheme": "preset_ui_1",
+                        "show_legend": True,
+                    }, {"width": 6, "height": 50}),
+                    ("Nieuwe fases per maand", "line", {
+                        "granularity_sqla": "fase_start_ts",
+                        "time_grain_sqla": "P1M",
+                        "metrics": [{"expressionType": "SIMPLE",
+                                     "column": {"column_name": "bsn", "type": "VARCHAR"},
+                                     "aggregate": "COUNT",
+                                     "label": "Fase-starts"}],
+                        "groupby": ["fase"],
+                        "color_scheme": "preset_ui_1",
+                        "show_legend": True,
+                    }, {"dataset": "mart_uc11_klantreis_phases",
+                        "width": 6, "height": 50}),
+
+                    # ── Rij 3: Distributie ── (3 × width 4)
+                    ("Events per domein", "pie", {
+                        "metrics": [{"expressionType": "SIMPLE",
+                                     "column": {"column_name": "event_seq", "type": "BIGINT"},
+                                     "aggregate": "COUNT",
+                                     "label": "Events"}],
+                        "groupby": ["domein"],
+                        "color_scheme": "preset_ui_1",
+                        "show_legend": True,
+                        "label_type": "key_percent",
+                    }, {"width": 4, "height": 50}),
+                    ("Fases per type", "pie", {
+                        "metrics": [{"expressionType": "SIMPLE",
+                                     "column": {"column_name": "bsn", "type": "VARCHAR"},
+                                     "aggregate": "COUNT",
+                                     "label": "Aantal"}],
+                        "groupby": ["fase"],
+                        "color_scheme": "preset_ui_1",
+                        "show_legend": True,
+                        "label_type": "key_percent",
+                    }, {"dataset": "mart_uc11_klantreis_phases",
+                        "width": 4, "height": 50}),
+                    ("Events per regio (WIA)", "pie", {
+                        "metrics": [{"expressionType": "SIMPLE",
+                                     "column": {"column_name": "event_seq", "type": "BIGINT"},
+                                     "aggregate": "COUNT",
+                                     "label": "Events"}],
+                        "groupby": ["regio_code"],
+                        "adhoc_filters": [{
+                            "expressionType": "SIMPLE",
+                            "subject": "regio_code",
+                            "operator": "IS NOT NULL",
+                            "clause": "WHERE",
+                        }],
+                        "color_scheme": "preset_ui_1",
+                        "show_legend": True,
+                    }, {"width": 4, "height": 50}),
+
+                    # ── Rij 4: Drill-downs ── (2 × width 6)
+                    ("Top 10 event-types", "dist_bar", {
+                        "metrics": [{"expressionType": "SIMPLE",
+                                     "column": {"column_name": "event_seq", "type": "BIGINT"},
+                                     "aggregate": "COUNT",
+                                     "label": "Events"}],
+                        "groupby": ["event_type"],
+                        "row_limit": 10,
+                        "order_desc": True,
+                        "color_scheme": "preset_ui_1",
+                    }, {"width": 6, "height": 55}),
+                    ("Gem. duur per fase-type (dagen)", "dist_bar", {
+                        "metrics": [metric("duur_dagen", "AVG", "BIGINT", "Avg dagen")],
+                        "groupby": ["fase"],
+                        "row_limit": 20,
+                        "order_desc": True,
+                        "color_scheme": "preset_ui_1",
+                    }, {"dataset": "mart_uc11_klantreis_phases",
+                        "width": 6, "height": 55}),
+
+                    # ── Rij 5: Detail-tabel ── (1 × width 12)
+                    ("Cliënten met meeste events (top 50)", "table", {
+                        "metrics": [{"expressionType": "SIMPLE",
+                                     "column": {"column_name": "event_seq", "type": "BIGINT"},
+                                     "aggregate": "COUNT",
+                                     "label": "Events"},
+                                    {"expressionType": "SIMPLE",
+                                     "column": {"column_name": "domein", "type": "VARCHAR"},
+                                     "aggregate": "COUNT_DISTINCT",
+                                     "label": "Domeinen"}],
+                        "groupby": ["bsn"],
+                        "row_limit": 50,
+                        "order_desc": True,
+                        "include_search": True,
+                        "query_mode": "aggregate",
+                    }, {"width": 12, "height": 60}),
+                ],
+            },
             # Detail-dashboard: 1 rij per (UC × check), gevoed door
             # mart_dq_violations. Apart dashboard zodat steward kan
             # drillen na het zien van een rood blok in het overzicht.
@@ -477,16 +637,48 @@ data:
         ]
 
         # Bouw alle dashboards.
+        # Chart-spec format (3-tuple legacy): (slice_name, viz_type, params)
+        # Chart-spec format (4-tuple uitbreid): (slice_name, viz_type, params, extras)
+        #   extras: {"dataset": "<override>", "width": 1..12, "height": 30..120}
+        # Per-dashboard kan ook `dataset` overschreven worden per chart; default
+        # is `dash["dataset"]`.
         for dash in DASHBOARDS:
             log(f"=== {dash['title']} ===")
             try:
-                ds_id = get_dataset_id(s, dash["dataset"])
+                default_ds_id = get_dataset_id(s, dash["dataset"])
             except SystemExit:
                 log(f"  SKIP — dataset {dash['dataset']!r} niet gevonden")
                 continue
-            log(f"  dataset id: {ds_id}")
-            chart_specs = []
-            for slice_name, viz_type, params in dash["charts"]:
+            log(f"  dataset id (default): {default_ds_id}")
+
+            ds_cache: dict = {dash["dataset"]: default_ds_id}
+
+            def resolve_ds(name: str) -> Optional[int]:
+                if name in ds_cache:
+                    return ds_cache[name]
+                try:
+                    did = get_dataset_id(s, name)
+                except SystemExit:
+                    return None
+                ds_cache[name] = did
+                return did
+
+            chart_specs: List[Tuple[int, str]] = []
+            widths: List[int] = []
+            heights: List[int] = []
+            for chart_spec in dash["charts"]:
+                if len(chart_spec) == 4:
+                    slice_name, viz_type, params, extras = chart_spec
+                else:
+                    slice_name, viz_type, params = chart_spec
+                    extras = {}
+
+                ds_name = extras.get("dataset", dash["dataset"])
+                ds_id = resolve_ds(ds_name)
+                if ds_id is None:
+                    log(f"  SKIP chart '{slice_name}' — dataset {ds_name!r} niet gevonden")
+                    continue
+
                 full_params = {
                     "datasource": f"{ds_id}__table",
                     "viz_type": viz_type,
@@ -495,7 +687,13 @@ data:
                 }
                 cid = create_chart(s, ds_id, slice_name, viz_type, full_params)
                 chart_specs.append((cid, slice_name))
-            upsert_dashboard(s, dash["title"], dash["slug"], chart_specs)
+                widths.append(int(extras.get("width", 12)))
+                heights.append(int(extras.get("height", 50)))
+
+            upsert_dashboard(
+                s, dash["title"], dash["slug"], chart_specs,
+                widths=widths, heights=heights,
+            )
 
         log(f"Klaar — {len(DASHBOARDS)} dashboards gebouwd.")
         return 0
