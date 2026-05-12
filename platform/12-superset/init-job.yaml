@@ -521,6 +521,7 @@ data:
         cur.execute("SELECT id, table_name FROM tables")
         tables = {row[1]: row[0] for row in cur.fetchall()}
         total_inserted = 0
+        dttm_updates = 0
         for table_name, cols in DATASET_COLS.items():
             tid = tables.get(table_name)
             if tid is None:
@@ -537,10 +538,27 @@ data:
                 )
                 if cur.rowcount > 0:
                     total_inserted += 1
+            # main_dttm_col op de table-rij zetten zodat line-charts werken:
+            # zonder dit krijgt elke time-series chart-API een 500 met
+            # "Datetime column not provided as part table configuration".
+            # We pakken de EERSTE is_dttm-kolom uit de DATASET_COLS-spec.
+            dttm_col = next((c[0] for c in cols if c[2]), None)
+            if dttm_col:
+                cur.execute(
+                    "UPDATE tables SET main_dttm_col = %s "
+                    "WHERE id = %s AND (main_dttm_col IS NULL "
+                    "                   OR main_dttm_col NOT IN ("
+                    "    SELECT column_name FROM table_columns "
+                    "    WHERE table_id = %s AND is_dttm = true))",
+                    (dttm_col, tid, tid),
+                )
+                if cur.rowcount > 0:
+                    dttm_updates += 1
         conn.commit()
         cur.close()
         conn.close()
-        log(f"  ✓ Postgres-fallback: {total_inserted} kolom-rijen ingevoegd")
+        log(f"  ✓ Postgres-fallback: {total_inserted} kolom-rijen + "
+            f"{dttm_updates} main_dttm_col gezet")
 
 
     if __name__ == "__main__":

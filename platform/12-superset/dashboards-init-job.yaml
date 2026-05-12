@@ -76,9 +76,39 @@ data:
         if not metrics and params.get("metric"):
             metrics = [params["metric"]]
 
+        # Vertaal adhoc_filters naar een SQL WHERE-fragment dat Superset's
+        # query_context begrijpt. Adhoc-filters uit form_data zijn frontend-
+        # objecten; query_context.filters wil simpele "col / op / val"-records,
+        # maar voor combinaties als "IS NOT NULL" is een directe WHERE-string
+        # robuuster en sluit aan op bestaande extras.where.
+        def _adhoc_to_where(adhoc_filters):
+            clauses = []
+            for f in adhoc_filters or []:
+                if f.get("expressionType") == "SQL" and f.get("sqlExpression"):
+                    clauses.append(f["sqlExpression"])
+                    continue
+                col = f.get("subject")
+                op = (f.get("operator") or "").upper()
+                if not col or not op:
+                    continue
+                if op in ("IS NULL", "IS NOT NULL"):
+                    clauses.append(f"{col} {op}")
+                elif op in ("==", "=", "EQUALS"):
+                    val = f.get("comparator")
+                    if val is not None:
+                        clauses.append(f"{col} = '{val}'")
+                elif op == "IN":
+                    vals = f.get("comparator") or []
+                    if vals:
+                        vlist = ",".join(f"'{v}'" for v in vals)
+                        clauses.append(f"{col} IN ({vlist})")
+            return " AND ".join(clauses)
+
+        adhoc_where = _adhoc_to_where(params.get("adhoc_filters"))
+
         query = {
             "filters": [],
-            "extras": {"having": "", "where": ""},
+            "extras": {"having": "", "where": adhoc_where},
             "applied_time_extras": {},
             "columns": params.get("groupby", []),
             "metrics": metrics,
@@ -91,6 +121,10 @@ data:
             "custom_form_data": {},
         }
         if params.get("granularity_sqla"):
+            # granularity + time_grain_sqla zijn nodig zodat Superset's
+            # time-range-handling werkt (anders: "Datetime column not provided
+            # as part table configuration"). Vereist ook dat de dataset
+            # `main_dttm_col = <kolom>` heeft (zie init-job sync_columns_postgres).
             query["granularity"] = params["granularity_sqla"]
             query["time_grain_sqla"] = params.get("time_grain_sqla", "P1D")
             # is_timeseries triggert tijd-buckets in de query; zonder dit
@@ -99,13 +133,21 @@ data:
             # historische data zichtbaar is in dit dev-dataset.
             query["is_timeseries"] = True
             query["time_range"] = "No filter"
-            query["columns"] = [{
+            time_axis = {
                 "timeGrain": params.get("time_grain_sqla", "P1D"),
                 "columnType": "BASE_AXIS",
                 "sqlExpression": params["granularity_sqla"],
                 "label": params["granularity_sqla"],
                 "expressionType": "SQL",
-            }]
+            }
+            # Multi-series: BASE_AXIS time-as-eerste, daarna groupby-dimensies.
+            # Zonder dit overschreven we groupby met alleen time-axis →
+            # de UI verwacht series maar de query bevat ze niet → render fail.
+            extra_dims = [
+                g for g in params.get("groupby", [])
+                if g and g != params["granularity_sqla"]
+            ]
+            query["columns"] = [time_axis, *extra_dims]
 
         return json.dumps({
             "datasource": {"id": dataset_id, "type": "table"},
@@ -119,11 +161,14 @@ data:
 
     def create_chart(s, dataset_id: int, slice_name: str, viz_type: str,
                      params: dict) -> int:
-        existing = find_chart_id(s, slice_name)
-        if existing:
-            log(f"  = chart '{slice_name}' bestaat (id={existing})")
-            return existing
-        body = {
+        """Idempotent upsert van een chart.
+
+        Bestaande chart wordt geüpdate via PUT (params + query_context); zo
+        worden script-wijzigingen aan params/build_query_context altijd
+        toegepast bij re-deploy zonder dat we charts handmatig hoeven te
+        deleten.
+        """
+        body_payload = {
             "datasource_id": dataset_id,
             "datasource_type": "table",
             "viz_type": viz_type,
@@ -131,7 +176,17 @@ data:
             "params": json.dumps(params),
             "query_context": build_query_context(dataset_id, viz_type, params),
         }
-        r = s.post(urljoin(SUPERSET_URL, "/api/v1/chart/"), json=body)
+        existing = find_chart_id(s, slice_name)
+        if existing:
+            r = s.put(urljoin(SUPERSET_URL, f"/api/v1/chart/{existing}"),
+                      json=body_payload)
+            if r.status_code != 200:
+                log(f"  ! chart update {existing} ({slice_name}) failed: "
+                    f"{r.status_code} {r.text[:200]}")
+                r.raise_for_status()
+            log(f"  ~ chart '{slice_name}' (id={existing}) bijgewerkt")
+            return existing
+        r = s.post(urljoin(SUPERSET_URL, "/api/v1/chart/"), json=body_payload)
         if r.status_code not in (200, 201):
             log(f"  ! chart create failed: {r.status_code} {r.text[:200]}")
             r.raise_for_status()
