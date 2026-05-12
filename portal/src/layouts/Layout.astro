@@ -100,9 +100,10 @@ const isActive = (href: string): boolean => {
 
         <nav class="topbar-nav" aria-label="Hoofdnavigatie">
           <NavLink href="/" active={isActive('/')}>Home</NavLink>
-          <NavLink href="/architecture/" active={isActive('/architecture/')}>Architectuur</NavLink>
           <NavLink href="/me/" active={isActive('/me/')}>Mijn werkplek</NavLink>
           <NavLink href="/learn/" active={isActive('/learn/')}>Academy</NavLink>
+          <a class="nav-link" href="https://fresh-minds.github.io/FreshStackableDataPlatform/"
+             target="_blank" rel="noopener noreferrer">Docs ↗</a>
         </nav>
 
         <div class="topbar-right">

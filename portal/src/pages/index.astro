@@ -7,6 +7,7 @@ import StatusDot from '../components/primitives/StatusDot.astro';
 import Tag from '../components/primitives/Tag.astro';
 import { roles } from '../data/roles';
 import { components, stages } from '../data/components';
+import { DOCS_URL, docsArchitectureUrl } from '../data/external-links';
 
 // Components surfaced in the hero status card. These are the ones a
 // platform user is most likely to spot a regression on.
@@ -34,7 +35,7 @@ const statusHighlights = statusHighlightIds
 
       <div class="hero-cta">
         <Button href="/me/" variant="accent">Naar mijn werkplek</Button>
-        <Button href="/architecture/">Architectuurkaart</Button>
+        <Button href={DOCS_URL} target="_blank" rel="noopener noreferrer">Documentatie ↗</Button>
         <Button href="/dbt-docs.html" target="_blank" rel="noopener noreferrer">dbt docs</Button>
       </div>
 
@@ -60,13 +61,13 @@ const statusHighlights = statusHighlightIds
       </ul>
       <footer class="hero-status-foot mono">
         <span><span class="hero-status-count" data-status-count>{statusHighlights.length}</span> services</span>
-        <a href="/architecture/" class="hero-status-link">all →</a>
+        <a href="#dataflow" class="hero-status-link">all →</a>
       </footer>
     </aside>
   </section>
 
   <!-- ═══════════ Architecture diagram ═══════════ -->
-  <section class="section">
+  <section id="dataflow" class="section">
     <header class="section-head">
       <Eyebrow>01 · Dataflow</Eyebrow>
       <h2>Hoe het platform in elkaar zit</h2>
@@ -89,7 +90,7 @@ const statusHighlights = statusHighlightIds
     <div class="stage-grid">
       {stages.filter((s) => s.id !== 'sources').map((s) => (
         <a class={`stage-card ${s.category ? `stage-card--cat-${s.category}` : ''}`}
-           href={`/architecture/#${s.id}`}>
+           href={docsArchitectureUrl(s.id)} target="_blank" rel="noopener noreferrer">
           <Eyebrow>{s.id}</Eyebrow>
           <strong class="stage-card-title">{s.title}</strong>
           <span class="stage-card-blurb">{s.blurb}</span>
@@ -106,17 +107,18 @@ const statusHighlights = statusHighlightIds
     </header>
     <div class="duo">
       <article class="duo-card">
-        <Eyebrow>Architectuur</Eyebrow>
-        <h3>Klikbare landkaart</h3>
+        <Eyebrow>Documentatie</Eyebrow>
+        <h3>Wat zit er <em>achter</em> de tegels?</h3>
         <p>
-          Alle <strong>{components.length} componenten</strong> in één
-          diagram: ingestion (NiFi → Kafka), opslag (MinIO + Hive),
-          transformatie (Spark + Trino + OPA), BI (Superset), governance
-          (OpenMetadata), observability (Prometheus + OpenSearch).
-          Hover voor uitleg, klik om de UI te openen, status-stip toont live
-          health.
+          Voor elk van de <strong>{components.length} componenten</strong> —
+          ingestion (NiFi → Kafka), opslag (MinIO + Hive), transformatie
+          (Spark + Trino + OPA), BI (Superset), governance (OpenMetadata),
+          observability (Prometheus + OpenSearch) — staat de
+          verantwoordelijkheid, de configuratie en de architectuurkeuze
+          uitgelegd in de documentatie-site. Inclusief use-cases, rollen,
+          ADR's en compliance-mapping.
         </p>
-        <Button href="/architecture/">Open architectuurkaart</Button>
+        <Button href={DOCS_URL} target="_blank" rel="noopener noreferrer">Open documentatie ↗</Button>
       </article>
       <article class="duo-card">
         <Eyebrow>Rol</Eyebrow>

@@ -1,0 +1,42 @@
+/* Auto-generated door scripts/docs_gen.py.
+   Aanpassingen overleven niet — wijzig in de generator. */
+
+/* UWV-amber accent override op het Material amber-palet zodat het exact de
+   portal-amber matcht (oklch(0.78 0.18 76) in de portal tokens). */
+:root {
+  --md-primary-fg-color:        #d68f00;
+  --md-primary-fg-color--light: #ecb24a;
+  --md-primary-fg-color--dark:  #a86d00;
+  --md-accent-fg-color:         #d68f00;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color:        #ecb24a;
+  --md-accent-fg-color:         #ecb24a;
+  --md-typeset-a-color:         #ecb24a;
+}
+
+/* Mermaid diagrammen iets meer ademruimte. */
+.md-typeset .mermaid {
+  text-align: center;
+  margin: 1.5rem 0;
+}
+
+/* Grid-cards op de homepage: iets meer ademruimte. */
+.md-typeset .grid.cards > ul > li {
+  padding: 1.2rem 1.2rem 1.4rem;
+}
+
+/* Mono-tone code-tags binnen lopende tekst — strak, niet schreeuwend. */
+.md-typeset code {
+  background-color: var(--md-code-bg-color);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.92em;
+}
+
+/* Anchored sub-headings (sectie-anchors zoals #ingestion) krijgen wat
+   bovenmarge zodat de sticky-header ze niet afdekt. */
+.md-typeset h3[id] {
+  scroll-margin-top: 4rem;
+}

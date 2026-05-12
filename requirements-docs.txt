@@ -1,0 +1,10 @@
+# Documentatie-site dependencies. Geinstalleerd in CI door
+# .github/workflows/docs.yml. Versies gepind voor reproduceerbare builds.
+mkdocs==1.6.1
+mkdocs-material==9.5.49
+mkdocs-awesome-pages-plugin==2.9.3
+pymdown-extensions==10.12
+# Material gebruikt deze voor emoji + social-cards; pinnen om CI-drift te
+# voorkomen.
+pillow==11.0.0
+cairosvg==2.7.1

@@ -2,6 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 import Button from '../components/primitives/Button.astro';
 import Eyebrow from '../components/primitives/Eyebrow.astro';
+import { docsArchitectureUrl } from '../data/external-links';
 
 // Minimale CSV-upload UX. Wijst de gebruiker naar de twee externe stappen
 // (MinIO Console upload + Airflow DAG-trigger) en toont een copy-pasteable
@@ -40,7 +41,7 @@ const defaultSource = sources[0];
     </p>
     <p class="csv-hero-note">
       Voor streaming-bronnen (WIA, WW, polisadministratie, …) gaat data via
-      Kafka — zie het <a href="/architecture/">architectuur-diagram</a>.
+      Kafka — zie de <a href={docsArchitectureUrl('ingestion')} target="_blank" rel="noopener noreferrer">architectuur-documentatie ↗</a>.
       CSV-upload is bedoeld voor ad-hoc batch-bronnen.
     </p>
   </section>

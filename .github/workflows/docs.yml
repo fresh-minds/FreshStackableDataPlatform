@@ -1,0 +1,101 @@
+# Build + publish docs-site naar GitHub Pages.
+#
+# Triggert op:
+#   - push naar main (publiceert)
+#   - pull_request (alleen build, geen deploy — checkt of de build niet breekt)
+#   - workflow_dispatch (handmatig vanuit Actions-tab)
+#
+# Architectuur-pagina's worden gegenereerd uit portal/src/data/components.ts
+# door scripts/docs_gen.py, daarna bouwt mkdocs build de statische site.
+# Deploy via de officiële actions/deploy-pages workflow.
+#
+# GitHub Pages-instelling: in repo settings → Pages → Source = "GitHub Actions".
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      - portal/src/data/components.ts
+      - mkdocs.yml
+      - requirements-docs.txt
+      - scripts/docs_gen.py
+      - .github/workflows/docs.yml
+      - README.md
+      - SECURITY.md
+      - referentiearchitectuur-uwv-data-analytics.md
+      - requirements-compliant-data-analyseplatform.md
+  pull_request:
+    paths:
+      - docs/**
+      - portal/src/data/components.ts
+      - mkdocs.yml
+      - requirements-docs.txt
+      - scripts/docs_gen.py
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+# Eén concurrent run per branch — een nieuwe push annuleert een lopende.
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+# Minimaal benodigde rechten voor Pages-deploy + OIDC.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history zodat mkdocs-material 'git-revision-date' kan
+          # werken als we dat later willen aanzetten.
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      - name: Install docs dependencies
+        run: pip install -r requirements-docs.txt
+
+      - name: Generate component pages from portal registry
+        run: python scripts/docs_gen.py
+
+      - name: Verify no drift in generated pages
+        # Faalt als docs_gen.py andere output zou genereren dan wat
+        # gecommit is. Dwingt af dat we de generator-output committen.
+        run: python scripts/docs_gen.py --check
+
+      - name: Build site (strict mode)
+        # mkdocs.yml staat op strict: alle warnings (broken refs, missing
+        # nav-items, orphan files) worden errors.
+        run: mkdocs build --strict
+
+      - name: Upload artifact for Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+  deploy:
+    # Pages-deploy alleen vanaf main (geen previews voor PRs in dit project).
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

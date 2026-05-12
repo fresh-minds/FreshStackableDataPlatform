@@ -8,6 +8,7 @@ import { roles } from '../data/roles';
 import { components, stages } from '../data/components';
 import { shortcuts } from '../data/role-shortcuts';
 import roleMappings from '../data/role-mappings.generated.json';
+import { DOCS_URL } from '../data/external-links';
 
 // Bouw een client-side payload zodat de pagina puur statisch kan zijn:
 // alle 11 rollen + componenten + shortcuts in één JSON, en de browser
@@ -129,7 +130,7 @@ const payload = {
         <a id="help-handleiding" href="#">Lees jouw rol-handleiding</a>
         <span> — workflows, foutmeldingen, escalatie.</span>
       </li>
-      <li><a href="/architecture/">Bekijk de architectuurkaart</a></li>
+      <li><a href={DOCS_URL} target="_blank" rel="noopener noreferrer">Open de platform-documentatie ↗</a></li>
       <li>Mail <a href="mailto:data.steward@uwv-platform.local">data.steward@uwv-platform.local</a> bij vragen over data</li>
       <li>Bel platform-admin bij vermoede inbreuk (niet via mail)</li>
     </ul>
