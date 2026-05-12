@@ -54,8 +54,11 @@ openmetadata:
       searchType: opensearch
 
     # OIDC via Keycloak — confidential client met server-side token-exchange.
-    # Veld-namen volgen het chart-1.5 schema (schema is strict; oidcType/
-    # clientId/clientSecret onder oidcConfiguration mogen niet anders heten).
+    # OM 1.5 (gepinde versie) is bewust gekozen: in OM 1.12 zit een SPA-bug
+    # waarbij `clientType: public` standaard implicit-flow probeert (faalt
+    # bij Keycloak met "Implicit flow is disabled") en `clientType:
+    # confidential` cookies gebruikt die de SPA niet als Bearer doorgeeft
+    # (loggedInUser → 401). 1.5 doet code-flow + secret + Bearer correct.
     authentication:
       clientType: confidential
       provider: custom-oidc
@@ -99,15 +102,10 @@ openmetadata:
         tenant: ""
         maxClockSkew: ""
         tokenValidity: "3600"
-        # OM 1.12 default `customParams: '{}'` werkt out-of-the-box; in 1.5
-        # was de chart-default `""` (lege string) wat Jackson niet naar
-        # LinkedHashMap kon coercen → daar moest een post-deploy patch op
-        # OIDC_CUSTOM_PARAMS. Niet meer nodig vanaf 1.12.
+        # customParams: chart-schema vraagt string, OM-config-class vraagt
+        # LinkedHashMap. `""` faalt de Jackson-coerce; `"{}"` is een geldige
+        # JSON-Map-as-string die Jackson wel naar LinkedHashMap omzet.
         customParams: "{}"
-        # 1.12-only velden (genegeerd door 1.5):
-        promptType: "login"
-        maxAge: "0"
-        sessionExpiry: "604800"
 
     authorizer:
       className: org.openmetadata.service.security.DefaultAuthorizer

@@ -36,7 +36,7 @@ DEFAULT_ARGS = {
     "retry_delay": timedelta(minutes=5),
 }
 
-OM_INGESTION_IMAGE = "openmetadata/ingestion:1.12.6"
+OM_INGESTION_IMAGE = "openmetadata/ingestion:1.5.7"
 
 
 def _om_env_vars() -> list[V1EnvVar]:
