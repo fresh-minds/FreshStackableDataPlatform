@@ -104,9 +104,16 @@ deploy-om-bridge: om-bridge-image ## Deploy de OM→Keycloak access-bridge (ADR-
 	@if ! kubectl -n uwv-platform get secret om-access-bridge-secret >/dev/null 2>&1; then \
 	  echo "[deploy-om-bridge] om-access-bridge-secret bestaat nog niet — bootstrappen met dev-placeholders."; \
 	  echo "                    Voor productie: zie platform/18-om-access-bridge/secret.yaml"; \
+	  OM_JWT="$$(kubectl -n uwv-meta get secret openmetadata-admin -o jsonpath='{.data.jwtToken}' 2>/dev/null | base64 -d)"; \
+	  if [ -z "$$OM_JWT" ]; then echo "[deploy-om-bridge] WAARSCHUWING: openmetadata-admin secret nog niet aanwezig — OM_ADMIN_TOKEN wordt placeholder; /api/request zal 500 geven tot bridge re-deployed met token."; OM_JWT="REPLACE-WITH-JWT-FROM-openmetadata-admin-SECRET"; fi; \
 	  kubectl -n uwv-platform create secret generic om-access-bridge-secret \
 	    --from-literal=KEYCLOAK_CLIENT_SECRET='uwv-dev-only-CHANGE-ME-om-access-bridge-secret' \
-	    --from-literal=OM_WEBHOOK_SECRET='uwv-dev-only-CHANGE-ME-om-webhook-secret'; \
+	    --from-literal=OM_WEBHOOK_SECRET='uwv-dev-only-CHANGE-ME-om-webhook-secret' \
+	    --from-literal=OM_ADMIN_TOKEN="$$OM_JWT"; \
+	elif ! kubectl -n uwv-platform get secret om-access-bridge-secret -o jsonpath='{.data.OM_ADMIN_TOKEN}' 2>/dev/null | grep -q .; then \
+	  echo "[deploy-om-bridge] secret bestaat maar OM_ADMIN_TOKEN ontbreekt — patchen."; \
+	  OM_JWT="$$(kubectl -n uwv-meta get secret openmetadata-admin -o jsonpath='{.data.jwtToken}' | base64 -d)"; \
+	  kubectl -n uwv-platform patch secret om-access-bridge-secret --type=json -p="[{\"op\":\"add\",\"path\":\"/data/OM_ADMIN_TOKEN\",\"value\":\"$$(printf %s "$$OM_JWT" | base64)\"}]"; \
 	fi
 	kubectl apply -k platform/18-om-access-bridge/
 	kubectl -n uwv-platform rollout status deploy/om-access-bridge --timeout=120s

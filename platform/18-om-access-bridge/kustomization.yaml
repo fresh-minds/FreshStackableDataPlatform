@@ -11,6 +11,7 @@ resources:
   # safe to round-trip from disk.
   - deployment.yaml
   - service.yaml
+  - ingress.yaml
 
 commonLabels:
   app.kubernetes.io/part-of: uwv-platform

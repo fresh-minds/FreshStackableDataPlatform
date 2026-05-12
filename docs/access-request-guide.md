@@ -6,14 +6,16 @@ Bridge-service: zie [platform/18-om-access-bridge/](../platform/18-om-access-bri
 
 ---
 
-## TL;DR — 30 seconden
+## TL;DR — 30 seconden (portal-flow)
 
-1. Open Mijn werkplek → scroll naar **"Andere data nodig?"** → klik **"Vraag toegang aan in de catalogus"**. (Of ga rechtstreeks naar OpenMetadata.)
-2. Zoek je dataset in **Explore** → klik 'm aan.
-3. Tab **Activity Feed** → **Add Task** → type **Request Description**.
-4. **Titel/description begint met `Request Access`** — anders triggert de bridge niet (convention guard).
-5. Assignee = de Owner / Reviewer van het asset.
-6. Submit. Reviewer keurt de Task goed → je krijgt automatisch de juiste rol toegekend bij je volgende login.
+1. Open Mijn werkplek → scroll naar **"Andere data nodig?"** → klik **"Vraag toegang aan"**.
+2. Vul het formulier in: dataset-FQN, gebruikersnaam, doelbinding, motivatie.
+3. Submit. De portal maakt namens jou een Task aan in OpenMetadata en stuurt 'm naar de owner.
+4. Bij approval krijg je automatisch de rol `data_access:<catalog>.<schema>` toegekend.
+
+Direct: `https://platform.uwv-platform.local:8443/access-request`.
+
+> Liever handmatig in OpenMetadata? Dat kan ook — zie [§ Handmatige variant](#handmatige-variant-direct-in-openmetadata) onderaan.
 
 ---
 
@@ -36,103 +38,89 @@ De grant geldt op **schema-niveau** (catalog.schema), niet per tabel.
 
 ---
 
-## Stap-voor-stap UI
+## Portal-flow (aanbevolen)
 
-### 1. Open OpenMetadata
+### 1. Open het access-request-formulier
 
-Via de portal: Mijn werkplek → sectie *"Andere data nodig?"* → knop
-**"Vraag toegang aan in de catalogus"**. SSO regelt dat je niet opnieuw
-hoeft in te loggen.
+Via Mijn werkplek → sectie *"Andere data nodig?"* → knop **"Vraag
+toegang aan"**. Of direct: <https://platform.uwv-platform.local:8443/access-request>.
 
-Direct: https://openmetadata.uwv-platform.local
+### 2. Vul de velden in
 
-### 2. Zoek je dataset
+| Veld | Wat je invult |
+|---|---|
+| **Welke dataset?** | OM-FQN — bv. `uwv-trino.gold.uc11_klantreis.mart_uc11_klantreis_events`. Vind 'm via OpenMetadata → Explore → klik op het asset → kopieer de FQN onder de titel. |
+| **Wie ben je?** | Je Keycloak-gebruikersnaam (eerste deel van je e-mail, bv. `researcher`, `fez.analist`). |
+| **Voor welk doel?** | Kies een doelbinding (AVG art. 5 lid 1b). |
+| **Hoe lang?** | Optioneel — bv. "2 maanden, t/m 2026-08-01". |
+| **Motivatie** | Korte uitleg: project, waarom de bestaande aggregaten niet volstaan, etc. |
 
-- Sidebar links → **Explore**.
-- Filter **Service type = Database / Table** (de meeste UWV-data zit in
-  Trino-tables onder `trino → bronze | silver | gold | sensitive`).
-- Zoek bv. `mart_uc05_client_360` en klik het asset aan.
+### 3. Verzend
 
-Je weet niet welke dataset je nodig hebt? Check de
-[CGM glossary](../platform/13-openmetadata-config/glossary-cgm.yaml) — elke
-CGM-term linkt naar de relevante tabellen.
+De portal maakt namens jou een Task aan in OpenMetadata, met
+**`Request Access`** automatisch in de description en de owner van het
+asset als assignee. Je ziet meteen of het gelukt is + de Task-ID.
 
-### 3. Maak een access-request Task
-
-Op de asset-detail-pagina:
-
-- Tab **Activity Feed** (of **Conversations**) onderaan.
-- Knop **+ Add Task** of het **`...`-menu → Request Description**.
-- Type kiezen: **Request Description** (OM 1.5 heeft geen aparte
-  *Request Access*-type — `Request Description` is onze conventie-drager).
-
-### 4. Vul het Task-formulier in — de **conventie**
-
-| Veld | Wat je invult | Waarom |
-|---|---|---|
-| **Title / Description** | Start met `Request Access` — bijv. *"Request Access — gebruiker `alice.researcher`, doel `klantcontact`, einddatum 2026-08-01."* | De bridge filtert op deze keyword (convention guard). Zonder `request access` in de description doet de bridge niets. |
-| **Assignees** | De Owner van het asset of een Reviewer (zie de **Owners**-sectie rechts op de asset-pagina) | Alleen Owners/Reviewers krijgen Resolve-rechten in OM. |
-| **Suggest description** | Mag leeg blijven, of plak een korte motivatie. | Niet kritiek voor de grant — wel handig voor audit-trail. |
-
-> **Belangrijk** — de string `Request Access` (case-insensitive) moet in
-> de **description** of **message** van de Task voorkomen. Zonder deze
-> markering negeert de bridge het event (HTTP 400 in de logs).
-
-### 5. Submit
-
-Je ziet de Task verschijnen in de Activity Feed. De Assignee krijgt een
-notificatie. Sluit het tabblad en wacht.
-
-### 6. Wat ziet de Reviewer?
+### 4. Wat ziet de Reviewer?
 
 De Owner/Reviewer:
+- Krijgt notificatie in OM (Activity Feed van het asset + **My Data**).
+- Klikt **Accept Suggestion** of **Resolve → Approved**.
+- Bij Reject: motivatie in een comment; geen grant.
 
-- Ziet de Task in hun **My Data** of in de Activity Feed van het asset.
-- Klikt **Accept Suggestion** of **Resolve** met resolution **Approved**.
-- Bij Reject: motivatie in een comment; geen grant; jij krijgt notificatie.
-
-### 7. Wat gebeurt er bij approval?
+### 5. Bij approval — automatisch
 
 1. OM publiceert een `taskResolved`-event naar de [om-access-bridge](../platform/18-om-access-bridge/) (HMAC-signed).
-2. Bridge parsed het asset FQN → `<catalog>.<schema>` → ensures realm-role
-   `data_access:<catalog>.<schema>` in Keycloak en kent 'm aan jou toe.
-3. Bij je **volgende JWT-refresh** (binnen 15 min — `accessTokenLifespan: 900s`) zit de nieuwe rol in je token.
-4. OPA-Rego accepteert de rol als grant; doelbinding moet kloppen met de
-   purposes die op die resource staan (zie
-   [data.json](../platform/10-opa/policies/data.json) → `resource_purposes`).
+2. Bridge parsed het asset FQN → `<catalog>.<schema>` → ensures realm-role `data_access:<catalog>.<schema>` in Keycloak en kent 'm aan jou toe.
+3. Bij je volgende JWT-refresh (binnen 15 min) zit de nieuwe rol in je token.
+4. OPA-Rego accepteert de rol als grant; doelbinding moet kloppen met de purposes die op die resource staan (zie [data.json](../platform/10-opa/policies/data.json) → `resource_purposes`).
 
 ---
 
 ## Voorbeelden
 
-### Voorbeeld 1 — Researcher wil naar CRM-mart
+### Voorbeeld 1 — Researcher wil naar UC-11 klantreis-mart
 
 ```
-Titel:        Request Access — UC-05 evaluatieanalyse
-Description:  Request Access — gebruiker alice.researcher, doel klantcontact.
-              Project: UC-05 effectiviteit telefonisch klantcontact. Periode:
-              juni-augustus 2026. Synthetische cohort + aggregaten, geen
-              individuele BSN's gebruikt.
-Asset:        trino.gold.uc05_client_360.mart_uc05_client_360
-Assignees:    data.steward + crm.medewerker
+Asset:      uwv-trino.gold.uc11_klantreis.mart_uc11_klantreis_events
+Requester:  researcher
+Purpose:    onderzoek
+Duration:   2 maanden, t/m 2026-08-01
+Motivation: UC-11 funnel-analyse — afsluitratio per kanaal. Synthetische
+            cohort + aggregaten, geen individuele BSN's.
 ```
 
-Grant na approval: realm-role `data_access:gold.uc05_client_360`.
-Doelbinding-check: query moet `purpose=klantcontact` of `purpose=behandeling` declareren (zie `resource_purposes` mapping).
+Grant na approval: realm-role `data_access:gold.uc11_klantreis`.
 
 ### Voorbeeld 2 — FEZ-analist wil bronze-data voor reconciliatie
 
 ```
-Titel:        Request Access — Q2 bronze-reconciliatie polisadm
-Description:  Request Access — gebruiker fez.analist, doel kwaliteitscontrole.
-              Korte engagement (2 weken) om silver/gold-aggregaten tegen
-              bronze te checken na de Q2-ETL-incident.
-Asset:        trino.bronze.uwv.polisadm_ikv
-Assignees:    data.engineer + data.steward
+Asset:      uwv-trino.bronze.uwv.polisadm_ikv
+Requester:  fez.analist
+Purpose:    kwaliteitscontrole
+Duration:   2 weken
+Motivation: Q2 bronze-reconciliatie — silver/gold-aggregaten checken
+            tegen bronze na Q2-ETL-incident.
 ```
 
-Grant: `data_access:bronze.uwv`. NB: `data.engineer` heeft JIT-eis — de
-approval geldt voor de duur van het project.
+Grant: `data_access:bronze.uwv`.
+
+---
+
+## Handmatige variant (direct in OpenMetadata)
+
+Voor wie liever in OM blijft, of voor scriptbare scenario's: dezelfde
+flow handmatig.
+
+1. Open <https://openmetadata.uwv-platform.local:8443>.
+2. Sidebar links → **Explore** → filter Tables → zoek dataset.
+3. Op asset-pagina: tab **Activity Feed** → **+ Add Task** → **Request Description**.
+4. **Description begint met `Request Access`** — anders triggert de bridge niet.
+5. Assignee = de Owner / Reviewer rechts op de asset-pagina.
+6. Submit. Verder loopt het identiek aan de portal-flow.
+
+> De portal-flow doet stap 3–5 voor je en voorkomt dat je de
+> "Request Access"-string vergeet (anders blijft de Task hangen).
 
 ---
 

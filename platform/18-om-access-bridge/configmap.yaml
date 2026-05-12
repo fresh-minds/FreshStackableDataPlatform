@@ -13,3 +13,7 @@ data:
   KEYCLOAK_CLIENT_ID: "om-access-bridge"
   REPLAY_WINDOW_SECONDS: "300"
   LOG_LEVEL: "INFO"
+  OM_BASE_URL: "http://openmetadata.uwv-meta.svc.cluster.local:8585"
+  # Browser-origin van het portal-formulier dat POST naar /api/request.
+  # In dev: same-origin via ingress-route, dus alleen platform.* whitelist.
+  CORS_ALLOWED_ORIGINS: "https://platform.uwv-platform.local:8443,https://platform.uwv-platform.local"

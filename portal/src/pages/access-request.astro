@@ -1,0 +1,272 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Button from '../components/primitives/Button.astro';
+import Eyebrow from '../components/primitives/Eyebrow.astro';
+
+// Self-service formulier dat een access-request Task aanmaakt in
+// OpenMetadata. POST gaat naar de bridge via /access-request-api/api/request
+// (same-origin via ingress-rewrite — zie platform/18-om-access-bridge/
+// ingress.yaml). Conventie zit in de bridge: hij plaatst "Request Access"
+// in de Task-message zodat de bestaande webhook-flow na approval een
+// grant uitvoert. Volledige doc: docs/access-request-guide.md.
+
+// Bekende doelbindingen — moet sporen met de purposes in
+// resource_purposes (opa-policies-src/data/uwv_role_mappings.json).
+const purposes = [
+  { id: 'klantcontact',        label: 'Klantcontact (UC-05)' },
+  { id: 'behandeling',         label: 'Behandeling van aanvraag (UC-04, UC-07)' },
+  { id: 'kwaliteitscontrole',  label: 'Kwaliteitscontrole / reconciliatie (FEZ)' },
+  { id: 'handhaving',          label: 'Handhaving (UC-06)' },
+  { id: 'planning',            label: 'Capaciteitsplanning (UC-08)' },
+  { id: 'onderzoek',           label: 'Onderzoek (UC-09, sandbox-zone)' },
+  { id: 'pipeline-development', label: 'Pipeline-development (data engineer, JIT)' },
+];
+
+// Voorbeeld-assets om de gebruiker op weg te helpen. Echte asset-lookup
+// gebeurt server-side in de bridge (GET /api/v1/tables/name/<fqn>).
+// OM registreert de Trino-service als 'uwv-trino' — dat is de eerste
+// FQN-segment.
+const sampleAssets = [
+  'uwv-trino.gold.uc11_klantreis.mart_uc11_klantreis_events',
+  'uwv-trino.gold.uwv.polisadm_ikv',
+  'uwv-trino.bronze.uwv.crm_contact',
+];
+---
+<Layout title="Toegang aanvragen">
+  <section class="ar-hero">
+    <Eyebrow rule>Toegang aanvragen</Eyebrow>
+    <h1 class="ar-hero-title">
+      Wil je toegang tot <em>een dataset</em>?
+    </h1>
+    <p class="ar-hero-body">
+      Vul dit formulier in. Wij maken een Task aan in OpenMetadata en
+      sturen 'm naar de owner. Bij approval krijg je automatisch de rol
+      <code>data_access:&lt;catalog&gt;.&lt;schema&gt;</code> en kun je de
+      data in Trino/Superset bevragen.
+    </p>
+    <p class="ar-hero-note">
+      Achter de schermen:
+      <a href="/docs/access-request-guide.html">access-request-guide</a> ·
+      <a href="https://github.com/fresh-minds/FreshStackableDataPlatform/blob/main/docs/adr/0008-self-service-data-access.md" target="_blank" rel="noopener noreferrer">ADR-0008 ↗</a>
+    </p>
+  </section>
+
+  <section class="ar-form-wrap">
+    <form id="ar-form" class="ar-form" autocomplete="off">
+      <div class="ar-row">
+        <label for="ar-asset">Welke dataset?</label>
+        <input
+          id="ar-asset"
+          name="asset_fqn"
+          type="text"
+          required
+          placeholder="uwv-trino.gold.uc11_klantreis.mart_uc11_klantreis_events"
+          list="ar-asset-suggestions"
+        />
+        <datalist id="ar-asset-suggestions">
+          {sampleAssets.map((a) => <option value={a}></option>)}
+        </datalist>
+        <small class="ar-hint">
+          Formaat: <code>uwv-trino.&lt;catalog&gt;.&lt;schema&gt;.&lt;table&gt;</code>.
+          Vind 'm in <a href="/go/openmetadata" target="_blank" rel="noopener noreferrer">OpenMetadata → Explore → Tables ↗</a>.
+        </small>
+      </div>
+
+      <div class="ar-row">
+        <label for="ar-user">Wie ben je?</label>
+        <input
+          id="ar-user"
+          name="requester"
+          type="text"
+          required
+          placeholder="bv. wia.beoordelaar"
+        />
+        <small class="ar-hint">
+          Je Keycloak-gebruikersnaam (eerste deel van je e-mail). In productie
+          komt dit uit je SSO-sessie; in dev type je 'm zelf.
+        </small>
+      </div>
+
+      <div class="ar-row">
+        <label for="ar-purpose">Voor welk doel?</label>
+        <select id="ar-purpose" name="purpose" required>
+          <option value="" disabled selected>— Kies een doelbinding —</option>
+          {purposes.map((p) => <option value={p.id}>{p.label}</option>)}
+        </select>
+        <small class="ar-hint">
+          Doelbinding is wettelijk verplicht (AVG art. 5 lid 1b). OPA-Rego
+          handhaaft dit op query-tijd; de owner kijkt of de doelbinding
+          passend is bij jouw rol.
+        </small>
+      </div>
+
+      <div class="ar-row">
+        <label for="ar-duration">Hoe lang heb je toegang nodig?</label>
+        <input
+          id="ar-duration"
+          name="duration"
+          type="text"
+          placeholder="bv. 2 maanden, t/m 2026-08-01"
+        />
+        <small class="ar-hint">Optioneel, maar wel netjes voor de owner.</small>
+      </div>
+
+      <div class="ar-row">
+        <label for="ar-motivation">Motivatie</label>
+        <textarea
+          id="ar-motivation"
+          name="motivation"
+          rows="5"
+          placeholder="Wat ga je met de data doen? Welk project? Waarom kun je niet uit met de aggregaten die je nu al mag zien?"
+        ></textarea>
+        <small class="ar-hint">Helpt de owner een snellere beslissing nemen.</small>
+      </div>
+
+      <div class="ar-actions">
+        <Button type="submit" id="ar-submit">Verzend aanvraag</Button>
+        <span id="ar-status" class="ar-status" hidden></span>
+      </div>
+    </form>
+
+    <div id="ar-result" class="ar-result" hidden></div>
+  </section>
+
+  <script>
+    const form = document.getElementById('ar-form') as HTMLFormElement;
+    const submitBtn = document.getElementById('ar-submit') as HTMLButtonElement;
+    const statusEl = document.getElementById('ar-status') as HTMLSpanElement;
+    const resultEl = document.getElementById('ar-result') as HTMLDivElement;
+
+    // Pre-fill asset via ?asset=<fqn>
+    const params = new URLSearchParams(window.location.search);
+    const assetParam = params.get('asset');
+    if (assetParam) {
+      (document.getElementById('ar-asset') as HTMLInputElement).value = assetParam;
+    }
+
+    function show(el: HTMLElement) { el.hidden = false; }
+    function hide(el: HTMLElement) { el.hidden = true; }
+    function setStatus(text: string, tone: 'info' | 'error' | 'ok') {
+      statusEl.textContent = text;
+      statusEl.className = `ar-status ar-status--${tone}`;
+      show(statusEl);
+    }
+
+    function escapeHtml(s: string): string {
+      return s.replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      } as Record<string, string>)[ch]!);
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hide(resultEl);
+      setStatus('Aanvraag verzenden…', 'info');
+      submitBtn.disabled = true;
+
+      const fd = new FormData(form);
+      const body = {
+        asset_fqn: String(fd.get('asset_fqn') || '').trim(),
+        requester: String(fd.get('requester') || '').trim(),
+        purpose:   String(fd.get('purpose') || '').trim(),
+        motivation: String(fd.get('motivation') || '').trim(),
+        duration:  String(fd.get('duration') || '').trim(),
+      };
+
+      try {
+        const r = await fetch('/access-request-api/api/request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const text = await r.text();
+        let json: any = null;
+        try { json = JSON.parse(text); } catch { /* niet-JSON error */ }
+
+        if (!r.ok) {
+          const detail = json?.detail ?? text ?? `HTTP ${r.status}`;
+          setStatus(`Verzonden mislukte (${r.status})`, 'error');
+          resultEl.innerHTML = `<div class="ar-error"><strong>Fout:</strong> ${escapeHtml(String(detail))}</div>`;
+          show(resultEl);
+          return;
+        }
+
+        setStatus('Verzonden ✓', 'ok');
+        const assignees = (json?.assignees ?? []).join(', ') || '(onbekend)';
+        resultEl.innerHTML = `
+          <div class="ar-ok">
+            <h2>Aanvraag verzonden</h2>
+            <p>${escapeHtml(json?.message ?? 'Task aangemaakt in OpenMetadata.')}</p>
+            <dl class="ar-meta">
+              <div><dt>Asset</dt><dd><code>${escapeHtml(body.asset_fqn)}</code></dd></div>
+              <div><dt>Assignees</dt><dd>${escapeHtml(assignees)}</dd></div>
+              <div><dt>Task ID</dt><dd><code>${escapeHtml(String(json?.task_id ?? ''))}</code></dd></div>
+            </dl>
+            <p class="ar-next">
+              Bekijk je aanvraag in <a href="/go/openmetadata" target="_blank" rel="noopener noreferrer">OpenMetadata ↗</a>
+              of vraag een tweede aan.
+            </p>
+          </div>`;
+        show(resultEl);
+        form.reset();
+      } catch (err: any) {
+        setStatus('Netwerk-fout', 'error');
+        resultEl.innerHTML = `<div class="ar-error"><strong>Netwerk-fout:</strong> ${escapeHtml(String(err?.message ?? err))}</div>`;
+        show(resultEl);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+
+  <style>
+    .ar-hero { margin: 2rem 0 1rem; }
+    .ar-hero-title { font-size: clamp(1.75rem, 3vw, 2.5rem); margin: 0.5rem 0; }
+    .ar-hero-body { max-width: 62ch; color: var(--ink-2); }
+    .ar-hero-note { font-size: 0.875rem; color: var(--ink-2); }
+    .ar-hero-note a { color: var(--ink-1); }
+
+    .ar-form-wrap { max-width: 64ch; margin: 1.5rem 0 4rem; }
+    .ar-form { display: grid; gap: 1.25rem; }
+    .ar-row { display: grid; gap: 0.35rem; }
+    .ar-row label { font-weight: 600; font-size: 0.95rem; }
+    .ar-row input,
+    .ar-row select,
+    .ar-row textarea {
+      padding: 0.55rem 0.75rem;
+      font: inherit;
+      border: 1px solid var(--line, #d4d4d8);
+      border-radius: 6px;
+      background: var(--bg, white);
+      color: var(--ink-1, #111);
+    }
+    .ar-row textarea { resize: vertical; }
+    .ar-row input:focus, .ar-row select:focus, .ar-row textarea:focus {
+      outline: 2px solid var(--accent, #2563eb);
+      outline-offset: 1px;
+    }
+    .ar-hint { font-size: 0.85rem; color: var(--ink-2, #555); }
+    .ar-hint code { font-size: 0.85em; padding: 0 0.3em; background: var(--bg-soft, #f4f4f5); border-radius: 3px; }
+
+    .ar-actions { display: flex; align-items: center; gap: 1rem; margin-top: 0.5rem; }
+    .ar-status { font-size: 0.9rem; }
+    .ar-status--info  { color: var(--ink-2); }
+    .ar-status--ok    { color: #166534; font-weight: 600; }
+    .ar-status--error { color: #991b1b; font-weight: 600; }
+
+    .ar-result { margin-top: 1.5rem; }
+    .ar-ok, .ar-error {
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      border-left: 4px solid;
+    }
+    .ar-ok    { border-color: #16a34a; background: #f0fdf4; }
+    .ar-error { border-color: #dc2626; background: #fef2f2; }
+    .ar-ok h2 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+    .ar-meta { display: grid; gap: 0.25rem; margin: 0.75rem 0; font-size: 0.9rem; }
+    .ar-meta div { display: grid; grid-template-columns: 8rem 1fr; gap: 0.5rem; }
+    .ar-meta dt { color: var(--ink-2); }
+    .ar-meta dd { margin: 0; }
+    .ar-next { font-size: 0.9rem; margin: 0.5rem 0 0; }
+  </style>
+</Layout>
