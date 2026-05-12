@@ -302,8 +302,88 @@ data:
         # een directe INSERT in Superset's Postgres-metadata.
         sync_columns_postgres()
 
+        # Break-glass: zorg dat platform.admin (Keycloak realm-rol
+        # `platform_admin`) ook in Superset de Admin-rol heeft. Werkt
+        # samen met AUTH_ROLES_MAPPING: dat synct bij login, deze fallback
+        # synct bij elke deploy/restart — zodat de gebruiker na een
+        # volledige cluster-shutdown direct weer admin-rechten heeft, ook
+        # als z'n Keycloak-token om wat voor reden dan ook de realm-rol
+        # niet correct overbracht.
+        ensure_admin_role_in_db([
+            "platform.admin",
+        ])
+
         log("Init voltooid.")
         return 0
+
+
+    def ensure_admin_role_in_db(usernames):
+        """Zet de Admin-rol op een lijst usernames in Superset's Postgres.
+
+        Idempotent en run-on-every-deploy: lost het probleem op dat een
+        Keycloak-user die via OIDC inlogt soms op `Public` blijft staan
+        ondanks AUTH_ROLES_MAPPING (kan gebeuren als de eerste login
+        plaatsvond vóór de mapping-config, of als realm_access ontbrak
+        in een specifieke token). Werkt ook als de user nog nooit heeft
+        ingelogd — dan slaat het script die over en is de volgende
+        OIDC-login alsnog de bron van waarheid.
+        """
+        import os, urllib.parse  # noqa: PLC0415
+        try:
+            import psycopg2  # noqa: PLC0415
+        except ImportError:
+            log("  psycopg2 niet beschikbaar → admin-bridge skip "
+                "(AUTH_ROLES_MAPPING blijft als enige sync-pad)")
+            return
+
+        uri = os.environ.get("SUPERSET_DB_URI", "")
+        if not uri:
+            log("  geen SUPERSET_DB_URI → admin-bridge skip")
+            return
+        u = urllib.parse.urlparse(uri.replace("+psycopg2", ""))
+        try:
+            conn = psycopg2.connect(host=u.hostname, port=u.port or 5432,
+                                    user=u.username, password=u.password,
+                                    dbname=u.path.lstrip("/"))
+        except Exception as exc:
+            log(f"  admin-bridge connect failed: {exc}")
+            return
+
+        try:
+            with conn, conn.cursor() as cur:
+                cur.execute("SELECT id FROM ab_role WHERE name = 'Admin'")
+                row = cur.fetchone()
+                if row is None:
+                    log("  Admin-rol bestaat nog niet in DB → skip")
+                    return
+                admin_role_id = row[0]
+                for username in usernames:
+                    cur.execute("SELECT id FROM ab_user WHERE username = %s",
+                                (username,))
+                    row = cur.fetchone()
+                    if row is None:
+                        log(f"  user '{username}' bestaat nog niet "
+                            f"(eerste OIDC-login nog niet gedaan) → skip")
+                        continue
+                    user_id = row[0]
+                    # Vervang alle bestaande rollen door alleen Admin.
+                    # ab_user_role.id is een PK zonder DEFAULT sequence —
+                    # in tegenstelling tot ab_user/ab_role waar Flask-
+                    # AppBuilder een AUTO_INCREMENT op postgres genereert.
+                    # We fetchen daarom expliciet een nieuwe id via een
+                    # subquery (MAX+1 is veilig hier omdat de init-Job
+                    # serialized loopt).
+                    cur.execute("DELETE FROM ab_user_role WHERE user_id = %s",
+                                (user_id,))
+                    cur.execute(
+                        "INSERT INTO ab_user_role (id, user_id, role_id) "
+                        "VALUES ("
+                        "  COALESCE((SELECT MAX(id) FROM ab_user_role), 0) + 1,"
+                        "  %s, %s)",
+                        (user_id, admin_role_id))
+                    log(f"  ✓ {username} → Admin")
+        finally:
+            conn.close()
 
 
     def sync_columns_postgres():

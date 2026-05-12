@@ -31,6 +31,15 @@ data:
                 return user
             return None
 
+        # Break-glass: hardcoded mapping voor de platform.admin user.
+        # Geldt ook als realm_access.roles ontbreekt in het JWT (kan
+        # gebeuren met bepaalde Keycloak client-scope configuraties).
+        # Tezamen met AUTH_ROLES_SYNC_AT_LOGIN=True (uit Stackable's
+        # syncRolesAt: Login) zorgt dit dat platform.admin bij ELKE login
+        # opnieuw Admin-rechten in Superset krijgt — robuust voor zowel
+        # eerste login als na cluster-shutdown/startup.
+        BREAK_GLASS_USERS = {"platform.admin"}
+
         # Map Keycloak realm_access.roles → role_keys zodat
         # AUTH_ROLES_MAPPING de mapping naar Superset-rollen kan doen
         # (bv. platform_admin → Admin). Keycloak stopt realm-roles in
@@ -47,8 +56,14 @@ data:
             except Exception:
                 claims = {}
             roles = (claims.get("realm_access") or {}).get("roles") or []
+            username = claims.get("preferred_username", "")
+            # Break-glass: forceer platform_admin rol voor de hardcoded
+            # username, ongeacht wat in het JWT staat. Beschermt tegen
+            # client-scope misconfiguraties die realm_access weglaten.
+            if username in self.BREAK_GLASS_USERS and "platform_admin" not in roles:
+                roles = roles + ["platform_admin"]
             return {
-                "username": claims.get("preferred_username", ""),
+                "username": username,
                 "email": claims.get("email", ""),
                 "first_name": claims.get("given_name", ""),
                 "last_name": claims.get("family_name", ""),
