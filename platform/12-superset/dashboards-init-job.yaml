@@ -54,10 +54,21 @@ data:
 
 
     def find_chart_id(s, slice_name: str) -> Optional[int]:
+        """Vind een chart op slice_name. Client-side filter omdat slice_names
+        special chars bevatten (em-dash, accenten, parens) die de rison-
+        inline-filter doen falen → server gaf 0 hits → script maakte een
+        duplicaat. Bug-historie: 4× elke UC-11 chart na 4 init-runs.
+
+        Client-side filter is robuust: één GET met page_size=100 dekt onze
+        ~50 charts. Voor productie-volumes >100 paginating uitbreiden.
+        """
         r = s.get(urljoin(SUPERSET_URL, "/api/v1/chart/"),
-                  params={"q": f"(filters:!((col:slice_name,opr:eq,value:{slice_name})))"})
-        if r.status_code == 200 and r.json().get("count", 0) > 0:
-            return r.json()["result"][0]["id"]
+                  params={"q": "(page:0,page_size:100)"})
+        if r.status_code != 200:
+            return None
+        for row in r.json().get("result", []):
+            if row.get("slice_name") == slice_name:
+                return row["id"]
         return None
 
 
