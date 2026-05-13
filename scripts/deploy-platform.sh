@@ -67,27 +67,40 @@ done
 # uwv-platform-issuer CA en faalt later TLS-verify naar Trino/Hive
 # (Superset → Trino, OM Java truststore, etc). Hier zijn alle pods al
 # een tijdje TLS aan het opvragen, dus secret-provisioner-tls-ca bestaat.
-log "uwv-ca-bundle uitbreiden met Stackable secret-operator CA"
+log "uwv-ca-bundle (her)opbouwen: Mozilla public roots + UWV-CA + Stackable secret-operator CA"
+# Public roots zijn nodig zodat Airflow/Superset/Trino (Python REQUESTS_CA_BUNDLE
+# en SSL_CERT_FILE wijzen naar /etc/uwv-ca/ca.crt) Let's Encrypt certs van
+# keycloak.eu-sovereigndataplatform.com kunnen verifiëren bij OIDC-token-
+# exchange. Zonder die roots → "unable to get local issuer certificate".
+# UWV-CA is voor cert-manager-issued Keycloak op .local + interne TLS.
+# Stackable-CA is voor in-cluster Trino/Hive/Kafka TLS (Superset → Trino).
 if kubectl -n stackable-operators get secret secret-provisioner-tls-ca >/dev/null 2>&1; then
-  TMPCA=$(mktemp); TMPCAS=$(mktemp)
-  kubectl -n cert-manager get secret uwv-platform-ca -o jsonpath='{.data.ca\.crt}' 2>/dev/null | base64 -d > "$TMPCA"
+  TMP=$(mktemp -d)
+  curl -fsSL --connect-timeout 10 https://curl.se/ca/cacert.pem -o "$TMP/public.crt"
+  kubectl -n cert-manager get secret uwv-platform-ca -o jsonpath='{.data.ca\.crt}' 2>/dev/null \
+    | base64 -d > "$TMP/uwv.crt"
   kubectl -n stackable-operators get secret secret-provisioner-tls-ca \
-    -o jsonpath='{.data.0\.ca\.crt}' | base64 -d > "$TMPCAS"
-  if [[ -s "$TMPCA" && -s "$TMPCAS" ]]; then
-    cat "$TMPCA" "$TMPCAS" > "$TMPCA.combined"
+    -o jsonpath='{.data.0\.ca\.crt}' | base64 -d > "$TMP/stackable.crt"
+  if [[ -s "$TMP/public.crt" && -s "$TMP/uwv.crt" && -s "$TMP/stackable.crt" ]]; then
+    cat "$TMP/public.crt" "$TMP/uwv.crt" "$TMP/stackable.crt" > "$TMP/combined.crt"
+    # delete+create (apply hits 256KB last-applied-configuration annotation
+    # limit — the combined bundle is ~220 KB).
+    kubectl -n uwv-platform delete configmap uwv-ca-bundle --ignore-not-found >/dev/null
     kubectl -n uwv-platform create configmap uwv-ca-bundle \
-      --from-file=ca.crt="$TMPCA.combined" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-    # OM mountt deze ook in uwv-meta. Roll-out van Superset/OM zorgt dat de
-    # Java truststore her-importContaineren de bijgewerkte bundle.
+      --from-file=ca.crt="$TMP/combined.crt" >/dev/null
+    kubectl -n uwv-meta delete configmap uwv-ca-bundle --ignore-not-found >/dev/null
     kubectl -n uwv-meta create configmap uwv-ca-bundle \
-      --from-file=ca.crt="$TMPCA.combined" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-    n=$(grep -c "BEGIN CERT" "$TMPCA.combined")
-    printf '\033[1;32mOK\033[0m uwv-ca-bundle bevat nu %s CA(s) (uwv-platform-issuer + Stackable secret-op)\n' "$n"
-    # Roll Superset + OM zodat ze de nieuwe truststore initContainer-en.
+      --from-file=ca.crt="$TMP/combined.crt" >/dev/null
+    n=$(grep -c "BEGIN CERT" "$TMP/combined.crt")
+    printf '\033[1;32mOK\033[0m uwv-ca-bundle bevat nu %s certs (Mozilla + UWV + Stackable)\n' "$n"
+    # Roll workloads die de bundle mounten, zodat hun proces de nieuwe file
+    # ziet (de mounted file via ConfigMap-volume update zelf automatisch,
+    # maar Python's `ssl` cached zijn context bij eerste open).
     kubectl -n uwv-platform delete pod -l app.kubernetes.io/name=superset --ignore-not-found >/dev/null 2>&1 || true
+    kubectl -n uwv-platform delete pod -l app.kubernetes.io/name=airflow --ignore-not-found >/dev/null 2>&1 || true
     kubectl -n uwv-meta delete pod -l app.kubernetes.io/name=openmetadata --ignore-not-found >/dev/null 2>&1 || true
   fi
-  rm -f "$TMPCA" "$TMPCAS" "$TMPCA.combined"
+  rm -rf "$TMP"
 else
   printf '\033[1;33m!!\033[0m secret-provisioner-tls-ca nog niet aanwezig (Stackable operators staan nog niet TLS uit te delen?). Re-run deploy-platform later.\n'
 fi

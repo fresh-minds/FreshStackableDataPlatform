@@ -77,13 +77,20 @@ else
 fi
 
 # ---------------------------------------------------------------------- 4
-log "4/10  uwv-ca-bundle ConfigMap (cert-manager CA mounten in pods)"
+log "4/10  uwv-ca-bundle ConfigMap (Mozilla public roots + UWV-CA)"
+# Mozilla public roots zijn essentieel voor cloud-mode: OIDC token-exchange
+# tegen keycloak.eu-sovereigndataplatform.com (LE cert) faalt anders met
+# 'unable to get local issuer certificate'. deploy-platform extendt de
+# bundle later met de Stackable secret-operator CA voor in-cluster TLS.
 kubectl create namespace uwv-platform --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-TMP_CA=$(mktemp)
-kubectl get secret uwv-platform-ca -n cert-manager -o jsonpath='{.data.ca\.crt}' | base64 -d > "$TMP_CA"
+TMP=$(mktemp -d)
+curl -fsSL --connect-timeout 10 https://curl.se/ca/cacert.pem -o "$TMP/public.crt"
+kubectl get secret uwv-platform-ca -n cert-manager -o jsonpath='{.data.ca\.crt}' | base64 -d > "$TMP/uwv.crt"
+cat "$TMP/public.crt" "$TMP/uwv.crt" > "$TMP/combined.crt"
+kubectl -n uwv-platform delete configmap uwv-ca-bundle --ignore-not-found >/dev/null
 kubectl -n uwv-platform create configmap uwv-ca-bundle \
-  --from-file=ca.crt="$TMP_CA" --dry-run=client -o yaml | kubectl apply -f -
-rm -f "$TMP_CA"
+  --from-file=ca.crt="$TMP/combined.crt" >/dev/null
+rm -rf "$TMP"
 ok "uwv-ca-bundle gemount"
 
 # ---------------------------------------------------------------------- 5
