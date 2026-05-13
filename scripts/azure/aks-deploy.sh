@@ -24,6 +24,29 @@ log "kubectl context: $ctx"
 
 bash "$ROOT/scripts/deploy-platform.sh"
 
+# ---- AKS-only: ensure public-domain DNS records exist ----
+# Every *.eu-sovereigndataplatform.com subdomain needs a CNAME → apex (which
+# is an A record at the ingress static IP, set up by terraform/aks-up).
+# Idempotent — `az network dns record-set cname set-record` is upsert.
+# Skipped if `az` cli or the DNS zone resource group isn't available
+# (e.g. running outside the platform Azure tenant).
+DNS_RG="${PUBLIC_DNS_RG:-ai-trial-rg}"
+DNS_ZONE="${PUBLIC_DNS_ZONE:-eu-sovereigndataplatform.com}"
+if command -v az >/dev/null 2>&1 && az network dns zone show -g "$DNS_RG" -n "$DNS_ZONE" >/dev/null 2>&1; then
+  log "AKS-post: ensure CNAMEs for all 13 public subdomains in $DNS_RG/$DNS_ZONE"
+  for sub in platform www keycloak airflow grafana prometheus minio minio-api \
+             superset dbt-docs openmetadata opensearch nifi trino; do
+    az network dns record-set cname set-record \
+      -g "$DNS_RG" -z "$DNS_ZONE" \
+      --record-set-name "$sub" \
+      --cname "$DNS_ZONE" \
+      --ttl 3600 \
+      --output none 2>/dev/null || warn "  could not upsert CNAME $sub.$DNS_ZONE"
+  done
+else
+  warn "skip DNS CNAME upsert (az missing or $DNS_RG/$DNS_ZONE not accessible)"
+fi
+
 # ---- AKS-only: public-domain ingresses ----
 # Adds Cert + Ingress pairs for every *.eu-sovereigndataplatform.com
 # subdomain (platform, keycloak, airflow, grafana, prometheus, minio,
