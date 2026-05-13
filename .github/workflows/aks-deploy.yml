@@ -56,6 +56,10 @@ on:
         description: 'Run `make aks-smoke` (tests/smoke/*.sh)'
         type: boolean
         default: true
+      smoke_required:
+        description: 'Maak smoke-failures fataal voor de pipeline (uit = warning-only)'
+        type: boolean
+        default: true
 
 # Eén AKS-deploy tegelijk. Niet cancellen — een half afgebroken apply
 # kan het cluster in een rare staat achterlaten. Queue liever.
@@ -65,6 +69,8 @@ concurrency:
 
 permissions:
   contents: read
+  packages: read   # nodig om images van ghcr.io te pullen via GITHUB_TOKEN
+                   # (tests/smoke/04-dbt-parse.sh trekt ghcr.io/dbt-labs/dbt-trino)
   # id-token: write is hier niet nodig (we authenticeren met SP-secret,
   # niet met OIDC-federated-credentials). Zet 'm alleen aan als we later
   # naar OIDC migreren.
@@ -98,6 +104,28 @@ jobs:
           cache: 'npm'
           cache-dependency-path: portal/package-lock.json
 
+      - name: Install OPA CLI (voor tests/smoke/11-uc11-klantreis.sh)
+        # 11-uc11-klantreis.sh draait `opa test` op opa-policies-src/. De
+        # ubuntu-runner heeft 'm niet preinstalled. Static binary uit de
+        # officiële release; geen version-pin (smoke is geen reproducibility-
+        # gevoelig — pin pas als we tests aan OPA-versie gaan koppelen).
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/opa \
+            https://github.com/open-policy-agent/opa/releases/latest/download/opa_linux_amd64_static
+          sudo chmod +x /usr/local/bin/opa
+          opa version
+
+      - name: Login to ghcr.io (voor tests/smoke/04-dbt-parse.sh)
+        # 04-dbt-parse.sh doet `docker pull ghcr.io/dbt-labs/dbt-trino:1.9.0`.
+        # GitHub-hosted runners hebben geen ghcr-auth out-of-the-box → 'denied'
+        # op de manifest pull. GITHUB_TOKEN met `packages: read` permission
+        # is genoeg voor anonymous-readable public packages.
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Azure login (service principal)
         uses: azure/login@v2
         with:
@@ -122,8 +150,23 @@ jobs:
         run: make aks-portal-publish
 
       - name: Smoke tests (make aks-smoke)
+        # smoke_required toggle:
+        #   true  → faalt de pipeline op rode smoke (default, strict mode)
+        #   false → smoke-failures worden ::warning:: annotaties, pipeline blijft groen.
+        # Reden voor de toggle: het AKS-cluster is geen 100% gezonde state
+        # (opensearch-dashboards, dbt-manifest-render, OPA cold-start), dus
+        # voor een 'gewone deploy' wil je soms door, voor een release-deploy
+        # wil je hard falen. Default = strict.
         if: ${{ inputs.run_smoke }}
-        run: make aks-smoke
+        run: |
+          if make aks-smoke; then
+            echo "Smoke tests groen."
+          elif [[ "${{ inputs.smoke_required }}" == "true" ]]; then
+            echo "::error title=Smoke tests faalden::Een of meer tests/smoke/*.sh exited non-zero. Zie log + dump hieronder."
+            exit 1
+          else
+            echo "::warning title=Smoke tests faalden (niet-fataal)::smoke_required=false → pipeline blijft groen. Inspect de log voor details."
+          fi
 
       - name: Dump pod-status bij failure
         if: failure()
