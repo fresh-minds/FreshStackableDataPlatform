@@ -62,12 +62,23 @@ openmetadata:
     authentication:
       clientType: confidential
       provider: custom-oidc
+      # publicKeys + authority + callbackUrl gebruiken het PUBLIEKE
+      # eu-sovereigndataplatform.com domein zodat een browser sessie op
+      # https://openmetadata.eu-sovereigndataplatform.com correct via OIDC
+      # naar keycloak.eu-sovereigndataplatform.com gestuurd kan worden
+      # (en de Keycloak `openmetadata` client registreert die callback in
+      # zijn redirectUris allowlist — gebeurt in aks-deploy.sh's
+      # `patch_uris openmetadata https://openmetadata.eu-...com/*`).
+      # Voor in-cluster JWT-verify is /etc/uwv-ca/ca.crt nodig: de bundle
+      # bevat na bootstrap.sh / deploy-platform.sh de Mozilla public-roots
+      # zodat OM zonder netwerk-roundtrip de LE-cert van Keycloak.com
+      # accepteert.
       publicKeys:
-        - http://openmetadata.uwv-meta.svc.cluster.local:8585/api/v1/system/config/jwks
-        - https://keycloak.uwv-platform.local:8443/realms/uwv/protocol/openid-connect/certs
-      authority: https://keycloak.uwv-platform.local:8443/realms/uwv
+        - https://openmetadata.eu-sovereigndataplatform.com/api/v1/system/config/jwks
+        - https://keycloak.eu-sovereigndataplatform.com/realms/uwv/protocol/openid-connect/certs
+      authority: https://keycloak.eu-sovereigndataplatform.com/realms/uwv
       clientId: openmetadata
-      callbackUrl: https://openmetadata.uwv-platform.local:8443/callback
+      callbackUrl: https://openmetadata.eu-sovereigndataplatform.com/callback
       responseType: code
       jwtPrincipalClaims:
         - preferred_username
@@ -90,14 +101,14 @@ openmetadata:
         # auth-redirect (browser) én token-exchange (server) dezelfde
         # issuer-claim respecteren. uwv-ca-bundle moet dus in de pod's
         # Java truststore zitten (zie extraInitContainers verderop).
-        discoveryUri: https://keycloak.uwv-platform.local:8443/realms/uwv/.well-known/openid-configuration
+        discoveryUri: https://keycloak.eu-sovereigndataplatform.com/realms/uwv/.well-known/openid-configuration
         scope: "openid email profile"
         useNonce: true
         preferredJwsAlgorithm: RS256
         responseType: code
         disablePkce: false
-        callbackUrl: https://openmetadata.uwv-platform.local:8443/callback
-        serverUrl: https://openmetadata.uwv-platform.local:8443
+        callbackUrl: https://openmetadata.eu-sovereigndataplatform.com/callback
+        serverUrl: https://openmetadata.eu-sovereigndataplatform.com
         clientAuthenticationMethod: client_secret_post
         tenant: ""
         maxClockSkew: ""

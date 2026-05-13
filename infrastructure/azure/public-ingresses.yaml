@@ -494,6 +494,11 @@ metadata:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # OM 1.5 Dropwizard returns HTTP 404 + SPA shell for non-/ paths. The
+    # SPA still mounts and React Router picks up the path — so /signin,
+    # /callback, /explore all work in the browser even though the status
+    # is 404. Tried error_page rewriting here but it interferes with real
+    # /api/* 404s. Leave the 404 status; the SPA handles it correctly.
 spec:
   ingressClassName: nginx
   tls:

@@ -366,6 +366,22 @@ helm upgrade --install openmetadata open-metadata/openmetadata \
   $(chart_override_args openmetadata) \
   --wait --timeout 15m || warn "OpenMetadata install timing out — continue (init-Job kan later draaien)"
 
+# Sommige OM-chart versies negeren `openmetadata.config.authentication.*`
+# vanuit values.yaml (template-pad heeft kleine variaties tussen 1.5.x
+# patches). Defensieve helm upgrade --set forceert de publieke URLs zodat
+# de Secret die OM gebruikt voor AUTHENTICATION_AUTHORITY / _CALLBACK_URL
+# / _PUBLIC_KEYS zeker de .eu-sovereigndataplatform.com waarden bevat.
+log "Defensieve OM helm-upgrade — pin auth URLs op publiek domein"
+helm upgrade --install openmetadata open-metadata/openmetadata \
+  --namespace uwv-meta \
+  --version "${OPENMETADATA_VERSION}" \
+  --reuse-values \
+  --set openmetadata.config.authentication.authority="https://keycloak.eu-sovereigndataplatform.com/realms/uwv" \
+  --set openmetadata.config.authentication.callbackUrl="https://openmetadata.eu-sovereigndataplatform.com/callback" \
+  --set "openmetadata.config.authentication.publicKeys[0]=https://openmetadata.eu-sovereigndataplatform.com/api/v1/system/config/jwks" \
+  --set "openmetadata.config.authentication.publicKeys[1]=https://keycloak.eu-sovereigndataplatform.com/realms/uwv/protocol/openid-connect/certs" \
+  --wait --timeout 5m >/dev/null 2>&1 || warn "OM auth-URL pin faalde (helm upgrade) — verifieer manually"
+
 # Chart-bug workaround: OIDC_CUSTOM_PARAMS wordt door templates/secrets.yaml
 # als `{{ .customParams | quote | b64enc }}` gerenderd. De `quote`-filter
 # wraps `{}` in dubbele quotes → in openmetadata.yaml staat dan
