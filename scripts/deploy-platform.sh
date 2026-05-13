@@ -117,6 +117,14 @@ else
   printf '\033[1;32mOK\033[0m CoreDNS routet *.uwv-platform.local → %s (keycloak-external Service)\n' "$KC_SVC_IP"
 fi
 
+# MinIO laadt OIDC-config alleen bij startup. Als de pod bootte vóór dat
+# keycloak.uwv-platform.local resolveerbaar was (CoreDNS-override boven),
+# faalt de eerste OpenID-discovery met "connection refused" en MinIO valt
+# terug op `loginStrategy: form` — geen Keycloak-knop op de console of
+# /go/minio/ portal-redirect. Restart pakt OIDC opnieuw op.
+log "MinIO restarten zodat OIDC-discovery via Keycloak slaagt"
+kubectl -n uwv-platform delete pod -l app=minio --ignore-not-found >/dev/null 2>&1 || true
+
 # Live Keycloak runtime patches die niet uit de realm-import komen.
 # Realm-import strategy=IGNORE_EXISTING raakt bestaande users niet aan; en
 # attributen op users zoals `policy=consoleAdmin` (vereist door MinIO's
