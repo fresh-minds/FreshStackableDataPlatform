@@ -100,10 +100,12 @@ const defaultSource = sources[0];
     </div>
     <details class="csv-alt">
       <summary>Liever via CLI (<code>mc</code>)?</summary>
-      <pre class="csv-pre"><code id="mc-cmd">mc cp ./mijn-meting.csv uwv-platform/{defaultSource.bucket}/{defaultSource.prefix}/$(date -u +%Y%m%dT%H%M%S).csv</code></pre>
+      <p class="csv-step-note">Stel éénmalig de alias in:</p>
+      <pre class="csv-pre"><code>mc alias set minio-uwv https://minio.uwv-platform.local:8443 uwvadmin 'uwv-dev-only-CHANGE-ME-2026' --insecure</code></pre>
+      <p class="csv-step-note">Daarna uploaden:</p>
+      <pre class="csv-pre"><code id="mc-cmd">mc cp ./mijn-meting.csv minio-uwv/{defaultSource.bucket}/{defaultSource.prefix}/$(date -u +%Y%m%dT%H%M%S).csv --insecure</code></pre>
       <p class="csv-step-note">
-        Vereist een geconfigureerde <code>uwv-platform</code> alias in
-        <code>~/.mc/config.json</code>. Zie <a href="/UWV_Platform_Handboek_per_rol.pdf" target="_blank" rel="noopener noreferrer">handboek</a>.
+        De DAG wordt automatisch getriggerd binnen 2 minuten — handmatige stap 2 is niet meer nodig.
       </p>
     </details>
   </section>
@@ -188,7 +190,7 @@ const defaultSource = sources[0];
       if (dag2) dag2.textContent = s.dagId;
       if (path1) path1.textContent = `${s.bucket}/${s.prefix}/`;
       if (conf) conf.textContent = JSON.stringify({ object_key: `${s.prefix}/<bestandsnaam>.csv` }, null, 2);
-      if (mc)   mc.textContent   = `mc cp ./mijn-meting.csv uwv-platform/${s.bucket}/${s.prefix}/$(date -u +%Y%m%dT%H%M%S).csv`;
+      if (mc)   mc.textContent   = `mc cp ./mijn-meting.csv minio-uwv/${s.bucket}/${s.prefix}/$(date -u +%Y%m%dT%H%M%S).csv --insecure`;
       if (oM)   oM.href = `https://minio-console.uwv-platform.local:8443/browser/${s.bucket}/${encodeURIComponent(s.prefix + '/')}`;
       if (oA)   oA.href = `https://airflow.uwv-platform.local:8443/dags/${s.dagId}/`;
     }

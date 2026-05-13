@@ -69,6 +69,28 @@ const payload = {
     <div class="shortcut-grid" id="shortcut-grid"></div>
   </section>
 
+  <section class="me-section" id="role-upload" hidden>
+    <header class="me-section-head">
+      <Eyebrow>Data aanleveren</Eyebrow>
+      <h2>Handmatige CSV-upload</h2>
+      <p>Upload een CSV-bestand naar de bronze-laag en start de bronze → silver → gold pipeline.</p>
+    </header>
+    <a href="/csv-upload/" class="upload-cta-card">
+      <span class="upload-cta-icon" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </span>
+      <span class="upload-cta-body">
+        <strong class="upload-cta-title">CSV uploaden</strong>
+        <span class="upload-cta-hint">Stap-voor-stap: MinIO → Airflow trigger → Trino</span>
+      </span>
+      <span class="upload-cta-arrow" aria-hidden="true">→</span>
+    </a>
+  </section>
+
   <section class="me-section" id="role-arch" hidden>
     <header class="me-section-head">
       <Eyebrow>Diagram</Eyebrow>
@@ -186,7 +208,7 @@ const payload = {
       const grid = document.getElementById('picker-grid')!;
       grid.innerHTML = pickerHtml();
       document.getElementById('role-picker')!.hidden = false;
-      ['role-view','role-caps','role-shortcuts-section','role-arch','role-tools','role-access-request','role-help'].forEach((id) => {
+      ['role-view','role-caps','role-shortcuts-section','role-upload','role-arch','role-tools','role-access-request','role-help'].forEach((id) => {
         document.getElementById(id)!.hidden = true;
       });
     }
@@ -250,7 +272,7 @@ const payload = {
         return;
       }
 
-      ['role-view','role-caps','role-shortcuts-section','role-arch','role-tools','role-access-request','role-help'].forEach((id) => {
+      ['role-view','role-caps','role-shortcuts-section','role-upload','role-arch','role-tools','role-access-request','role-help'].forEach((id) => {
         document.getElementById(id)!.hidden = false;
       });
       document.getElementById('role-picker')!.hidden = true;
@@ -528,6 +550,58 @@ const payload = {
     .help-list a { color: var(--ink-1); }
     .help-list a:hover { color: var(--ink-1); text-decoration: underline; }
     .help-cta { margin-top: var(--space-4); }
+
+    /* ─── Upload CTA card ─── */
+    .upload-cta-card {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      padding: var(--space-5);
+      background: var(--bg-elev);
+      border: 1.5px dashed color-mix(in srgb, var(--accent) 60%, transparent);
+      border-radius: var(--radius-md);
+      color: var(--ink-1);
+      max-width: 560px;
+      transition: border-color .15s, transform .15s, box-shadow .15s;
+    }
+    .upload-cta-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+      box-shadow: var(--card-shadow-hover);
+      text-decoration: none;
+    }
+    .upload-cta-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-sm);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+    .upload-cta-body {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+      flex: 1;
+      min-width: 0;
+    }
+    .upload-cta-title {
+      font-size: var(--text-body);
+      font-weight: var(--weight-medium);
+      color: var(--ink-1);
+    }
+    .upload-cta-hint {
+      font-size: var(--text-meta);
+      color: var(--ink-3);
+    }
+    .upload-cta-arrow {
+      font-size: 20px;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
 
     /* ─── Other-tools details ─── */
     .other-tools { margin-top: var(--space-7); }

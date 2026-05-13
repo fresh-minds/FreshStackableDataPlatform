@@ -3,7 +3,6 @@ import Layout from '../layouts/Layout.astro';
 import Button from '../components/primitives/Button.astro';
 import Eyebrow from '../components/primitives/Eyebrow.astro';
 import StatusDot from '../components/primitives/StatusDot.astro';
-import Tag from '../components/primitives/Tag.astro';
 import { roles } from '../data/roles';
 import { components } from '../data/components';
 import { DOCS_URL } from '../data/external-links';
@@ -99,29 +98,6 @@ const statusHighlights = statusHighlightIds
     </div>
   </section>
 
-  <!-- ═══════════ Roles grid ═══════════ -->
-  <section class="section">
-    <header class="section-head">
-      <Eyebrow>02 · Rollen</Eyebrow>
-      <h2>Rollen op dit platform</h2>
-      <p class="section-lead">
-        Klik op een rol om een demo van „Mijn werkplek" te openen — de
-        echte rol komt na inlog uit het Keycloak-token.
-      </p>
-    </header>
-    <div class="roles-grid">
-      {roles.map((r) => (
-        <a class="role-card" href={`/me/?role=${r.id}`}>
-          <Eyebrow>{r.id}</Eyebrow>
-          <strong class="role-card-title">{r.displayName}</strong>
-          <span class="role-card-domain">{r.domain}</span>
-          <Tag variant="mono" tone={r.category === 'tech' ? 'accent' : 'neutral'}>
-            {r.category === 'tech' ? 'platform' : 'eindgebruiker'}
-          </Tag>
-        </a>
-      ))}
-    </div>
-  </section>
 </Layout>
 
 <script>
@@ -296,33 +272,6 @@ const statusHighlights = statusHighlightIds
     color: var(--ink-3);
     font-weight: var(--weight-regular);
   }
-
-  /* ─── Roles grid ─── */
-  .roles-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: var(--space-3);
-  }
-  .role-card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-4);
-    background: var(--bg-elev);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    color: var(--ink-1);
-    transition: border-color .15s, transform .15s, box-shadow .15s;
-    align-items: flex-start;
-  }
-  .role-card:hover {
-    border-color: var(--ink-4);
-    transform: translateY(-1px);
-    box-shadow: var(--card-shadow-hover);
-    text-decoration: none;
-  }
-  .role-card-title { font-size: var(--text-meta); font-weight: var(--weight-medium); }
-  .role-card-domain { color: var(--ink-3); font-size: var(--text-meta); flex: 1; }
 
   /* ─── Responsive ─── */
   @media (max-width: 960px) {
