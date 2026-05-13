@@ -55,7 +55,15 @@ const isActive = (href: string): boolean => {
         if (host !== 'eu-sovereigndataplatform.com' &&
             !host.endsWith('.eu-sovereigndataplatform.com')) return;
 
+        // Subdomains that DON'T have a public AKS counterpart. Their link
+        // keeps pointing at the k3d-local hostname even when the portal
+        // is served from the .com host — useful for components that
+        // intentionally only run on the dev cluster.
+        var KEEP_LOCAL = ['multica'];
+
         function rewriteHref(href) {
+          var m = href.match(/:\/\/([a-z0-9-]+)\.uwv-platform\.local(:8443)?/);
+          if (m && KEEP_LOCAL.indexOf(m[1]) !== -1) return href;
           return href
             .replace(/:\/\/([a-z0-9-]+)\.uwv-platform\.local(:8443)?/g,
                      '://$1.eu-sovereigndataplatform.com');
