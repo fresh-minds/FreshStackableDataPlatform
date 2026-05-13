@@ -228,6 +228,19 @@ kubectl wait --for=condition=Ready pod -n stackable-operators \
   -l stackable.tech/vendor=Stackable \
   --timeout=5m || warn "Niet alle Stackable operator-pods zijn (nog) Ready — check 'kubectl get pods -A'"
 
+# Stackable's "release 26.3" installs every operator (~18 deployments). On a
+# single-node D8s_v6 with AKS default max-pods=60 that pushes us against the
+# pod limit, blocking OpenSearch Dashboards from scheduling. We don't use
+# Druid / HBase / HDFS / the Stackable opensearch operator (we install
+# OpenSearch via the official Helm chart), so uninstall those 4 to free 4
+# pod slots. Idempotent — safe to re-run.
+log "Removing unused Stackable operators (druid, hbase, hdfs, opensearch) to stay under pod limit"
+for op in druid-operator hbase-operator hdfs-operator opensearch-operator; do
+  if helm -n stackable-operators status "$op" >/dev/null 2>&1; then
+    helm -n stackable-operators uninstall "$op" >/dev/null 2>&1 || warn "Kon $op niet verwijderen"
+  fi
+done
+
 # uwv-ca-bundle uitbreiden met de Stackable secret-operator self-signed CA.
 # Stackable Trino/Hive/Kafka/etc. krijgen pod-certs uit deze CA voor in-cluster
 # TLS (tls-internal SecretClass). Zonder deze CA in de bundle weigeren clients

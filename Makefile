@@ -249,6 +249,18 @@ aks-stop: ## Stop AKS cluster (deallocate nodes — cost-saving, reversible)
 aks-start: ## Resume a stopped AKS cluster
 	bash scripts/azure/aks-start.sh
 
+.PHONY: aks-hibernate
+aks-hibernate: ## Stop + snapshot all PVC disks + delete disks (cuts stopped-state cost ~50%)
+	bash scripts/azure/aks-hibernate.sh down
+
+.PHONY: aks-wake
+aks-wake: ## Restore PVC disks from hibernate snapshots + start cluster
+	bash scripts/azure/aks-hibernate.sh up
+
+.PHONY: aks-cost
+aks-cost: ## Show currently provisioned Azure resources + monthly cost estimate
+	bash scripts/azure/aks-hibernate.sh status
+
 .PHONY: aks-down
 aks-down: ## terraform destroy — full teardown, zero ongoing cost
 	bash scripts/azure/aks-down.sh

@@ -329,6 +329,16 @@ metadata:
   namespace: uwv-platform
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
+    # MinIO console listens on HTTPS:9001 with its own self-signed cert.
+    # nginx must speak HTTPS to the backend (not HTTP) and not verify the
+    # upstream cert — without this we got HTTP 400 from MinIO ("plain HTTP
+    # request was sent to HTTPS port").
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
+    # Console streams large responses (logs, browser file list) — disable
+    # buffering so they don't time out on the nginx side.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
 spec:
   ingressClassName: nginx
   tls:
@@ -357,6 +367,13 @@ metadata:
   namespace: uwv-platform
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
+    # MinIO S3 API listens on HTTPS:9000. Same HTTPS-backend treatment as the
+    # console ingress above. Also raise proxy-body-size so large object PUTs
+    # aren't rejected by the default 1MB ceiling.
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
 spec:
   ingressClassName: nginx
   tls:
@@ -451,3 +468,134 @@ spec:
   rules:
     - host: dbt-docs.eu-sovereigndataplatform.com
       http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: platform-landing, port: { number: 80 } } } }] }
+---
+# --- OpenMetadata (data catalog) ---
+# Plain HTTP backend on :8585. OpenMetadata has its own login screen that
+# integrates with Keycloak via OIDC client `openmetadata` (server-side
+# token exchange against keycloak.eu-sovereigndataplatform.com — Java
+# truststore is loaded from /etc/uwv-ca/ca.crt which now contains the
+# Mozilla public-root bundle, so LE certs validate).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: openmetadata-public-tls
+  namespace: uwv-meta
+spec:
+  secretName: openmetadata-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: openmetadata.eu-sovereigndataplatform.com
+  dnsNames: [openmetadata.eu-sovereigndataplatform.com]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openmetadata-public
+  namespace: uwv-meta
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [openmetadata.eu-sovereigndataplatform.com]
+      secretName: openmetadata-public-tls
+  rules:
+    - host: openmetadata.eu-sovereigndataplatform.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: openmetadata, port: { number: 8585 } } } }] }
+---
+# --- OpenSearch Dashboards (Kibana-like UI for log/index browsing) ---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: opensearch-public-tls
+  namespace: uwv-meta
+spec:
+  secretName: opensearch-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: opensearch.eu-sovereigndataplatform.com
+  dnsNames: [opensearch.eu-sovereigndataplatform.com]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: opensearch-public
+  namespace: uwv-meta
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [opensearch.eu-sovereigndataplatform.com]
+      secretName: opensearch-public-tls
+  rules:
+    - host: opensearch.eu-sovereigndataplatform.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: opensearch-dashboards-uwv, port: { number: 5601 } } } }] }
+---
+# --- NiFi (data flow) ---
+# Stackable NiFi listens on HTTPS:8443 with a Stackable-issued cert.
+# nginx must speak HTTPS upstream and skip verify (Stackable signs with its
+# own self-signed CA which is *in* uwv-ca-bundle but easier to skip verify
+# on the ingress hop).
+# NiFi has strict CSRF/host-header checks — set proxy_set_header X-Forwarded-Proto
+# via nginx defaults (already on) and proxy buffer sizes for the UI.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: nifi-public-tls
+  namespace: uwv-platform
+spec:
+  secretName: nifi-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: nifi.eu-sovereigndataplatform.com
+  dnsNames: [nifi.eu-sovereigndataplatform.com]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nifi-public
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [nifi.eu-sovereigndataplatform.com]
+      secretName: nifi-public-tls
+  rules:
+    - host: nifi.eu-sovereigndataplatform.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: nifi, port: { number: 8443 } } } }] }
+---
+# --- Trino (query engine UI / coordinator) ---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: trino-public-tls
+  namespace: uwv-platform
+spec:
+  secretName: trino-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: trino.eu-sovereigndataplatform.com
+  dnsNames: [trino.eu-sovereigndataplatform.com]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: trino-public
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [trino.eu-sovereigndataplatform.com]
+      secretName: trino-public-tls
+  rules:
+    - host: trino.eu-sovereigndataplatform.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: trino, port: { number: 8443 } } } }] }

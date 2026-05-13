@@ -24,6 +24,16 @@ log "kubectl context: $ctx"
 
 bash "$ROOT/scripts/deploy-platform.sh"
 
+# ---- AKS-only: public-domain ingresses ----
+# Adds Cert + Ingress pairs for every *.eu-sovereigndataplatform.com
+# subdomain (platform, keycloak, airflow, grafana, prometheus, minio,
+# minio-api, superset, dbt-docs, openmetadata, opensearch, nifi, trino).
+# cert-manager solves DNS-01 via the azuredns ClusterIssuer.
+if [[ -f "$ROOT/infrastructure/azure/public-ingresses.yaml" ]]; then
+  log "AKS-post: applying public-ingresses.yaml"
+  kubectl apply -f "$ROOT/infrastructure/azure/public-ingresses.yaml" >/dev/null
+fi
+
 # ---- AKS-only post-deploy: CoreDNS hosts-override ----
 # AKS CoreDNS gebruikt een 'coredns-custom' ConfigMap met *.override files
 # die geïmporteerd worden via `import custom/*.override` in de hoofd-Corefile.
@@ -171,8 +181,18 @@ patch_uris openmetadata 'https://openmetadata.uwv-platform.cloud/*' 'https://ope
 patch_uris nifi 'https://nifi.uwv-platform.cloud/*' 'https://nifi.uwv-platform.cloud:8443/*'
 patch_uris minio 'https://minio-console.uwv-platform.cloud:8443/oauth_callback' 'https://minio-console.uwv-platform.cloud:8443/*'
 patch_uris portal 'https://platform.uwv-platform.cloud:8443/oauth2/callback' 'https://platform.uwv-platform.cloud/oauth2/callback'
-" >/dev/null 2>&1 || warn "  cloud-redirect-URI patch failed (browse Keycloak admin to fix manually)"
-    log "  .cloud redirect URIs added (idempotent)"
+
+# Also register the eu-sovereigndataplatform.com redirects (current public
+# DNS — the .cloud variants above are kept for backward compat).
+patch_uris superset 'https://superset.eu-sovereigndataplatform.com/*'
+patch_uris airflow 'https://airflow.eu-sovereigndataplatform.com/*' 'https://airflow.eu-sovereigndataplatform.com/oauth-authorized/keycloak'
+patch_uris openmetadata 'https://openmetadata.eu-sovereigndataplatform.com/*' 'https://openmetadata.eu-sovereigndataplatform.com/callback'
+patch_uris nifi 'https://nifi.eu-sovereigndataplatform.com/*'
+patch_uris trino 'https://trino.eu-sovereigndataplatform.com/*' 'https://trino.eu-sovereigndataplatform.com/oauth2/callback'
+patch_uris minio 'https://minio.eu-sovereigndataplatform.com/oauth_callback' 'https://minio.eu-sovereigndataplatform.com/*'
+patch_uris portal 'https://platform.eu-sovereigndataplatform.com/oauth2/callback' 'https://eu-sovereigndataplatform.com/oauth2/callback'
+" >/dev/null 2>&1 || warn "  redirect-URI patch failed (browse Keycloak admin to fix manually)"
+    log "  .cloud + .eu-sovereigndataplatform.com redirect URIs added (idempotent)"
   fi
 fi
 
