@@ -139,7 +139,9 @@ done
 # found against session' als refresh-tokens uit staan).
 OM_CID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/clients?clientId=openmetadata\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
 if [ -n \"\$OM_CID\" ]; then
-  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/clients/\$OM_CID\" -d '{\"attributes\":{\"access.token.lifespan\":\"86400\",\"client.session.max.lifespan\":\"86400\",\"client.session.idle.timeout\":\"28800\",\"use.refresh.tokens\":\"true\"}}' -o /dev/null
+  # Idempotent: stuur volledige client-shape — alleen 'attributes' meegeven
+  # reset andere fields (redirectUris, publicClient, flows) naar defaults.
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/clients/\$OM_CID\" -d '{\"publicClient\":false,\"standardFlowEnabled\":true,\"implicitFlowEnabled\":false,\"redirectUris\":[\"https://openmetadata.uwv-platform.local:8443/*\",\"https://openmetadata.uwv-platform.local/*\",\"http://openmetadata.uwv-platform.local:8443/*\",\"http://openmetadata.uwv-platform.local/*\"],\"attributes\":{\"access.token.lifespan\":\"86400\",\"client.session.max.lifespan\":\"86400\",\"client.session.idle.timeout\":\"28800\",\"use.refresh.tokens\":\"true\",\"post.logout.redirect.uris\":\"+\"}}' -o /dev/null
 fi
 
 # 3. Unmanaged attribute policy enablen — Keycloak 24+ heeft Declarative

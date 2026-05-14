@@ -208,7 +208,12 @@ done
 # patch dekt clusters waar realm-import al was uitgevoerd.)
 OM_CID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/clients?clientId=openmetadata\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
 if [ -n \"\$OM_CID\" ]; then
-  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/clients/\$OM_CID\" -d '{\"attributes\":{\"access.token.lifespan\":\"86400\",\"client.session.max.lifespan\":\"86400\",\"client.session.idle.timeout\":\"28800\",\"use.refresh.tokens\":\"true\"}}' -o /dev/null
+  # Stuur ook redirectUris + flow-flags mee: eerdere defensieve PUTs in dit
+  # script verstuurden alleen 'attributes' en daardoor reset Keycloak alle
+  # andere top-level fields naar default (1 redirectUri, publicClient=true).
+  # Resultaat was 'Invalid parameter: redirect_uri' bij login. Idempotent
+  # herstellen door volledige client-shape door te geven.
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/clients/\$OM_CID\" -d '{\"publicClient\":false,\"standardFlowEnabled\":true,\"implicitFlowEnabled\":false,\"redirectUris\":[\"https://openmetadata.uwv-platform.local:8443/*\",\"https://openmetadata.uwv-platform.local/*\",\"http://openmetadata.uwv-platform.local:8443/*\",\"http://openmetadata.uwv-platform.local/*\"],\"attributes\":{\"access.token.lifespan\":\"86400\",\"client.session.max.lifespan\":\"86400\",\"client.session.idle.timeout\":\"28800\",\"use.refresh.tokens\":\"true\",\"post.logout.redirect.uris\":\"+\"}}' -o /dev/null
 fi
 
 # 4. Unmanaged-attribute-policy enablen — Keycloak 24+ heeft Declarative

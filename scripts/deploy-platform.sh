@@ -275,5 +275,26 @@ else
   printf '\033[1;33m!!\033[0m uwv/dbt-trino:1.9.0-uwv image niet gevonden — `make dbt-image` eerst draaien\n'
 fi
 
+# Unpause de UWV DAGs zodat ze automatisch op hun cron-schedule starten zodra
+# de scheduler ze ziet. Airflow's default is is_paused_upon_creation=true,
+# en op een verse cluster betekent dat ze stilstaan tot je via de UI klikt.
+log "Unpause UWV DAGs (governance/ingest/transform/maintenance)"
+if kubectl -n uwv-platform get pod uwv-airflow-scheduler-default-0 >/dev/null 2>&1; then
+  kubectl -n uwv-platform exec uwv-airflow-scheduler-default-0 -c airflow -- bash -c '
+for dag in bronze_watch \
+           silver_persoon silver_polisadm silver_ww silver_wia \
+           silver_wajong silver_zw silver_crm silver_fez silver_klantcontact \
+           gold_uc01_wia_funnel gold_uc04_tw_eligibility gold_uc05_client_360 \
+           gold_uc06_lastprognose gold_uc07_dq_polisadm gold_uc09_reint_effect \
+           gold_uc_klant_tev_klanttevredenheid \
+           governance_om_ingest bewaartermijn_enforcer lakehouse_maintenance; do
+  airflow dags unpause "$dag" >/dev/null 2>&1 || true
+done
+echo "DAGs unpaused (skipped any that don'\''t exist yet — parse delay is normal)"
+  ' 2>&1 | tail -2
+else
+  printf '\033[1;33m!!\033[0m uwv-airflow-scheduler-default-0 nog niet up — DAGs blijven paused tot je manueel `airflow dags unpause` draait\n'
+fi
+
 log "Deploy-platform fase 1 stub klaar."
 echo "Run wordt pas zinvol vanaf fase 2. Zie WORKLOG.md."
