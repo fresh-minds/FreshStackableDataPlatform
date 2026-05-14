@@ -370,17 +370,25 @@ helm upgrade --install openmetadata open-metadata/openmetadata \
 # vanuit values.yaml (template-pad heeft kleine variaties tussen 1.5.x
 # patches). Defensieve helm upgrade --set forceert de publieke URLs zodat
 # de Secret die OM gebruikt voor AUTHENTICATION_AUTHORITY / _CALLBACK_URL
-# / _PUBLIC_KEYS zeker de .eu-sovereigndataplatform.com waarden bevat.
-log "Defensieve OM helm-upgrade — pin auth URLs op publiek domein"
-helm upgrade --install openmetadata open-metadata/openmetadata \
-  --namespace uwv-meta \
-  --version "${OPENMETADATA_VERSION}" \
-  --reuse-values \
-  --set openmetadata.config.authentication.authority="https://keycloak.eu-sovereigndataplatform.com/realms/uwv" \
-  --set openmetadata.config.authentication.callbackUrl="https://openmetadata.eu-sovereigndataplatform.com/callback" \
-  --set "openmetadata.config.authentication.publicKeys[0]=https://openmetadata.eu-sovereigndataplatform.com/api/v1/system/config/jwks" \
-  --set "openmetadata.config.authentication.publicKeys[1]=https://keycloak.eu-sovereigndataplatform.com/realms/uwv/protocol/openid-connect/certs" \
-  --wait --timeout 5m >/dev/null 2>&1 || warn "OM auth-URL pin faalde (helm upgrade) — verifieer manually"
+# / _PUBLIC_KEYS zeker de juiste hostname bevat — alleen voor cloud-deploy
+# (HELM_OVERRIDES_DIR gezet door scripts/azure/aks-bootstrap.sh). Op een
+# lokale k3d-cluster blijft de values.yaml-default `*.uwv-platform.local`
+# staan en mag deze helm-override NIET draaien, anders krijg je
+# "Invalid parameter: redirect_uri" bij login (callback wijst dan naar
+# eu-sovereigndataplatform.com terwijl de browser op uwv-platform.local
+# zit en de Keycloak-client alleen *.uwv-platform.local accepteert).
+if [[ -n "${HELM_OVERRIDES_DIR:-}" ]]; then
+  log "Defensieve OM helm-upgrade — pin auth URLs op publiek domein (cloud-deploy)"
+  helm upgrade --install openmetadata open-metadata/openmetadata \
+    --namespace uwv-meta \
+    --version "${OPENMETADATA_VERSION}" \
+    --reuse-values \
+    --set openmetadata.config.authentication.authority="https://keycloak.eu-sovereigndataplatform.com/realms/uwv" \
+    --set openmetadata.config.authentication.callbackUrl="https://openmetadata.eu-sovereigndataplatform.com/callback" \
+    --set "openmetadata.config.authentication.publicKeys[0]=https://openmetadata.eu-sovereigndataplatform.com/api/v1/system/config/jwks" \
+    --set "openmetadata.config.authentication.publicKeys[1]=https://keycloak.eu-sovereigndataplatform.com/realms/uwv/protocol/openid-connect/certs" \
+    --wait --timeout 5m >/dev/null 2>&1 || warn "OM auth-URL pin faalde (helm upgrade) — verifieer manually"
+fi
 
 # Chart-bug workaround: OIDC_CUSTOM_PARAMS wordt door templates/secrets.yaml
 # als `{{ .customParams | quote | b64enc }}` gerenderd. De `quote`-filter
