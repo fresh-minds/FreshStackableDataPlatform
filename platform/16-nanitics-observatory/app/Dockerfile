@@ -24,9 +24,15 @@ WORKDIR /srv
 
 # Install Nanitics + FastAPI from PyPI. Pin a known-good version; the
 # layer README explains how to bump.
+#
+# httpx is the watcher's HTTP client for Prometheus + Multica. nanitics
+# already depends on it transitively (via the OpenAI SDK), but the
+# watcher pins it explicitly so it doesn't disappear under us if nanitics
+# swaps client libraries.
 RUN pip install \
         "nanitics[api]==0.1.0" \
-        "uvicorn[standard]>=0.30"
+        "uvicorn[standard]>=0.30" \
+        "httpx>=0.27"
 
 # Embedded Observatory UI bundle. Populated from the nanitics repo at
 # build-time by the helper script. If absent, the API still works but
@@ -36,6 +42,7 @@ COPY observatory-ui /srv/observatory-ui
 
 # Application glue + chat UI static assets.
 COPY app.py /srv/app.py
+COPY watcher.py /srv/watcher.py
 COPY static /srv/static
 
 # Drop privileges.

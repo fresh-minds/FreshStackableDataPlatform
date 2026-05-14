@@ -25,3 +25,19 @@ data:
   # under the same /openai/v1/ base on Foundry Projects.
   AZURE_AI_FOUNDRY_ENDPOINT: "https://devfreshmindsaifoundry.services.ai.azure.com/api/projects/proj-default/openai/v1"
   LOG_LEVEL: "INFO"
+
+  # --- Platform watcher (slice 1) ---------------------------------------
+  # The watcher agent reads Prometheus and writes to Multica. Both URLs
+  # are in-cluster Service names. The watcher's only write capability is
+  # filing Multica tasks — it has no Kubernetes API access.
+  #
+  # Filed tasks start WITHOUT the 'approved' label; humans must add
+  # 'approved' before any coding agent claims the work.
+  PROMETHEUS_URL: "http://prometheus-kube-prometheus-prometheus.uwv-monitoring:9090"
+  MULTICA_API_URL: "http://multica-backend.uwv-platform:8080"
+  MULTICA_WORKSPACE: "platform-ops"
+  # Dry-run mode logs the payload and returns a synthetic task_id instead
+  # of POSTing to Multica. Flip to 'false' once a real MULTICA_API_TOKEN
+  # secret is provisioned (see secret-multica.yaml).
+  MULTICA_DRY_RUN: "true"
+  WATCHER_HTTP_TIMEOUT: "10"

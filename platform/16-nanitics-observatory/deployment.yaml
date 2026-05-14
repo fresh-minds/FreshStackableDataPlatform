@@ -35,6 +35,12 @@ spec:
                 name: nanitics-observatory-config
             - secretRef:
                 name: nanitics-azure-foundry
+            # Watcher's Multica bearer token. `optional: true` keeps the
+            # pod startable while MULTICA_DRY_RUN=true and the real token
+            # has not yet been provisioned. See secret-multica.yaml.
+            - secretRef:
+                name: nanitics-multica-token
+                optional: true
           readinessProbe:
             httpGet:
               path: /health

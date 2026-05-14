@@ -62,6 +62,8 @@ from nanitics import (
 )
 from nanitics.observatory import create_observatory_router
 
+from watcher import WATCHER_DEFAULT_TASK, WATCHER_SYSTEM_PROMPT, WATCHER_TOOLS
+
 LOG = logging.getLogger("nanitics-observatory-uwv")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 
@@ -315,6 +317,17 @@ async def _run_lats(emitter: Any, task: str) -> str:
     return (await agent.run(task)).output
 
 
+async def _run_watcher(emitter: Any, task: str) -> str:
+    agent = ReActAgent(
+        name="uwv-platform-watcher",
+        llm_client=_make_llm_client(),
+        emitter=emitter,
+        tools=[describe_platform, *WATCHER_TOOLS],
+        system_prompt=WATCHER_SYSTEM_PROMPT,
+    )
+    return (await agent.run(task)).output
+
+
 AGENTS: dict[str, dict[str, Any]] = {
     "react": {
         "label": "ReAct",
@@ -347,6 +360,17 @@ AGENTS: dict[str, dict[str, Any]] = {
             "End with DONE."
         ),
         "run": _run_lats,
+    },
+    "watcher": {
+        "label": "Platform watcher",
+        "description": (
+            "Investigates platform health signals and files a Multica task "
+            "in the platform-ops workspace when a real issue is found. "
+            "Tasks are filed without the 'approved' label — a human must "
+            "approve before any coding agent can claim the work."
+        ),
+        "default_task": WATCHER_DEFAULT_TASK,
+        "run": _run_watcher,
     },
 }
 

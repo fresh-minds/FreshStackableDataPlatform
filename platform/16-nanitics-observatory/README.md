@@ -21,7 +21,9 @@ ReWOO plan, Reflexion retry, LATS MCTS tree) has traces to render.
 | `GET /health` | Liveness probe | |
 | `/api/observatory/*` | Embedded trace viewer | SSE stream lives at `/api/observatory/runs/<id>/stream` |
 
-The four agents (`react`, `rewoo`, `reflexion`, `lats`) each emit a distinctive event signature that drives the Observatory's agent-specific views — see [Observatory views](#observatory-views) below.
+The four demo agents (`react`, `rewoo`, `reflexion`, `lats`) each emit a distinctive event signature that drives the Observatory's agent-specific views — see [Observatory views](#observatory-views) below.
+
+A fifth agent, [`watcher`](#platform-watcher), is the real-work surface: it investigates platform health signals (Prometheus first, logs + K8s events in later slices) and files Multica tasks against the `platform-ops` workspace when something needs human attention. Tasks are filed without the `approved` label — explicit human approval is required before any coding agent can claim the work.
 
 > **Status: dev-only.** Per the SDK docs, Observatory v0.1.0 is not a
 > production observability platform — no built-in auth, no
@@ -40,14 +42,16 @@ platform/16-nanitics-observatory/
 ├── README.md                  ← this file
 ├── build-and-load.sh          ← build image + k3d import
 ├── kustomization.yaml         ← kustomize entry point
-├── configmap.yaml             ← non-sensitive config (endpoint URL, model)
+├── configmap.yaml             ← non-sensitive config (endpoint URL, model, watcher URLs)
 ├── secret.yaml                ← Azure AI Foundry API key (placeholder!)
+├── secret-multica.yaml        ← Multica bearer token (placeholder!)
 ├── deployment.yaml            ← single-pod Deployment
 ├── service.yaml               ← ClusterIP :80 → :8001
 ├── ingress.yaml               ← nanitics.uwv-platform.local
 └── app/
-    ├── Dockerfile             ← Python 3.11 + nanitics[api] + uvicorn
-    ├── app.py                 ← FastAPI + Observatory + ReAct demo
+    ├── Dockerfile             ← Python 3.11 + nanitics[api] + uvicorn + httpx
+    ├── app.py                 ← FastAPI + Observatory + agent registry
+    ├── watcher.py             ← platform watcher tools (Prometheus, Multica)
     ├── .gitignore             ← excludes the synced UI bundle
     └── observatory-ui/        ← (synced at build time, gitignored)
 ```
@@ -199,6 +203,90 @@ distinct event signatures. Click each to compare:
 - **ReWOO** trace: plan-creation event, parallel step execution, only 2 LLM calls regardless of step count.
 - **Reflexion** trace: at least one `evaluation.result`; if the first attempt fails the substantive-output check, you'll also see a `reflection.generated` event and a second attempt.
 - **LATS** trace: a tree of `tree_search.node.created` / `tree_search.node.evaluated` events, `mcts.iteration` and `mcts.backpropagation` events tracking the search, and a final `tree_search.complete` summary.
+
+---
+
+## Platform watcher
+
+The `watcher` agent is the platform's real-work surface. Where the four
+demo agents exist to drive Observatory views, the watcher investigates
+platform health signals and files Multica tasks for issues a human
+should review.
+
+### Slice 1 — what is in this build
+
+| Tool | What it does | Side effect |
+|---|---|---|
+| `query_prometheus(promql)` | Instant query against in-cluster Prometheus | Read-only |
+| `find_existing_multica_tasks(fingerprint)` | Dedup check before filing | Read-only |
+| `file_multica_task(title, body, severity, area, fingerprint)` | Create a Multica task in `platform-ops` | **Write** |
+
+The system prompt forces the agent to query Prometheus first, dedup
+before filing, and limit itself to one task per run. Tasks carry the
+labels `watcher-filed`, `severity:<info|warning|critical>`, `area:<workload>`
+and **never** carry the `approved` label — only humans set that, and
+Multica's coding-agent daemon filters on its presence. Two human gates
+remain in place: Multica approval gate, and the existing PR review path.
+
+### Trigger a run
+
+```sh
+curl -k -X POST https://nanitics.uwv-platform.local:8443/run/watcher \
+  -H 'Content-Type: application/json' \
+  -d '{"task":"Investigate the currently firing PrometheusRule alerts. For the most severe one, dedup against existing Multica tasks and file a new task if needed."}'
+```
+
+Or, if you want to scope the run to a specific alert:
+
+```sh
+curl -k -X POST https://nanitics.uwv-platform.local:8443/run/watcher \
+  -H 'Content-Type: application/json' \
+  -d '{"task":"Investigate TrinoQueryLatencyP99High. Confirm via PromQL, dedup, then file a Multica task if real."}'
+```
+
+The watcher's full trace (every Prometheus query, every dedup check,
+the agent's reasoning, the task creation request) is captured by the
+Observatory exactly like any other agent run.
+
+### Dry-run vs. live mode
+
+`MULTICA_DRY_RUN=true` (the default in `configmap.yaml`) is the safe
+landing mode. In dry-run the watcher logs the Multica payload it would
+have posted and returns a synthetic task_id — useful for verifying the
+end-to-end loop without spamming Multica during early-life tuning.
+
+To go live:
+
+1. In Multica's UI, create user `platform-watcher@uwv`, add to the
+   `platform-ops` workspace, and generate a long-lived API token.
+2. Provision the token as a Secret (see `secret-multica.yaml`):
+
+   ```sh
+   kubectl -n uwv-platform create secret generic nanitics-multica-token \
+     --from-literal=MULTICA_API_TOKEN='<paste-token>' \
+     --dry-run=client -o yaml | kubectl apply -f -
+   ```
+
+3. Flip `MULTICA_DRY_RUN: "false"` in `configmap.yaml` and roll the
+   deployment.
+
+### What's deliberately not in slice 1
+
+- **No autonomous fixes** — the watcher only writes Multica tasks.
+- **No K8s API calls** — the pod still runs with `automountServiceAccountToken: false`.
+- **No cron yet** — runs are manual via curl until slice 4 adds a CronJob.
+- **No logs / events / traces yet** — Prometheus only. Slice 2 adds
+  OpenSearch logs and K8s events. Slice 3 (deferred) would add Tempo.
+
+### Multica API caveat
+
+The exact request shape for Multica's task-create + task-search endpoints
+is centralised in `_build_task_payload` and the params dict of
+`find_existing_multica_tasks` in [`app/watcher.py`](app/watcher.py). When
+the live Multica integration is wired up (transition out of `MULTICA_DRY_RUN`),
+those two spots may need adjustment to match the actual API. The
+`# NOTE:` comment in `find_existing_multica_tasks` flags the dedup
+parameter specifically.
 
 ---
 
