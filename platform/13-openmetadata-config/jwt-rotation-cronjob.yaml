@@ -1,0 +1,150 @@
+# Maandelijkse JWT-rotatie voor de OM ingestion-bot.
+#
+# Het stock-token in `openmetadata-admin` heeft `exp=null` — nooit-vervalbaar
+# en daarmee een audit-finding. Deze CronJob genereert maandelijks een
+# nieuwe 90-dagen-token en PATCHet het Kubernetes-secret in zowel `uwv-meta`
+# als `uwv-platform` (Airflow KPO-pods lezen daaruit).
+#
+# Service-account `jwt-rotator` heeft het minimaal benodigde recht
+# (secrets/get,patch in beide NS); cluster-rolebinding is een NamespaceRole-
+# combinatie omdat ServiceAccount cross-NS-bindings ondersteunt.
+#
+# Productie-overweging: vervang in-cluster rotation door External Secrets
+# Operator + Vault dynamic-secret. Tot dan houdt deze CronJob compliance
+# (R-NIS2-04 secret-rotation) op orde.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jwt-rotator
+  namespace: uwv-meta
+  labels:
+    uwv.nl/component: openmetadata-jwt-rotator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jwt-rotator-secret-patch
+  namespace: uwv-meta
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["openmetadata-admin"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jwt-rotator-secret-patch
+  namespace: uwv-meta
+subjects:
+  - kind: ServiceAccount
+    name: jwt-rotator
+    namespace: uwv-meta
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: jwt-rotator-secret-patch
+---
+# Spiegel-role in uwv-platform — zelfde rechten, andere namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jwt-rotator-secret-patch
+  namespace: uwv-platform
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["openmetadata-admin"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jwt-rotator-secret-patch
+  namespace: uwv-platform
+subjects:
+  - kind: ServiceAccount
+    name: jwt-rotator
+    namespace: uwv-meta
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: jwt-rotator-secret-patch
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: openmetadata-jwt-rotate
+  namespace: uwv-meta
+  labels:
+    uwv.nl/component: openmetadata-jwt-rotator
+spec:
+  # Eerste van de maand, 02:30 UTC. Token-window 90 dagen → minstens 60d
+  # buffer tussen rotaties als één run mislukt.
+  schedule: "30 2 1 * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 604800
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            uwv.nl/component: openmetadata-jwt-rotator
+        spec:
+          serviceAccountName: jwt-rotator
+          restartPolicy: OnFailure
+          containers:
+            - name: rotate
+              image: openmetadata/ingestion:1.5.7
+              command: ["bash", "-c"]
+              # psycopg2 + cryptography zitten in de OM-ingestion image, geen
+              # extra pip install nodig.
+              args:
+                - "python /config/rotate_jwt.py"
+              env:
+                - name: BOT_USERNAME
+                  value: "ingestion-bot"
+                - name: K8S_SECRET_NAME
+                  value: "openmetadata-admin"
+                - name: K8S_SECRET_NS
+                  value: "uwv-meta"
+                - name: K8S_MIRROR_NS
+                  value: "uwv-platform"
+                # Postgres-direct access om de fernet-encrypted JWTToken
+                # uit user_entity te lezen.
+                - name: POSTGRES_HOST
+                  value: "postgres-postgresql.uwv-data.svc.cluster.local"
+                - name: POSTGRES_USER
+                  value: "postgres"
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-postgresql
+                      key: password
+                - name: POSTGRES_DB
+                  value: "openmetadata"
+                # OM Fernet-key (comma-separated als MultiFernet voor rotation).
+                - name: OM_FERNET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: openmetadata-fernetkey-secret
+                      key: FERNET_KEY
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+          volumes:
+            - name: config
+              configMap:
+                name: openmetadata-uwv-config

@@ -1,18 +1,35 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: uwv-meta
+
+# Geen top-level `namespace:` — de JWT-rotation cronjob heeft Role/RoleBinding
+# objects in BEIDE uwv-meta én uwv-platform (cross-namespace secret-rotation).
+# Kustomize's namespace-transformer zou die naar één namespace forceren
+# (ID-conflict). Daarom: elk resource declareert z'n eigen namespace.
 
 resources:
   - init-job.yaml
   - ingress-opensearch.yaml
+  - keycloak-sync-cronjob.yaml
+  - jwt-rotation-cronjob.yaml
+  - om-to-opa-cronjob.yaml
 
-# Bundle classifications + glossary + service-configs in een ConfigMap die
-# de init-Job mount op /config.
+# Bundle alle bootstrap-data, service-configs, mapping + Python-scripts in
+# één ConfigMap die de init-Job, governance-DAG en CronJobs mounten op
+# /config. De Python-scripts (.py) en de YAML-configs delen één Mount-punt
+# (init-job laadt /scripts uit een aparte ConfigMap entry voor backwards-
+# compat met de originele setup).
 configMapGenerator:
   - name: openmetadata-uwv-config
+    namespace: uwv-meta
     files:
       - classifications-uwv.yaml
       - glossary-cgm.yaml
+      - dbt-meta-mapping.yaml
+      - test-suites.yaml
+      - enrich_from_dbt_meta.py
+      - keycloak_user_sync.py
+      - rotate_jwt.py
+      - om_to_opa_sync.py
       - services/trino-service.yaml
       - services/trino-lineage.yaml
       - services/trino-profiler.yaml
@@ -20,6 +37,7 @@ configMapGenerator:
       - services/superset-service.yaml
       - services/airflow-service.yaml
       - services/kafka-service.yaml
+      - services/minio-storage.yaml
 
 generatorOptions:
   disableNameSuffixHash: true

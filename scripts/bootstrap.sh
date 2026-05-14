@@ -446,6 +446,38 @@ kubectl -n uwv-meta get configmap openmetadata-uwv-config -o yaml 2>/dev/null \
   | kubectl apply -f - >/dev/null \
   || warn "ConfigMap kopie faalde — pas eerst 'kubectl apply -k platform/13-openmetadata-config/' toe"
 
+# Spiegel Keycloak admin-password naar uwv-meta zodat de keycloak-om-user-sync
+# CronJob er bij kan (cross-NS Secret-mount kan niet in vanilla K8s). Bitnami
+# chart stopt het wachtwoord in NS uwv-auth, secret `keycloak`, key
+# `admin-password`. Wij maken `keycloak-admin-secret` in uwv-meta met dezelfde
+# data — idempotent via apply.
+log "Spiegel Keycloak admin-password naar uwv-meta (voor keycloak-om-user-sync CronJob)"
+KC_ADMIN_PW=$(kubectl -n uwv-auth get secret keycloak -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d)
+if [[ -n "${KC_ADMIN_PW:-}" ]]; then
+  kubectl -n uwv-meta create secret generic keycloak-admin-secret \
+    --from-literal=admin-password="${KC_ADMIN_PW}" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  ok "keycloak-admin-secret aanwezig in uwv-meta"
+else
+  warn "Keycloak admin-password niet gevonden in uwv-auth — keycloak-om-user-sync CronJob zal falen tot dit secret bestaat"
+fi
+
+# Spiegel Postgres-root-password naar uwv-meta zodat:
+#   - openmetadata-init's bot-promote-via-postgres-direct kan connecten
+#   - openmetadata-jwt-rotate CronJob de encrypted JWT uit user_entity kan lezen
+# Het PG-secret heet `postgres-postgresql` met key `password` in uwv-data
+# (Bitnami chart default).
+log "Spiegel Postgres-password naar uwv-meta (voor init-job + jwt-rotate CronJob)"
+PG_PW=$(kubectl -n uwv-data get secret postgres-postgresql -o jsonpath='{.data.password}' 2>/dev/null | base64 -d)
+if [[ -n "${PG_PW:-}" ]]; then
+  kubectl -n uwv-meta create secret generic postgres-postgresql \
+    --from-literal=password="${PG_PW}" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  ok "postgres-postgresql aanwezig in uwv-meta"
+else
+  warn "Postgres-password niet gevonden in uwv-data — init-job kan ingestion-bot niet tot admin promoten"
+fi
+
 # 11. Vector (logs collector → OpenSearch)
 log "Install Vector ${VECTOR_VERSION} (Agent-mode op alle nodes)"
 helm upgrade --install vector vector/vector \

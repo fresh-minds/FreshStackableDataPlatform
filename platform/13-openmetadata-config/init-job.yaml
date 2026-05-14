@@ -38,6 +38,8 @@ data:
 
     CLASSIFICATIONS_PATH = "/config/classifications-uwv.yaml"
     GLOSSARY_PATH = "/config/glossary-cgm.yaml"
+    MAPPING_PATH = "/config/dbt-meta-mapping.yaml"
+    TEST_SUITES_PATH = "/config/test-suites.yaml"
 
 
     def log(msg: str) -> None:
@@ -211,10 +213,337 @@ data:
             )
 
 
+    def _load_mapping() -> dict:
+        try:
+            with open(MAPPING_PATH) as f:
+                return yaml.safe_load(f) or {}
+        except FileNotFoundError:
+            log(f"  ? {MAPPING_PATH} ontbreekt — sla teams/domains/custom-props over")
+            return {}
+
+
+    def _load_test_suites() -> dict:
+        try:
+            with open(TEST_SUITES_PATH) as f:
+                return yaml.safe_load(f) or {}
+        except FileNotFoundError:
+            log(f"  ? {TEST_SUITES_PATH} ontbreekt — sla test-suites/alerts over")
+            return {}
+
+
+    def apply_teams() -> None:
+        mapping = _load_mapping()
+        teams = mapping.get("teams", [])
+        if not teams:
+            return
+        log("Teams seeden voor mart-eigenaarschap")
+        for t in teams:
+            post_or_skip(
+                "/api/v1/teams",
+                {
+                    "name": t["name"],
+                    "displayName": t.get("displayName", t["name"]),
+                    "teamType": t.get("teamType", "Group"),
+                },
+                f"team {t['name']}",
+            )
+
+
+    def apply_custom_properties() -> None:
+        """Registreer custom-properties op de Table-entiteit. OM 1.5 heeft
+        geen `boolean` primitive — booleans worden gemodelleerd als enum met
+        EnumConfig.values=['true','false']. Bestaande properties worden
+        overgeslagen (idempotent op naam)."""
+        mapping = _load_mapping()
+        props = mapping.get("custom_properties", [])
+        if not props:
+            return
+        log("Custom-properties registreren op Table-entiteit")
+
+        r = requests.get(
+            f"{OM_URL}/api/v1/metadata/types/name/table",
+            headers=HEADERS,
+            timeout=10,
+        )
+        if r.status_code != 200:
+            log(f"  ! table-entity-type ophalen faalt: {r.status_code}")
+            return
+        table_type = r.json()
+        existing = {
+            p["name"] for p in (table_type.get("customProperties") or [])
+        }
+
+        type_refs: dict[str, dict] = {}
+        for ptype in {p["propertyType"] for p in props}:
+            r = requests.get(
+                f"{OM_URL}/api/v1/metadata/types/name/{ptype}",
+                headers=HEADERS,
+                timeout=10,
+            )
+            if r.status_code != 200:
+                log(f"  ! propertyType '{ptype}' niet vindbaar")
+                continue
+            data = r.json()
+            type_refs[ptype] = {
+                "id": data["id"],
+                "name": ptype,
+                "type": "type",
+            }
+
+        url = f"{OM_URL}/api/v1/metadata/types/{table_type['id']}"
+        for p in props:
+            if p["name"] in existing:
+                log(f"  = customProperty {p['name']} (bestaat al)")
+                continue
+            ref = type_refs.get(p["propertyType"])
+            if not ref:
+                continue
+            body = {
+                "name": p["name"],
+                "description": p["description"],
+                "propertyType": ref,
+            }
+            if p["propertyType"] == "enum":
+                body["customPropertyConfig"] = {
+                    "config": {
+                        "values": p.get("enumValues", ["true", "false"]),
+                        "multiSelect": False,
+                    }
+                }
+            r = requests.put(
+                url, headers=HEADERS, data=json.dumps(body), timeout=15
+            )
+            if r.status_code in (200, 201):
+                log(f"  + customProperty {p['name']}")
+            else:
+                log(
+                    f"  ! customProperty {p['name']} "
+                    f"status={r.status_code} body={r.text[:200]}"
+                )
+
+
+    def _team_ref(name: str) -> dict | None:
+        r = requests.get(
+            f"{OM_URL}/api/v1/teams/name/{name}", headers=HEADERS, timeout=10
+        )
+        if r.status_code == 200:
+            return {"id": r.json()["id"], "type": "team", "name": name}
+        return None
+
+
+    def apply_domains() -> None:
+        mapping = _load_mapping()
+        domains = mapping.get("domains", [])
+        if not domains:
+            return
+        log("Domains seeden")
+        for d in domains:
+            owners = []
+            ref = _team_ref(d["owner"]) if d.get("owner") else None
+            if ref:
+                owners.append(ref)
+            body = {
+                "name": d["name"],
+                "displayName": d.get("displayName", d["name"]),
+                "description": d["description"],
+                "domainType": d.get("domainType", "Source-aligned"),
+            }
+            if owners:
+                body["owners"] = owners
+            post_or_skip("/api/v1/domains", body, f"domain {d['name']}")
+
+
+    def apply_data_products() -> None:
+        """OM 1.5 CreateDataProduct verwacht singular `domain` (string-name),
+        niet `domains` array (die switch zit in 1.7+)."""
+        mapping = _load_mapping()
+        products = mapping.get("data_products", [])
+        if not products:
+            return
+        log("Data Products seeden")
+        for p in products:
+            # Check dat de domain bestaat (anders 404).
+            rd = requests.get(
+                f"{OM_URL}/api/v1/domains/name/{p['domain']}",
+                headers=HEADERS,
+                timeout=10,
+            )
+            if rd.status_code != 200:
+                log(f"  ! domain '{p['domain']}' niet gevonden — sla product {p['name']} over")
+                continue
+            owners = []
+            ref = _team_ref(p["owner"]) if p.get("owner") else None
+            if ref:
+                owners.append(ref)
+            body = {
+                "name": p["name"],
+                "displayName": p.get("displayName", p["name"]),
+                "description": p["description"],
+                "domain": p["domain"],
+            }
+            if owners:
+                body["owners"] = owners
+            post_or_skip(
+                "/api/v1/dataProducts", body, f"dataProduct {p['name']}"
+            )
+
+
+    def _table_exists(fqn: str) -> bool:
+        r = requests.get(
+            f"{OM_URL}/api/v1/tables/name/{fqn}", headers=HEADERS, timeout=10
+        )
+        return r.status_code == 200
+
+
+    def apply_test_suites() -> None:
+        """Maak DQ-TestSuites + TestCases op gold-marts. OM 1.5 hardcoded
+        de executable-suite FQN naar `<entityFQN>.testSuite`; de `name` uit
+        yaml leeft alleen als displayName."""
+        cfg = _load_test_suites()
+        suites = cfg.get("test_suites", [])
+        if not suites:
+            return
+        log("DQ TestSuites + TestCases toepassen")
+        for s in suites:
+            entity_fqn = s["entityFQN"]
+            if not _table_exists(entity_fqn):
+                log(
+                    f"  ? table {entity_fqn} niet in OM — sla testSuite "
+                    f"{s['name']} over (wacht op dbt-ingest)"
+                )
+                continue
+
+            suite_body = {
+                "name": s["name"],
+                "displayName": s.get("displayName", s["name"]),
+                "description": s.get("description", ""),
+                "executableEntityReference": entity_fqn,
+            }
+            post_or_skip(
+                "/api/v1/dataQuality/testSuites/executable",
+                suite_body,
+                f"testSuite {s['name']}",
+            )
+
+            suite_fqn = f"{entity_fqn}.testSuite"
+
+            for tc in s.get("test_cases", []):
+                column = tc.get("column")
+                if column:
+                    entity_link = (
+                        f"<#E::table::{entity_fqn}::columns::{column}>"
+                    )
+                else:
+                    entity_link = f"<#E::table::{entity_fqn}>"
+                tc_body = {
+                    "name": tc["name"],
+                    "displayName": tc.get("displayName", tc["name"]),
+                    "description": tc.get("description", ""),
+                    "entityLink": entity_link,
+                    "testDefinition": tc["testDefinition"],
+                    "testSuite": suite_fqn,
+                    "parameterValues": tc.get("parameters", []),
+                }
+                post_or_skip(
+                    "/api/v1/dataQuality/testCases",
+                    tc_body,
+                    f"testCase {s['name']}.{tc['name']}",
+                )
+
+
+    def apply_alerts() -> None:
+        """OM 1.5 CreateEventSubscription gebruikt top-level `resources` +
+        `destinations` (geen `filteringRules`-wrapper)."""
+        cfg = _load_test_suites()
+        alerts = cfg.get("alerts", [])
+        if not alerts:
+            return
+        log("Alerts (event-subscriptions) toepassen")
+        for a in alerts:
+            dst = a.get("destination", {})
+            body = {
+                "name": a["name"],
+                "displayName": a.get("displayName", a["name"]),
+                "description": a.get("description", ""),
+                "alertType": a.get("alertType", "Notification"),
+                "enabled": True,
+                "resources": [a.get("resource", "all")],
+                "destinations": [
+                    {
+                        "category": "External",
+                        "type": dst.get("type", "Webhook"),
+                        "config": {
+                            "endpoint": dst.get("endpoint", ""),
+                        },
+                    }
+                ],
+            }
+            post_or_skip(
+                "/api/v1/events/subscriptions",
+                body,
+                f"alert {a['name']}",
+            )
+
+
+    def promote_bot_to_admin() -> None:
+        """De `ingestion-bot` heeft default IngestionBotRole, wat user-token-
+        rotatie verbiedt (403 op /users/generateToken). Bots mogen zichzelf
+        ook niet via de OM-API tot admin promoveren ("Principal is not admin").
+        Workaround: direct in de Postgres-DB `isAdmin=true` zetten. Vereist
+        psycopg2 + POSTGRES_PASSWORD env (uit mysql-secrets, chart-quirk-naam).
+        """
+        log("Promote ingestion-bot tot admin (via Postgres-direct)")
+        pg_pw = os.environ.get("POSTGRES_PASSWORD")
+        if not pg_pw:
+            log("  ? POSTGRES_PASSWORD niet gezet — sla bot-promote over")
+            return
+        try:
+            import psycopg2  # noqa: F401  - pip-installed by Job entrypoint
+        except ImportError:
+            log("  ? psycopg2 niet geïnstalleerd — sla bot-promote over")
+            return
+        try:
+            conn = psycopg2.connect(
+                host=os.environ.get(
+                    "POSTGRES_HOST",
+                    "postgres-postgresql.uwv-data.svc.cluster.local",
+                ),
+                port=int(os.environ.get("POSTGRES_PORT", "5432")),
+                user=os.environ.get("POSTGRES_USER", "uwvplatform"),
+                password=pg_pw,
+                dbname="openmetadata",
+                connect_timeout=10,
+            )
+        except Exception as e:
+            log(f"  ! Postgres-connectie faalde: {e}")
+            return
+        try:
+            with conn, conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE user_entity SET json = "
+                    "jsonb_set(json::jsonb, '{isAdmin}', 'true'::jsonb) "
+                    "WHERE name='ingestion-bot' "
+                    "AND (json->>'isAdmin' IS DISTINCT FROM 'true');"
+                )
+                if cur.rowcount > 0:
+                    log("  + ingestion-bot.isAdmin = true (Postgres update)")
+                else:
+                    log("  = ingestion-bot is al admin")
+        finally:
+            conn.close()
+
+
     def main() -> int:
         wait_for_om()
         apply_classifications()
         apply_glossary()
+        apply_teams()
+        apply_custom_properties()
+        apply_domains()
+        apply_data_products()
+        apply_test_suites()
+        apply_alerts()
+        promote_bot_to_admin()
         log("Init voltooid.")
         return 0
 
@@ -246,7 +575,7 @@ spec:
           command: ["bash", "-euo", "pipefail", "-c"]
           args:
             - |
-              pip install --quiet --disable-pip-version-check requests pyyaml
+              pip install --quiet --disable-pip-version-check requests pyyaml psycopg2-binary
               python /scripts/init_openmetadata.py
           env:
             - name: OM_URL
@@ -256,6 +585,14 @@ spec:
                 secretKeyRef:
                   name: openmetadata-admin
                   key: jwtToken
+            # Postgres-direct toegang voor bot-promote (chart-quirk: het
+            # OM-DB-secret heet `mysql-secrets` zelfs bij Postgres, met
+            # key `openmetadata-mysql-password`).
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secrets
+                  key: openmetadata-mysql-password
           volumeMounts:
             - name: scripts
               mountPath: /scripts
