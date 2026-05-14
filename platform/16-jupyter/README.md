@@ -113,5 +113,24 @@ bash tests/smoke/12-jupyter-up.sh
   notebook-cellen Trino kunnen aanspreken zonder password — de
   identiteit komt uit `X-Trino-User`, en OPA enforced de rest.
   Productie-overlay moet authenticatie aanzetten.
+- **NetworkPolicy bewust uitgeschakeld op deze laag.** K3s's ingebouwde
+  `kube-network-policies`-controller heeft cross-node visibility-gaps in
+  deze k3d-topologie: de controller op de Hub-node kan niet altijd
+  resolven uit welke namespace een binnenkomend ingress-nginx pakket
+  komt, waardoor ~⅔ van de browser-requests `502 Connection refused`
+  krijgen afhankelijk van welke ingress-nginx-replica de request
+  afhandelt. De portal-laag draait om dezelfde reden zonder
+  NetworkPolicy. Productie moet de policy terug aanzetten op een CNI met
+  betrouwbare cross-node enforcement (Cilium / Calico / kube-router
+  daemonset-mode).
+- **Hub vermijdt de control-plane node.** `local-path-provisioner` pint de
+  Hub-DB PV aan de node waar hij wordt geprovisioneerd; dezelfde k3d
+  build heeft daarnaast onvoorspelbare pod-naar-pod routing van/naar
+  de server-node. Een `nodeAffinity` blokkeert daarom scheduling op
+  `node-role.kubernetes.io/control-plane`. Bij een verse cluster zonder
+  agent-nodes (single-node k3d) moet die affinity worden verwijderd.
+- **`crypt-key` in `secret.yaml` is dev-only.** De Fernet-key encrypt de
+  per-user OAuth auth-state (access token). Geldige waarde = 64 hex chars.
+  Roteer in productie via SealedSecret/SOPS/Vault — niet committen.
 - **PyPI / GitHub egress** uit de notebook-pods is open. Air-gapped overlay
   moet die NetworkPolicy aanscherpen + een interne PyPI-mirror toevoegen.

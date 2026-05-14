@@ -11,7 +11,11 @@ resources:
   - deployment-hub.yaml
   - service.yaml
   - ingress.yaml
-  - networkpolicy.yaml
+  # NB: NetworkPolicy intentionally omitted — k3s's built-in policy
+  # controller has cross-node visibility gaps in this k3d topology and
+  # blocks ~2/3 of legitimate ingress-nginx traffic to the Hub. See the
+  # README. Re-introduce on a CNI with reliable cross-node policy
+  # enforcement (Cilium / Calico / kube-router daemonset).
 
 # Starter notebooks: pulled in as a single ConfigMap rendered from
 # `starter-notebooks/`. Kustomize hashes the contents into the name; we set

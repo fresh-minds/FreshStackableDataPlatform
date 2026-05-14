@@ -34,6 +34,18 @@ spec:
       annotations:
         checksum/config: "see ConfigMap jupyterhub-config"
     spec:
+      # Workaround for k3d inter-node networking: in this scaled-down cluster
+      # the local-path-provisioner pins the Hub-DB PV to whichever node it
+      # provisions on, and the control-plane node has flaky pod-to-pod
+      # routing on this k3d build. Prefer agent nodes for scheduling so the
+      # bound PV stays on agent storage.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
       serviceAccountName: jupyterhub
       securityContext:
         runAsNonRoot: true
