@@ -234,7 +234,9 @@ data:
             injected.append({"name": "KEYCLOAK_ACCESS_TOKEN", "value": token})
         for container in pod.spec.containers:
             existing = {e.name for e in (container.env or [])}
-            from kubernetes.client import V1EnvVar, V1EnvVarSource, V1SecretKeySelector
+            # NB: k8s-hub image ships kubernetes_asyncio, not the sync
+            # `kubernetes` client. Same model classes, different package.
+            from kubernetes_asyncio.client import V1EnvVar, V1EnvVarSource, V1SecretKeySelector
             container.env = list(container.env or [])
             for v in injected:
                 if v["name"] in existing:
