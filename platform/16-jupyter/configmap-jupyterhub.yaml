@@ -88,16 +88,18 @@ data:
     c.KubeSpawner.uid = 1000  # jovyan
     c.KubeSpawner.fs_gid = 100
     # Resource sizing — sits inside uwv-platform LimitRange max 2 CPU / 4 GiB.
+    # KubeSpawner parses memory itself before forwarding to k8s and only
+    # accepts decimal suffixes (K/M/G/T) — Ki/Mi/Gi raise TraitError.
     c.KubeSpawner.cpu_guarantee = 0.1
     c.KubeSpawner.cpu_limit = 1.5
-    c.KubeSpawner.mem_guarantee = "256Mi"
-    c.KubeSpawner.mem_limit = "2Gi"
+    c.KubeSpawner.mem_guarantee = "256M"
+    c.KubeSpawner.mem_limit = "2G"
 
     # Persistent home — survives pod restart. The PVC is created on first
     # spawn, sized small (k3d-friendly).
     c.KubeSpawner.pvc_name_template = "jupyter-{username}"
     c.KubeSpawner.storage_pvc_ensure = True
-    c.KubeSpawner.storage_capacity = "1Gi"
+    c.KubeSpawner.storage_capacity = "1G"
     c.KubeSpawner.storage_access_modes = ["ReadWriteOnce"]
     c.KubeSpawner.volumes = [
         {
