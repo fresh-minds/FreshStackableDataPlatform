@@ -40,6 +40,7 @@ LAYERS=(
   "platform/13-openmetadata-config"
   "platform/14-monitoring"
   "platform/15-portal"
+  "platform/16-jupyter"
 )
 
 for layer in "${LAYERS[@]}"; do

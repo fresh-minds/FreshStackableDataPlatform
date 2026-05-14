@@ -16,6 +16,7 @@ export type ComponentId =
   | 'superset'
   | 'openmetadata'
   | 'dbt-docs'
+  | 'jupyter'
   | 'prometheus'
   | 'opensearch'
   | 'multica';
@@ -232,6 +233,24 @@ export const components: PlatformComponent[] = [
     icon: '/icons/brand/dbt.svg',
     url: '/dbt-docs.html',
     rolesUsing: ['data_engineer', 'data_steward', 'platform_admin'],
+  },
+  {
+    id: 'jupyter',
+    name: 'UWV Lab (Jupyter)',
+    layer: 'compute',
+    stage: 'consumption',
+    short: 'Notebook-werkomgeving — Python/SQL op bronze/silver/gold/sensitive, met Git-integratie.',
+    purpose: 'Interactief data verkennen en analyseren — Trino, Delta, MinIO, OpenMetadata vanuit één Python-kernel; werk versioneren met Git.',
+    icon: '/icons/brand/jupyter.svg',
+    url: 'https://jupyter.uwv-platform.local:8443',
+    rolesUsing: [
+      'researcher',
+      'data_engineer',
+      'data_steward',
+      'wajong_arbeidsdeskundige',
+      'fez_analist',
+      'platform_admin',
+    ],
   },
   {
     id: 'airflow',

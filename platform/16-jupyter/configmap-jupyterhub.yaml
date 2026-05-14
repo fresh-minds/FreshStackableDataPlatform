@@ -1,0 +1,276 @@
+# jupyterhub_config.py — the Hub's Python configuration.
+#
+# Auth     : oauthenticator.generic.GenericOAuthenticator against Keycloak `uwv`
+# Spawner  : kubespawner.KubeSpawner — every user gets a Pod with the kernel image
+# Storage  : per-user PVC `claim-{username}` (notebooks survive pod restarts)
+# Identity : X-Trino-User = Keycloak preferred_username, so OPA enforces RBAC
+#
+# The Hub itself reads OIDC secrets from env (mounted from `jupyter-hub-secret`).
+# All non-secret tunables live here — change here, restart Hub, no rebuild.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jupyterhub-config
+  namespace: uwv-platform
+data:
+  jupyterhub_config.py: |
+    # -*- coding: utf-8 -*-
+    """UWV Lab — JupyterHub configuration."""
+    import os
+    import sys
+
+    c = get_config()  # noqa: F821 — provided by jupyterhub CLI
+
+    # ─── Hub network ────────────────────────────────────────────────────
+    c.JupyterHub.bind_url = "http://:8000"
+    c.JupyterHub.hub_bind_url = "http://0.0.0.0:8081"
+    c.JupyterHub.hub_connect_url = "http://hub.uwv-platform.svc.cluster.local:8081"
+    c.JupyterHub.cleanup_servers = False  # keep user pods on Hub restart
+    # The configurable-http-proxy runs in a sibling container in this pod, so
+    # Hub must NOT try to spawn it again.
+    c.ConfigurableHTTPProxy.should_start = False
+    c.ConfigurableHTTPProxy.api_url = "http://127.0.0.1:8001"
+
+    # ─── Authentication: Keycloak via GenericOAuthenticator ─────────────
+    from oauthenticator.generic import GenericOAuthenticator
+
+    c.JupyterHub.authenticator_class = GenericOAuthenticator
+
+    KEYCLOAK_INTERNAL = "http://keycloak.uwv-auth.svc.cluster.local"
+    KEYCLOAK_PUBLIC = "https://keycloak.uwv-platform.local:8443"
+    REALM_PATH = "/realms/uwv/protocol/openid-connect"
+
+    c.GenericOAuthenticator.client_id = os.environ["OAUTH_CLIENT_ID"]
+    c.GenericOAuthenticator.client_secret = os.environ["OAUTH_CLIENT_SECRET"]
+    c.GenericOAuthenticator.oauth_callback_url = os.environ["OAUTH_CALLBACK_URL"]
+    # Browser sees the external Keycloak URL (issuer-claim host); the Hub
+    # talks to the internal Service for token redemption. Same split-URL
+    # pattern as the portal's oauth2-proxy.
+    c.GenericOAuthenticator.authorize_url = f"{KEYCLOAK_PUBLIC}{REALM_PATH}/auth"
+    c.GenericOAuthenticator.token_url = f"{KEYCLOAK_INTERNAL}{REALM_PATH}/token"
+    c.GenericOAuthenticator.userdata_url = f"{KEYCLOAK_INTERNAL}{REALM_PATH}/userinfo"
+    c.GenericOAuthenticator.login_service = "Keycloak"
+    c.GenericOAuthenticator.username_claim = "preferred_username"
+    c.GenericOAuthenticator.scope = ["openid", "profile", "email", "roles"]
+    c.GenericOAuthenticator.enable_auth_state = True
+    c.GenericOAuthenticator.refresh_pre_spawn = True
+    # Realm-roles → JupyterHub groups (so admin role grants Hub-admin).
+    # manage_groups + auth_state_groups_key is the OAuthenticator 17+ path.
+    c.GenericOAuthenticator.manage_groups = True
+    c.GenericOAuthenticator.auth_state_groups_key = "oauth_user.roles"
+    c.GenericOAuthenticator.admin_groups = {"platform_admin"}
+    # Accept anyone with a UWV realm account — RBAC inside the notebooks
+    # comes from OPA on Trino, not from the Hub.
+    c.GenericOAuthenticator.allow_all = True
+    c.GenericOAuthenticator.tls_verify = False  # in-cluster HTTP to Keycloak
+
+    # Stash the access token so the spawner can hand it to single-user envs.
+    async def auth_state_to_env(spawner):
+        auth_state = await spawner.user.get_auth_state() or {}
+        token = auth_state.get("access_token", "")
+        # ``spawner.environment`` is templatable but ``$``-substituted before
+        # being passed to the pod, so we keep the value here and merge in
+        # ``modify_pod_hook`` to avoid `$` collisions in token characters.
+        spawner._uwv_oauth_access_token = token
+
+    # ─── Spawner: KubeSpawner ───────────────────────────────────────────
+    from kubespawner import KubeSpawner
+
+    c.JupyterHub.spawner_class = KubeSpawner
+
+    c.KubeSpawner.namespace = "uwv-platform"
+    c.KubeSpawner.service_account = "jupyterhub-singleuser"
+    c.KubeSpawner.image = os.environ.get("SINGLEUSER_IMAGE", "uwv-platform/jupyter-kernel:dev")
+    c.KubeSpawner.image_pull_policy = "IfNotPresent"
+    c.KubeSpawner.start_timeout = 600
+    c.KubeSpawner.http_timeout = 300
+    c.KubeSpawner.pod_name_template = "jupyter-{username}"
+    c.KubeSpawner.uid = 1000  # jovyan
+    c.KubeSpawner.fs_gid = 100
+    # Resource sizing — sits inside uwv-platform LimitRange max 2 CPU / 4 GiB.
+    c.KubeSpawner.cpu_guarantee = 0.1
+    c.KubeSpawner.cpu_limit = 1.5
+    c.KubeSpawner.mem_guarantee = "256Mi"
+    c.KubeSpawner.mem_limit = "2Gi"
+
+    # Persistent home — survives pod restart. The PVC is created on first
+    # spawn, sized small (k3d-friendly).
+    c.KubeSpawner.pvc_name_template = "jupyter-{username}"
+    c.KubeSpawner.storage_pvc_ensure = True
+    c.KubeSpawner.storage_capacity = "1Gi"
+    c.KubeSpawner.storage_access_modes = ["ReadWriteOnce"]
+    c.KubeSpawner.volumes = [
+        {
+            "name": "home",
+            "persistentVolumeClaim": {"claimName": "jupyter-{username}"},
+        },
+        {
+            "name": "starter-notebooks",
+            "configMap": {"name": "jupyter-starter-notebooks"},
+        },
+        {
+            "name": "ca-bundle",
+            "configMap": {"name": "uwv-ca-bundle", "optional": True},
+        },
+    ]
+    c.KubeSpawner.volume_mounts = [
+        {"name": "home", "mountPath": "/home/jovyan/work"},
+        {"name": "starter-notebooks", "mountPath": "/home/jovyan/starter", "readOnly": True},
+        {"name": "ca-bundle", "mountPath": "/etc/uwv-ca", "readOnly": True},
+    ]
+
+    # First-launch goodies: pre-copy starter notebooks into the user's home
+    # so they can be edited and committed. Skip if already present.
+    c.KubeSpawner.init_containers = [
+        {
+            "name": "seed-starter-notebooks",
+            "image": os.environ.get("SINGLEUSER_IMAGE", "uwv-platform/jupyter-kernel:dev"),
+            "imagePullPolicy": "IfNotPresent",
+            "command": ["/bin/bash", "-lc"],
+            "args": [
+                "set -eu; "
+                "mkdir -p /home/jovyan/work/starter; "
+                "if [ ! -f /home/jovyan/work/starter/.seeded ]; then "
+                "  cp -r /seed/* /home/jovyan/work/starter/ 2>/dev/null || true; "
+                "  date -u +%Y-%m-%dT%H:%M:%SZ > /home/jovyan/work/starter/.seeded; "
+                "fi; "
+                "chown -R 1000:100 /home/jovyan/work/starter || true"
+            ],
+            "volumeMounts": [
+                {"name": "home", "mountPath": "/home/jovyan/work"},
+                {"name": "starter-notebooks", "mountPath": "/seed", "readOnly": True},
+            ],
+            "securityContext": {"runAsUser": 0},
+        }
+    ]
+
+    # Default env — every user pod sees the platform endpoints, credentials
+    # come from K8s Secrets via valueFrom (set in modify_pod_hook below).
+    c.KubeSpawner.environment = {
+        "TRINO_HOST": "uwv-trino-coordinator.uwv-platform.svc.cluster.local",
+        "TRINO_PORT": "8443",
+        "TRINO_SCHEME": "https",
+        "TRINO_CATALOG": "silver",
+        "S3_ENDPOINT": "https://minio.uwv-platform.svc.cluster.local:9000",
+        "S3_REGION": "eu-nl-1",
+        "HMS_URI": "thrift://uwv-hive-metastore.uwv-platform.svc.cluster.local:9083",
+        "KAFKA_BOOTSTRAP_SERVERS": "uwv-kafka-broker-default-bootstrap.uwv-platform.svc.cluster.local:9093",
+        "OPENMETADATA_HOST": "http://openmetadata.uwv-meta.svc.cluster.local:8585",
+        "OPENMETADATA_PUBLIC_URL": "https://openmetadata.uwv-platform.local:8443",
+        "UWV_CA_BUNDLE": "/etc/uwv-ca/ca.crt",
+        "JUPYTER_ENABLE_LAB": "yes",
+        "GIT_AUTHOR_NAME_FROM_KEYCLOAK": "1",
+    }
+
+    async def modify_pod_hook(spawner, pod):
+        """Inject per-user identity + secret-backed credentials."""
+        username = spawner.user.name
+        # Make sure the notebook container has a sane TRINO_USER + author info.
+        injected = [
+            {"name": "TRINO_USER", "value": username},
+            {"name": "GIT_AUTHOR_NAME", "value": username},
+            {"name": "GIT_AUTHOR_EMAIL", "value": f"{username}@uwv-platform.local"},
+            {"name": "GIT_COMMITTER_NAME", "value": username},
+            {"name": "GIT_COMMITTER_EMAIL", "value": f"{username}@uwv-platform.local"},
+            # Pre-baked S3 credentials from minio-s3-credentials Secret.
+            {
+                "name": "S3_ACCESS_KEY",
+                "valueFrom": {
+                    "secretKeyRef": {
+                        "name": "minio-s3-credentials",
+                        "key": "accessKey",
+                        "optional": True,
+                    }
+                },
+            },
+            {
+                "name": "S3_SECRET_KEY",
+                "valueFrom": {
+                    "secretKeyRef": {
+                        "name": "minio-s3-credentials",
+                        "key": "secretKey",
+                        "optional": True,
+                    }
+                },
+            },
+            # Also expose under the AWS-SDK names so libraries that don't
+            # know about S3_ACCESS_KEY (boto3, aiobotocore) still authenticate.
+            {
+                "name": "AWS_ACCESS_KEY_ID",
+                "valueFrom": {
+                    "secretKeyRef": {
+                        "name": "minio-s3-credentials",
+                        "key": "accessKey",
+                        "optional": True,
+                    }
+                },
+            },
+            {
+                "name": "AWS_SECRET_ACCESS_KEY",
+                "valueFrom": {
+                    "secretKeyRef": {
+                        "name": "minio-s3-credentials",
+                        "key": "secretKey",
+                        "optional": True,
+                    }
+                },
+            },
+            # OpenMetadata JWT (best-effort; absent in some dev clusters).
+            {
+                "name": "OPENMETADATA_JWT",
+                "valueFrom": {
+                    "secretKeyRef": {
+                        "name": "openmetadata-admin",
+                        "key": "jwtToken",
+                        "optional": True,
+                    }
+                },
+            },
+        ]
+        token = getattr(spawner, "_uwv_oauth_access_token", "")
+        if token:
+            injected.append({"name": "KEYCLOAK_ACCESS_TOKEN", "value": token})
+        for container in pod.spec.containers:
+            existing = {e.name for e in (container.env or [])}
+            from kubernetes.client import V1EnvVar, V1EnvVarSource, V1SecretKeySelector
+            container.env = list(container.env or [])
+            for v in injected:
+                if v["name"] in existing:
+                    continue
+                if "value" in v:
+                    container.env.append(V1EnvVar(name=v["name"], value=v["value"]))
+                else:
+                    ref = v["valueFrom"]["secretKeyRef"]
+                    container.env.append(
+                        V1EnvVar(
+                            name=v["name"],
+                            value_from=V1EnvVarSource(
+                                secret_key_ref=V1SecretKeySelector(
+                                    name=ref["name"],
+                                    key=ref["key"],
+                                    optional=ref.get("optional", False),
+                                )
+                            ),
+                        )
+                    )
+        return pod
+
+    c.KubeSpawner.modify_pod_hook = modify_pod_hook
+    c.Spawner.pre_spawn_hook = auth_state_to_env
+
+    # ─── Hub plumbing ──────────────────────────────────────────────────
+    # NB: 4 slashes for SQLAlchemy absolute path on POSIX.
+    c.JupyterHub.db_url = "sqlite:////srv/jupyterhub/jupyterhub.sqlite"
+    c.JupyterHub.cookie_secret_file = "/srv/jupyterhub/cookie_secret"
+    c.ConfigurableHTTPProxy.auth_token = os.environ.get("CONFIGPROXY_AUTH_TOKEN", "")
+    c.JupyterHub.log_level = "INFO"
+    c.JupyterHub.tornado_settings = {
+        # Run behind the ingress at /, so the Hub's templates emit absolute paths
+        # that work both at jupyter.uwv-platform.local and via /go/jupyter.
+        "headers": {
+            "Content-Security-Policy": "frame-ancestors 'self'",
+        }
+    }
+
+    # Sanity log so a smoke test can grep this in the Hub pod logs.
+    print("uwv-lab: jupyterhub_config loaded", file=sys.stderr, flush=True)

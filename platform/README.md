@@ -28,11 +28,12 @@ nummers. `scripts/deploy-platform.sh` past de mappen in deze volgorde toe.
 | 13 | [openmetadata-config](13-openmetadata-config/README.md) | UWV-specifieke OpenMetadata-config: classifications, ingestion-pipelines. | OpenMetadata via `infrastructure/helm/` |
 | 14 | [monitoring](14-monitoring/README.md) | Cross-cutting reliability: PrometheusRules, ServiceMonitors. | Prometheus via `infrastructure/helm/` |
 | 15 | [portal](15-portal/README.md) | Rol-aware launchpad — landingspagina op `https://uwv.uwv-platform.local`. | 00, 02 |
+| 16 | [jupyter](16-jupyter/README.md) | UWV Lab — JupyterHub + KubeSpawner; notebook-werkplek op bronze/silver/gold/sensitive met Git-integratie. | 00, 02, 03, 05, 09 |
 
 ## Deploy
 
 ```bash
-make deploy-platform        # past 00..15 in volgorde toe
+make deploy-platform        # past 00..16 in volgorde toe
 ```
 
 Voor één enkel component:

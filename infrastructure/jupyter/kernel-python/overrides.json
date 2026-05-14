@@ -1,0 +1,14 @@
+{
+  "@jupyterlab/git:plugin": {
+    "blockWhileCommandExecutes": true,
+    "doubleClickDiff": true,
+    "openHistoryInBrowser": false,
+    "showLargeImageDiff": true
+  },
+  "@jupyterlab/apputils-extension:themes": {
+    "theme": "JupyterLab Dark"
+  },
+  "@jupyterlab/filebrowser-extension:browser": {
+    "navigateToCurrentDirectory": true
+  }
+}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Jupyter">
+  <rect width="24" height="24" rx="5" fill="#F37726"/>
+  <circle cx="6.4" cy="4.6" r="1.1" fill="#fff"/>
+  <circle cx="6.4" cy="19.4" r="1.4" fill="#fff"/>
+  <path d="M5.4 8.6c.7 3.3 3.2 5.7 6.6 5.7s5.9-2.4 6.6-5.7" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+  <path d="M5.4 15.4c.7-3.3 3.2-5.7 6.6-5.7s5.9 2.4 6.6 5.7" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+</svg>

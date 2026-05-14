@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: uwv-platform
+
+resources:
+  - namespace-rbac.yaml
+  - secret.yaml
+  - configmap-jupyterhub.yaml
+  - pvc-hub-db.yaml
+  - deployment-hub.yaml
+  - service.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+
+# Starter notebooks: pulled in as a single ConfigMap rendered from
+# `starter-notebooks/`. Kustomize hashes the contents into the name; we set
+# disableNameSuffixHash so KubeSpawner's volume reference stays stable.
+configMapGenerator:
+  - name: jupyter-starter-notebooks
+    files:
+      - starter-notebooks/00_welcome.ipynb
+      - starter-notebooks/01_trino_quickstart.ipynb
+      - starter-notebooks/02_layered_query_bronze_silver_gold.ipynb
+      - starter-notebooks/03_delta_direct_with_deltalake.ipynb
+      - starter-notebooks/04_minio_browse.ipynb
+      - starter-notebooks/05_openmetadata_catalog.ipynb
+      - starter-notebooks/06_git_workflow.ipynb
+    options:
+      disableNameSuffixHash: true
+
+# NB: only `part-of` applied cluster-wide — individual `component` labels are
+# set per-manifest (Hub vs singleuser) and used by Service selectors and
+# NetworkPolicy podSelectors.
+commonLabels:
+  app.kubernetes.io/part-of: uwv-platform

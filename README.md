@@ -23,6 +23,7 @@ Een Kubernetes-native lakehouse + analytics-stack:
 - **Transformatie**: dbt-trino, format-agnostisch via macro `table_format()`.
 - **Orchestratie**: Apache Airflow.
 - **BI**: Apache Superset.
+- **Notebooks**: JupyterHub + KubeSpawner (UWV Lab) — Python/SQL op alle data-lagen, Git-integratie. Zie [`platform/16-jupyter/`](platform/16-jupyter/).
 - **Catalog/governance/lineage/DQ**: OpenMetadata.
 - **AuthN**: Keycloak (OIDC).
 - **Logs/metrics/tracing**: Vector + Prometheus + OpenTelemetry; OpenSearch single-node gedeeld voor logs en OM-search.
@@ -50,7 +51,8 @@ cd UDP_Stackable
 # 2. Voeg DNS-injectie toe aan /etc/hosts (vereist sudo)
 echo "127.0.0.1 trino.uwv-platform.local keycloak.uwv-platform.local \
   superset.uwv-platform.local airflow.uwv-platform.local nifi.uwv-platform.local \
-  minio.uwv-platform.local openmetadata.uwv-platform.local" | sudo tee -a /etc/hosts
+  minio.uwv-platform.local openmetadata.uwv-platform.local \
+  jupyter.uwv-platform.local" | sudo tee -a /etc/hosts
 
 # 3. Cluster + platform deployen (~15-30 min op de eerste run)
 make cluster        # k3d cluster create

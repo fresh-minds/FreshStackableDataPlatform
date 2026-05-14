@@ -42,7 +42,7 @@ bootstrap: ## Installeer Helm-charts: cert-manager, MinIO, Postgres, Keycloak, S
 	bash scripts/bootstrap.sh
 
 .PHONY: deploy-platform
-deploy-platform: render-catalogs portal-image dbt-image ## Deploy alle platform-manifests onder platform/ (incl. portal + dbt images)
+deploy-platform: render-catalogs portal-image dbt-image jupyter-image ## Deploy alle platform-manifests onder platform/ (incl. portal + dbt + jupyter images)
 	bash scripts/deploy-platform.sh
 
 .PHONY: portal-image
@@ -50,6 +50,12 @@ portal-image: ## Build uwv-platform/portal:dev (Astro static site + nginx) en im
 	docker build -f portal/Dockerfile -t uwv-platform/portal:dev .
 	k3d image import uwv-platform/portal:dev -c $(CLUSTER_NAME)
 	@echo "[portal-image] image gebouwd + geïmporteerd."
+
+.PHONY: jupyter-image
+jupyter-image: ## Build uwv-platform/jupyter-kernel:dev (JupyterLab + uwv_lab helper) en importeer in k3d
+	docker build -t uwv-platform/jupyter-kernel:dev -f infrastructure/jupyter/kernel-python/Dockerfile .
+	k3d image import uwv-platform/jupyter-kernel:dev -c $(CLUSTER_NAME)
+	@echo "[jupyter-image] image gebouwd + geïmporteerd."
 
 .PHONY: portal-publish-dbt-docs
 portal-publish-dbt-docs: dbt-docs-offline portal-image ## Genereer dbt-docs → bake in portal-image → rollout (k3d)
