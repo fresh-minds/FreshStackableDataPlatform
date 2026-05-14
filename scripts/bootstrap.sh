@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # Bootstrap — installeer Helm-charts en Stackable-operators op een lege cluster.
 #
+# Mode: k3d (default), kind, of aks. Selectie via --mode=<mode> of
+# DEPLOYMENT_MODE env. Per-chart values worden gestapeld:
+#   infrastructure/helm/<chart>/values.yaml          (mode-agnostic base)
+#   infrastructure/helm/<chart>/values-<mode>.yaml   (mode-specific overlay)
+#
 # Volgorde:
 #   1. cert-manager (CRDs first, --wait)
-#   2. ClusterIssuer (self-signed CA voor *.uwv-platform.local)
+#   2. ClusterIssuer (self-signed CA voor *.${PLATFORM_DOMAIN})
 #   3. ingress-nginx
 #   4. PostgreSQL (gedeeld voor HMS, Airflow, Superset, OpenMetadata, Keycloak)
 #   5. MinIO (S3-compatible, single-node)
@@ -22,6 +27,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Mode handling (--mode, DEPLOYMENT_MODE, context validation, PLATFORM_DOMAIN).
+# shellcheck source=lib/mode.sh
+source "${ROOT}/scripts/lib/mode.sh"
+parse_mode_args "$@"
+require_context
+require_storage_class
+
 # Versies — bewust vastgepind; updates via PR.
 CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.16.2}"
 INGRESS_NGINX_VERSION="${INGRESS_NGINX_VERSION:-4.11.3}"
@@ -34,11 +46,6 @@ OPENSEARCH_DASHBOARDS_VERSION="${OPENSEARCH_DASHBOARDS_VERSION:-2.26.0}"
 OPENMETADATA_VERSION="${OPENMETADATA_VERSION:-1.5.0}"
 VECTOR_VERSION="${VECTOR_VERSION:-0.36.1}"
 
-log()   { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-ok()    { printf '\033[1;32mOK\033[0m %s\n' "$*"; }
-warn()  { printf '\033[1;33m!!\033[0m %s\n' "$*"; }
-error() { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
-
 # Voorvereisten check
 command -v helm >/dev/null     || error "helm niet gevonden"
 command -v kubectl >/dev/null  || error "kubectl niet gevonden"
@@ -46,14 +53,36 @@ command -v stackablectl >/dev/null || error "stackablectl niet gevonden — zie 
 
 warn "Dev-only credentials in dit bootstrap. NIET gebruiken in productie. Zie infrastructure/helm/*/values.yaml."
 
-# Optional per-chart override directory (set by AKS/EKS/GKE wrappers).
-# Looked up file: ${HELM_OVERRIDES_DIR}/<chart>-values-aks.yaml — appended via -f after base values.
-chart_override_args() {
-  local chart="$1"
-  if [[ -n "${HELM_OVERRIDES_DIR:-}" && -f "${HELM_OVERRIDES_DIR}/${chart}-values-aks.yaml" ]]; then
-    printf -- '--values %s' "${HELM_OVERRIDES_DIR}/${chart}-values-aks.yaml"
-  fi
-}
+# 0a. Persistente CA op de host (één keer gegenereerd, hergebruikt op elke
+# bootstrap). Geseed't in stap 1b naar Secret uwv-platform-ca; cert-manager's
+# uwv-platform-issuer tekent alle leaf-certs ermee. Doordat de CA *niet*
+# regenereert op `make clean && make cluster && make bootstrap`, blijft de
+# in je OS-keychain vertrouwde CA (`make trust-ca`) geldig over cluster-wipes.
+CA_DIR="${UWV_CA_DIR:-${HOME}/.config/uwv-platform/ca}"
+CA_CRT="${CA_DIR}/tls.crt"
+CA_KEY="${CA_DIR}/tls.key"
+
+if [[ ! -f "$CA_CRT" || ! -f "$CA_KEY" ]]; then
+  log "Genereer persistente CA in ${CA_DIR}"
+  mkdir -p "$CA_DIR"
+  chmod 700 "$CA_DIR"
+  # ECDSA P-256, 10 jaar, basicConstraints CA:TRUE — match het profiel dat
+  # cert-manager voorheen genereerde via cluster-issuer.yaml.
+  openssl ecparam -name prime256v1 -genkey -noout -out "$CA_KEY"
+  openssl req -x509 -new -nodes -key "$CA_KEY" -sha256 -days 3650 \
+    -subj "/O=UWV Reference Platform/O=Dev \\/ Self-Signed/CN=UWV Reference Platform Self-Signed CA" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign" \
+    -out "$CA_CRT"
+  chmod 600 "$CA_KEY"
+  warn "Eerste run: import de CA met 'make trust-ca' om de browser-warning weg te krijgen."
+else
+  log "Hergebruik persistente CA uit ${CA_DIR}"
+fi
+
+# Spiegelkopie voor bestaande Makefile-conventie ($HOME/.uwv-platform-ca.crt
+# wordt door `make dbt-docs` als REQUESTS_CA_BUNDLE gebruikt).
+cp "$CA_CRT" "${HOME}/.uwv-platform-ca.crt"
 
 # 0. Helm repo's
 log "Helm repos toevoegen / updaten"
@@ -76,19 +105,56 @@ helm upgrade --install cert-manager jetstack/cert-manager \
   --force-conflicts \
   --wait --timeout 5m
 
+# 1a. Legacy cleanup: oude cert-manager-managed CA-Certificate (uit een
+# eerdere versie van cluster-issuer.yaml). Verwijderen voorkomt dat
+# cert-manager onze host-managed Secret in stap 1b overschrijft.
+kubectl -n cert-manager delete certificate uwv-platform-ca --ignore-not-found=true >/dev/null 2>&1 || true
+kubectl delete clusterissuer selfsigned-bootstrap --ignore-not-found=true >/dev/null 2>&1 || true
+
+# 1b. CA-Secret zaaien vanuit ${CA_DIR}. cert-manager's CA-issuer leest
+# tls.crt + tls.key uit dit Secret om alle leaf-certs te tekenen.
+# Detecteer eerst of de CA in de cluster afwijkt van de host-CA — als dat zo
+# is moeten leaf-certs opnieuw worden uitgegeven (stap 2a).
+PREV_CLUSTER_CA="$(kubectl -n cert-manager get secret uwv-platform-ca \
+  -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+HOST_CA_BODY="$(cat "$CA_CRT")"
+CA_CHANGED="no"
+if [[ -n "$PREV_CLUSTER_CA" && "$PREV_CLUSTER_CA" != "$HOST_CA_BODY" ]]; then
+  CA_CHANGED="yes"
+  warn "Cluster-CA wijkt af van host-CA — leaf-certs worden opnieuw uitgegeven."
+fi
+
+log "Apply uwv-platform CA secret (vanuit ${CA_DIR})"
+kubectl create secret tls uwv-platform-ca \
+  --namespace cert-manager \
+  --cert="$CA_CRT" \
+  --key="$CA_KEY" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 # 2. ClusterIssuer (na cert-manager — CRDs moeten ready zijn)
-log "Apply uwv-platform ClusterIssuer (self-signed CA)"
+log "Apply uwv-platform ClusterIssuer (host-managed CA)"
 # Wacht expliciet tot de CRD bestaat (cert-manager helm --wait dekt dit, maar zekerheid)
 kubectl wait --for=condition=Established crd/clusterissuers.cert-manager.io --timeout=2m
 kubectl apply -f "${ROOT}/infrastructure/helm/cert-manager/cluster-issuer.yaml"
+
+# 2a. Re-issue leaf-certs als de CA is veranderd. cert-manager regenereert
+# elk Secret automatisch zodra het verdwijnt, getekend door de huidige CA.
+if [[ "$CA_CHANGED" == "yes" ]]; then
+  log "Re-issue leaf-certs door uwv-platform-issuer"
+  kubectl get certificates -A \
+    -o jsonpath='{range .items[?(@.spec.issuerRef.name=="uwv-platform-issuer")]}{.metadata.namespace}{" "}{.spec.secretName}{"\n"}{end}' \
+    | while read -r ns secret; do
+        [[ -z "$ns" || -z "$secret" ]] && continue
+        kubectl -n "$ns" delete secret "$secret" --ignore-not-found=true >/dev/null 2>&1 || true
+      done
+fi
 
 # 3. ingress-nginx
 log "Install ingress-nginx ${INGRESS_NGINX_VERSION}"
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx --create-namespace \
   --version "${INGRESS_NGINX_VERSION}" \
-  --values "${ROOT}/infrastructure/helm/ingress-nginx/values.yaml" \
-  $(chart_override_args ingress-nginx) \
+  $(chart_value_args ingress-nginx) \
   --wait --timeout 5m
 
 # 4. PostgreSQL (shared)
@@ -97,8 +163,7 @@ kubectl create namespace uwv-data --dry-run=client -o yaml | kubectl apply -f -
 helm upgrade --install postgres bitnami/postgresql \
   --namespace uwv-data \
   --version "${POSTGRES_VERSION}" \
-  --values "${ROOT}/infrastructure/helm/postgresql/values.yaml" \
-  $(chart_override_args postgres) \
+  $(chart_value_args postgresql) \
   --atomic --wait --timeout 10m
 
 # 4b. MinIO TLS-secret voorbereiden (vóór helm install minio).
@@ -108,7 +173,7 @@ helm upgrade --install postgres bitnami/postgresql \
 # met juiste keynamen.
 log "Prepare MinIO TLS secret via cert-manager"
 kubectl create namespace uwv-platform --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-cat <<'EOF' | kubectl apply -f -
+cat <<EOF | kubectl apply -f -
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -124,7 +189,7 @@ spec:
     - minio.uwv-platform.svc.cluster.local
     - minio.uwv-platform.svc
     - minio
-    - minio.uwv-platform.local
+    - minio.${PLATFORM_DOMAIN}
   duration: 8760h
 EOF
 # Wacht tot Secret bestaat
@@ -179,11 +244,21 @@ kubectl create namespace uwv-platform --dry-run=client -o yaml | kubectl apply -
 helm upgrade --install minio minio/minio \
   --namespace uwv-platform \
   --version "${MINIO_VERSION}" \
-  --values "${ROOT}/infrastructure/helm/minio/values.yaml" \
-  $(chart_override_args minio) \
+  $(chart_value_args minio) \
   --atomic --wait --timeout 10m
 
-# 6. Keycloak — eerst realm-ConfigMap, daarna chart die hem mountt
+# 6. Prometheus + Grafana — moet vóór Keycloak, want Keycloak's chart
+# enabled=true op metrics.serviceMonitor referenceert de
+# monitoring.coreos.com/v1 CRDs uit deze stack.
+log "Install kube-prometheus-stack ${PROM_VERSION}"
+kubectl create namespace uwv-monitoring --dry-run=client -o yaml | kubectl apply -f -
+helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
+  --namespace uwv-monitoring \
+  --version "${PROM_VERSION}" \
+  $(chart_value_args prometheus-stack) \
+  --atomic --wait --timeout 15m
+
+# 7. Keycloak — eerst realm-ConfigMap, daarna chart die hem mountt
 log "ConfigMap: Keycloak UWV-realm"
 kubectl create namespace uwv-auth --dry-run=client -o yaml | kubectl apply -f -
 kubectl create configmap keycloak-uwv-realm \
@@ -195,19 +270,8 @@ log "Install Keycloak ${KEYCLOAK_VERSION}"
 helm upgrade --install keycloak bitnami/keycloak \
   --namespace uwv-auth \
   --version "${KEYCLOAK_VERSION}" \
-  --values "${ROOT}/infrastructure/helm/keycloak/values.yaml" \
-  $(chart_override_args keycloak) \
+  $(chart_value_args keycloak) \
   --atomic --wait --timeout 10m
-
-# 7. Prometheus + Grafana
-log "Install kube-prometheus-stack ${PROM_VERSION}"
-kubectl create namespace uwv-monitoring --dry-run=client -o yaml | kubectl apply -f -
-helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
-  --namespace uwv-monitoring \
-  --version "${PROM_VERSION}" \
-  --values "${ROOT}/infrastructure/helm/prometheus-stack/values.yaml" \
-  $(chart_override_args prometheus-stack) \
-  --atomic --wait --timeout 15m
 
 # 8. Stackable operators
 # Stackablectl 1.4+ heeft de `operator install --release-file` syntax laten
@@ -314,8 +378,7 @@ kubectl create namespace uwv-meta --dry-run=client -o yaml | kubectl apply -f -
 helm upgrade --install opensearch-uwv opensearch/opensearch \
   --namespace uwv-meta \
   --version "${OPENSEARCH_VERSION}" \
-  --values "${ROOT}/infrastructure/helm/opensearch/values.yaml" \
-  $(chart_override_args opensearch) \
+  $(chart_value_args opensearch) \
   --atomic --wait --timeout 10m
 
 # 9a. OpenSearch Dashboards — UI voor logs (uwv-logs-*) en OM-search indices.
@@ -323,8 +386,7 @@ log "Install OpenSearch Dashboards ${OPENSEARCH_DASHBOARDS_VERSION} (uwv-meta)"
 helm upgrade --install opensearch-dashboards-uwv opensearch/opensearch-dashboards \
   --namespace uwv-meta \
   --version "${OPENSEARCH_DASHBOARDS_VERSION}" \
-  --values "${ROOT}/infrastructure/helm/opensearch-dashboards/values.yaml" \
-  $(chart_override_args opensearch-dashboards) \
+  $(chart_value_args opensearch-dashboards) \
   --atomic --wait --timeout 10m
 
 # 10. OpenMetadata
@@ -362,31 +424,28 @@ log "Install OpenMetadata ${OPENMETADATA_VERSION}"
 helm upgrade --install openmetadata open-metadata/openmetadata \
   --namespace uwv-meta \
   --version "${OPENMETADATA_VERSION}" \
-  --values "${ROOT}/infrastructure/helm/openmetadata/values.yaml" \
-  $(chart_override_args openmetadata) \
+  $(chart_value_args openmetadata) \
   --wait --timeout 15m || warn "OpenMetadata install timing out — continue (init-Job kan later draaien)"
 
 # Sommige OM-chart versies negeren `openmetadata.config.authentication.*`
 # vanuit values.yaml (template-pad heeft kleine variaties tussen 1.5.x
 # patches). Defensieve helm upgrade --set forceert de publieke URLs zodat
 # de Secret die OM gebruikt voor AUTHENTICATION_AUTHORITY / _CALLBACK_URL
-# / _PUBLIC_KEYS zeker de juiste hostname bevat — alleen voor cloud-deploy
-# (HELM_OVERRIDES_DIR gezet door scripts/azure/aks-bootstrap.sh). Op een
-# lokale k3d-cluster blijft de values.yaml-default `*.uwv-platform.local`
-# staan en mag deze helm-override NIET draaien, anders krijg je
+# / _PUBLIC_KEYS zeker de juiste hostname bevat — alleen voor cloud-mode.
+# Op k3d/kind blijft `*.uwv-platform.local` staan; anders krijg je
 # "Invalid parameter: redirect_uri" bij login (callback wijst dan naar
-# eu-sovereigndataplatform.com terwijl de browser op uwv-platform.local
-# zit en de Keycloak-client alleen *.uwv-platform.local accepteert).
-if [[ -n "${HELM_OVERRIDES_DIR:-}" ]]; then
-  log "Defensieve OM helm-upgrade — pin auth URLs op publiek domein (cloud-deploy)"
+# cloud-domein terwijl de browser op .local zit en de Keycloak-client
+# alleen *.uwv-platform.local accepteert).
+if [[ "${IS_CLOUD}" == "yes" ]]; then
+  log "Defensieve OM helm-upgrade — pin auth URLs op ${PLATFORM_DOMAIN}"
   helm upgrade --install openmetadata open-metadata/openmetadata \
     --namespace uwv-meta \
     --version "${OPENMETADATA_VERSION}" \
     --reuse-values \
-    --set openmetadata.config.authentication.authority="https://keycloak.eu-sovereigndataplatform.com/realms/uwv" \
-    --set openmetadata.config.authentication.callbackUrl="https://openmetadata.eu-sovereigndataplatform.com/callback" \
-    --set "openmetadata.config.authentication.publicKeys[0]=https://openmetadata.eu-sovereigndataplatform.com/api/v1/system/config/jwks" \
-    --set "openmetadata.config.authentication.publicKeys[1]=https://keycloak.eu-sovereigndataplatform.com/realms/uwv/protocol/openid-connect/certs" \
+    --set openmetadata.config.authentication.authority="https://keycloak.${PLATFORM_DOMAIN}/realms/uwv" \
+    --set openmetadata.config.authentication.callbackUrl="https://openmetadata.${PLATFORM_DOMAIN}/callback" \
+    --set "openmetadata.config.authentication.publicKeys[0]=https://openmetadata.${PLATFORM_DOMAIN}/api/v1/system/config/jwks" \
+    --set "openmetadata.config.authentication.publicKeys[1]=https://keycloak.${PLATFORM_DOMAIN}/realms/uwv/protocol/openid-connect/certs" \
     --wait --timeout 5m >/dev/null 2>&1 || warn "OM auth-URL pin faalde (helm upgrade) — verifieer manually"
 fi
 
@@ -495,17 +554,23 @@ helm upgrade --install vector vector/vector \
   --wait --timeout 5m \
   || warn "Vector install faalde — log-aggregatie inactief, niet kritisch voor portal."
 
-log "Bootstrap voltooid."
+log "Bootstrap voltooid (mode=${DEPLOYMENT_MODE}, domain=${PLATFORM_DOMAIN})."
 echo
-echo "Endpoints (na /etc/hosts injectie + ingress-nginx ready):"
-echo "  https://keycloak.uwv-platform.local:8443      (kcadmin / dev-only-pw)"
-echo "  https://minio-console.uwv-platform.local:8443 (uwvadmin / dev-only-pw)"
-echo "  https://grafana.uwv-platform.local:8443       (admin / dev-only-pw)"
-echo "  https://openmetadata.uwv-platform.local:8443  (admin@uwv-platform.local / dev-only-pw)"
+if [[ "${IS_LOCAL}" == "yes" ]]; then
+  echo "Endpoints (na /etc/hosts injectie + ingress-nginx ready):"
+  port_suffix=":${PLATFORM_PORT}"
+else
+  echo "Endpoints (na public DNS propagation + LoadBalancer ready):"
+  port_suffix=""
+fi
+echo "  https://keycloak.${PLATFORM_DOMAIN}${port_suffix}      (kcadmin / dev-only-pw)"
+echo "  https://minio-console.${PLATFORM_DOMAIN}${port_suffix} (uwvadmin / dev-only-pw)"
+echo "  https://grafana.${PLATFORM_DOMAIN}${port_suffix}       (admin / dev-only-pw)"
+echo "  https://openmetadata.${PLATFORM_DOMAIN}${port_suffix}  (admin / dev-only-pw)"
 echo
 echo "Genereer een OpenMetadata JWT-token (voor init-Job + Airflow DAGs):"
 echo "  kubectl -n uwv-meta exec deploy/openmetadata -- metadata generate-token > /tmp/om-token"
 echo "  kubectl -n uwv-meta patch secret openmetadata-admin --type merge \\"
 echo "    -p \"{\\\"stringData\\\":{\\\"jwtToken\\\":\\\"\$(cat /tmp/om-token)\\\"}}\""
 echo
-echo "Volgende stap: make deploy-platform"
+echo "Volgende stap: make deploy-platform MODE=${DEPLOYMENT_MODE}"

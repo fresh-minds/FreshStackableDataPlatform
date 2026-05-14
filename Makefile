@@ -12,11 +12,18 @@ SHELL := /bin/bash
 CLUSTER_NAME ?= uwv-platform
 PLATFORM_CONFIG := platform-config.yaml
 
+# Deployment mode (k3d|kind|aks). Override per invocation:  make deploy MODE=aks
+# The mode propagates to every script via --mode and to helm value selection
+# via scripts/lib/mode.sh. Default = k3d (developer-laptop scenario).
+MODE ?= k3d
+
 # Lees TABLE_FORMAT uit platform-config.yaml (yq). Fallback naar 'delta'.
 TABLE_FORMAT ?= $(shell command -v yq >/dev/null 2>&1 && yq -r '.platform.table_format // "delta"' $(PLATFORM_CONFIG) 2>/dev/null || echo delta)
 
 export TABLE_FORMAT
 export CLUSTER_NAME
+export MODE
+export DEPLOYMENT_MODE := $(MODE)
 
 ##@ General
 
@@ -26,6 +33,7 @@ help: ## Toont deze help
 
 .PHONY: print-config
 print-config: ## Print de actieve platform-configuratie
+	@echo "MODE         = $(MODE)"
 	@echo "CLUSTER_NAME = $(CLUSTER_NAME)"
 	@echo "TABLE_FORMAT = $(TABLE_FORMAT)"
 	@echo "Platform config:"
@@ -34,28 +42,50 @@ print-config: ## Print de actieve platform-configuratie
 ##@ Lifecycle
 
 .PHONY: cluster
-cluster: ## Maak k3d-cluster aan (idempotent)
-	bash scripts/cluster.sh
+cluster: ## Maak lokale cluster aan (k3d of kind, idempotent). Voor aks: gebruik 'make aks-up'.
+	@case "$(MODE)" in \
+	  k3d)  bash scripts/cluster.sh ;; \
+	  kind) command -v kind >/dev/null || { echo "kind niet geïnstalleerd"; exit 1; }; \
+	        kind get clusters | grep -q "^$(CLUSTER_NAME)$$" \
+	          || kind create cluster --name "$(CLUSTER_NAME)" ;; \
+	  aks)  echo "MODE=aks: gebruik 'make aks-up' om een AKS cluster te provisionen"; exit 1 ;; \
+	  *)    echo "Onbekende MODE='$(MODE)' (verwacht k3d, kind, aks)"; exit 1 ;; \
+	esac
 
 .PHONY: bootstrap
-bootstrap: ## Installeer Helm-charts: cert-manager, MinIO, Postgres, Keycloak, Stackable operators
-	bash scripts/bootstrap.sh
+bootstrap: ## Installeer Helm-charts: cert-manager, MinIO, Postgres, Keycloak, Stackable operators (mode-aware)
+	bash scripts/bootstrap.sh --mode=$(MODE)
 
 .PHONY: deploy-platform
-deploy-platform: render-catalogs portal-image dbt-image jupyter-image ## Deploy alle platform-manifests onder platform/ (incl. portal + dbt + jupyter images)
-	bash scripts/deploy-platform.sh
+deploy-platform: render-catalogs portal-image dbt-image jupyter-image ## Deploy alle platform-manifests onder platform/ (mode-aware)
+	bash scripts/deploy-platform.sh --mode=$(MODE)
+
+.PHONY: deploy
+deploy: ## End-to-end deploy: cluster + bootstrap + platform + portal + smoke (mode-aware). For MODE=aks see 'make aks-all'.
+	@if [ "$(MODE)" = "aks" ]; then \
+	  echo "MODE=aks: use 'make aks-all' (provisions infra + bootstrap + deploy + smoke)"; exit 1; \
+	fi
+	bash scripts/full-deploy.sh --mode=$(MODE)
 
 .PHONY: portal-image
-portal-image: ## Build uwv-platform/portal:dev (Astro static site + nginx) en importeer in k3d
+portal-image: ## Build uwv-platform/portal:dev (Astro static site + nginx) en importeer in lokale cluster (k3d/kind). Skipped voor aks.
+	@if [ "$(MODE)" = "aks" ]; then echo "[portal-image] mode=aks: image wordt gepublished via 'make aks-portal-publish' (ConfigMap)"; exit 0; fi
 	docker build -f portal/Dockerfile -t uwv-platform/portal:dev .
-	k3d image import uwv-platform/portal:dev -c $(CLUSTER_NAME)
-	@echo "[portal-image] image gebouwd + geïmporteerd."
+	@case "$(MODE)" in \
+	  k3d)  k3d image import uwv-platform/portal:dev -c $(CLUSTER_NAME) ;; \
+	  kind) kind load docker-image uwv-platform/portal:dev --name $(CLUSTER_NAME) ;; \
+	esac
+	@echo "[portal-image] image gebouwd + geïmporteerd (mode=$(MODE))."
 
 .PHONY: jupyter-image
-jupyter-image: ## Build uwv-platform/jupyter-kernel:dev (JupyterLab + uwv_lab helper) en importeer in k3d
+jupyter-image: ## Build uwv-platform/jupyter-kernel:dev (JupyterLab + uwv_lab helper) en importeer in lokale cluster. Skipped voor aks.
+	@if [ "$(MODE)" = "aks" ]; then echo "[jupyter-image] mode=aks: image wordt uit een registry getrokken — skip lokale build"; exit 0; fi
 	docker build -t uwv-platform/jupyter-kernel:dev -f infrastructure/jupyter/kernel-python/Dockerfile .
-	k3d image import uwv-platform/jupyter-kernel:dev -c $(CLUSTER_NAME)
-	@echo "[jupyter-image] image gebouwd + geïmporteerd."
+	@case "$(MODE)" in \
+	  k3d)  k3d image import uwv-platform/jupyter-kernel:dev -c $(CLUSTER_NAME) ;; \
+	  kind) kind load docker-image uwv-platform/jupyter-kernel:dev --name $(CLUSTER_NAME) ;; \
+	esac
+	@echo "[jupyter-image] image gebouwd + geïmporteerd (mode=$(MODE))."
 
 .PHONY: portal-publish-dbt-docs
 portal-publish-dbt-docs: dbt-docs-offline portal-image ## Genereer dbt-docs → bake in portal-image → rollout (k3d)
@@ -95,11 +125,15 @@ opa-bundle: opa-test ## Build OPA-bundle: sync rego + data naar platform/10-opa/
 	bash scripts/build-opa-bundle.sh
 
 .PHONY: dbt-image
-dbt-image: ## Build uwv/dbt-trino:1.9.0-uwv (project + dbt_packages baked in) en importeer in k3d
+dbt-image: ## Build uwv/dbt-trino:1.9.0-uwv en importeer in lokale cluster. Voor aks: gebruik een registry.
+	@if [ "$(MODE)" = "aks" ]; then echo "[dbt-image] mode=aks: build + push naar de Azure container registry, daarna 'helm upgrade' op de Cosmos image-tag"; exit 0; fi
 	@cp infrastructure/airflow/dbt/profiles.yml dbt/profiles.yml
 	docker build -t uwv/dbt-trino:1.9.0-uwv -f infrastructure/airflow/dbt/Dockerfile dbt
-	k3d image import uwv/dbt-trino:1.9.0-uwv -c $(CLUSTER_NAME)
-	@echo "Image geïmporteerd. Cosmos KPO sub-pods pakken 'm bij volgende dbt-task run."
+	@case "$(MODE)" in \
+	  k3d)  k3d image import uwv/dbt-trino:1.9.0-uwv -c $(CLUSTER_NAME) ;; \
+	  kind) kind load docker-image uwv/dbt-trino:1.9.0-uwv --name $(CLUSTER_NAME) ;; \
+	esac
+	@echo "Image geïmporteerd (mode=$(MODE)). Cosmos KPO sub-pods pakken 'm bij volgende dbt-task run."
 
 .PHONY: om-bridge-image
 om-bridge-image: ## Build uwv-platform/om-access-bridge:dev en importeer in k3d
@@ -215,12 +249,16 @@ dbt-docs-offline: ## dbt docs (lineage-only, geen warehouse-introspection) — w
 ##@ Maintenance
 
 .PHONY: doctor
-doctor: ## Check vereiste tooling op host
-	@bash scripts/doctor.sh
+doctor: ## Check vereiste tooling op host (mode-aware: doctor MODE=aks)
+	@bash scripts/doctor.sh --mode=$(MODE)
 
 .PHONY: forward
 forward: ## Start kubectl port-forwards voor UI's (zie scripts)
 	@bash scripts/port-forward.sh
+
+.PHONY: trust-ca
+trust-ca: ## Importeer ~/.config/uwv-platform/ca/tls.crt in de macOS System Keychain (idempotent, eenmalig per machine)
+	@bash scripts/trust-ca.sh
 
 ##@ AKS (Azure)
 
