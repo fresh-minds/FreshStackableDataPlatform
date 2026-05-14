@@ -12,6 +12,7 @@ namespace: uwv-platform
 
 resources:
   - apps/streaming-bronze.yaml
+  - ingress.yaml
 
 configMapGenerator:
   - name: spark-streaming-jobs

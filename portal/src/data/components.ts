@@ -135,7 +135,11 @@ export const components: PlatformComponent[] = [
     short: 'Streaming + batch jobs die Delta-tabellen op MinIO schrijven.',
     purpose: 'Zware data-bewerkingen — opschonen, joinen, aggregeren — in stream of batch.',
     icon: '/icons/brand/spark.svg',
-    url: null,
+    // Wijst naar de live driver-UI van de `streaming-bronze` SparkApplication
+    // (via een eigen Service+Ingress, zie platform/08-spark/ingress.yaml).
+    // Op de Executors-tab vind je stderr/stdout per pod = "spark cluster logs".
+    // 503 als de driver niet draait.
+    url: 'https://spark.uwv-platform.local:8443',
     prometheusJob: 'spark',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
@@ -273,7 +277,7 @@ export const components: PlatformComponent[] = [
     purpose: 'Metrics verzamelen en alerteren als iets stuk dreigt te gaan.',
     icon: '/icons/brand/prometheus.svg',
     url: 'https://prometheus.uwv-platform.local:8443',
-    prometheusJob: 'prometheus',
+    prometheusJob: 'prometheus-kube-prometheus-prometheus',
     rolesUsing: ['platform_admin'],
   },
   {
