@@ -158,8 +158,22 @@ for u in platform.admin wia.beoordelaar wajong.arbeidsdeskundige data.engineer; 
     -d "{\"username\":\"$u\",\"email\":\"$u@uwv-platform.local\",\"emailVerified\":true,\"enabled\":true,\"requiredActions\":[],\"attributes\":{\"policy\":[\"consoleAdmin\"]}}" -o /dev/null
   curl -sS -X DELETE -H "$A" "$KC/admin/realms/uwv/attack-detection/brute-force/users/$KCUID" -o /dev/null
 done
+
+# Idempotent: ensure the `jupyter` OIDC client (JupyterHub) exists. The
+# client is in realm-uwv.json, but Keycloak imports with strategy
+# IGNORE_EXISTING, so when the realm already exists from a previous deploy
+# the new client is *not* added — leading to "Client not found" at login.
+EXISTS=$(curl -fsS -H "$A" "$KC/admin/realms/uwv/clients?clientId=jupyter" 2>/dev/null)
+if echo "$EXISTS" | grep -q "\"clientId\":\"jupyter\""; then
+  echo "jupyter client already present"
+else
+  curl -sS -X POST -H "$A" -H "Content-Type: application/json" \
+    "$KC/admin/realms/uwv/clients" \
+    -d "{\"clientId\":\"jupyter\",\"name\":\"UWV Lab (Jupyter)\",\"enabled\":true,\"protocol\":\"openid-connect\",\"publicClient\":false,\"secret\":\"uwv-dev-only-CHANGE-ME-jupyter-secret\",\"standardFlowEnabled\":true,\"directAccessGrantsEnabled\":false,\"serviceAccountsEnabled\":false,\"redirectUris\":[\"https://jupyter.uwv-platform.local:8443/hub/oauth_callback\",\"https://jupyter.uwv-platform.local/hub/oauth_callback\"],\"webOrigins\":[\"https://jupyter.uwv-platform.local:8443\",\"https://jupyter.uwv-platform.local\"],\"defaultClientScopes\":[\"web-origins\",\"profile\",\"roles\",\"email\"],\"fullScopeAllowed\":true}" \
+    -o /dev/null -w "jupyter client created (status %{http_code})\n"
+fi
 echo "Keycloak runtime patches OK"
-' 2>&1 | tail -2
+' 2>&1 | tail -3
 fi
 
 # Superset: na eerste OIDC-login krijgen UWV-users de `Public`-rol.
