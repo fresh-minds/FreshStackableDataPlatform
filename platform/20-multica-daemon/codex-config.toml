@@ -12,7 +12,16 @@
 # Deployment populates from a Secret.
 
 model_provider = "azure"
-model = "gpt-5.4-nano"
+model = "gpt-4o"
+
+# Disable reasoning request/summary params globally. gpt-4o on Foundry's
+# /v1/responses surface rejects requests whose `reasoning` field is
+# anything other than absent — codex app-server's defaults include
+# reasoning_effort and reasoning_summary, which produced
+# `response.failed` events mid-stream (~20s into every task). Setting
+# both to "none" makes codex omit them from the wire payload.
+model_reasoning_effort = "none"
+model_reasoning_summary = "none"
 
 [model_providers.azure]
 name = "Azure AI Foundry (UWV)"
@@ -24,5 +33,29 @@ name = "Azure AI Foundry (UWV)"
 # This form does not have that quirk.
 base_url = "https://devfreshmindsaifoundry.openai.azure.com/openai/v1"
 env_key = "AZURE_OPENAI_API_KEY"
+# wire_api = "responses" is the only supported value in codex >= 0.130.
+# (See https://github.com/openai/codex/discussions/7782 — `chat` was removed.)
 wire_api = "responses"
+# `preview` is the only api-version this Foundry deployment accepts on
+# the /v1/responses path (pinned versions like 2025-04-01-preview return
+# "API version not supported"; absent param returns "api-version
+# parameter is required").
 query_params = { api-version = "preview" }
+
+# KNOWN UPSTREAM ISSUE — codex app-server ↔ Foundry /v1/responses streaming:
+#
+# `codex exec` against this same endpoint+model returns clean output
+# (verified for both short and long prompts), but the codex app-server
+# mode that Multica's daemon uses receives a `response.failed` event
+# mid-stream after ~10-15s on every long task, with no decoded error
+# body. Disabling reasoning (model_reasoning_effort/summary = "none")
+# doesn't help; the app-server's wire payload differs from exec's
+# enough to trigger this. wire_api = "chat" is removed in codex 0.130
+# (github.com/openai/codex/discussions/7782), so the chat fallback is
+# gone.
+#
+# Net effect: the watcher → multica → daemon-claim → codex-spawn loop
+# runs end-to-end, codex's failure message is posted back as a comment
+# on the Multica issue (loop is closed), but the task itself can't
+# complete its work. Wait for an upstream fix or migrate to a different
+# coding-agent CLI (Claude Code via Anthropic API — separate provider).
