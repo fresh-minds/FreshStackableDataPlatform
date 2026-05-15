@@ -44,7 +44,12 @@ spec:
             # this var is Multica's override and wins.
             - name: MULTICA_CODEX_MODEL
               value: "gpt-5.4-nano"
-            # Codex inherits this from the process env.
+            # Same idea for opencode — provider/model format from
+            # `opencode models` listing. Multica's `MULTICA_OPENCODE_MODEL`
+            # env overrides what opencode picks by default.
+            - name: MULTICA_OPENCODE_MODEL
+              value: "azure-foundry/gpt-4o"
+            # Both codex and opencode inherit this from the process env.
             - name: AZURE_OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:

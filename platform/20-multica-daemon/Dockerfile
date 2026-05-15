@@ -1,5 +1,11 @@
-# In-cluster Multica daemon, bundled with the OpenAI Codex CLI wired to
-# the UWV Azure AI Foundry endpoint.
+# In-cluster Multica daemon, bundled with the OpenAI Codex CLI and the
+# opencode CLI — both wired to the UWV Azure AI Foundry endpoint.
+#
+# Two CLIs are installed so Multica's daemon can offer both runtimes
+# (multica's daemon auto-detects any of [claude, codex, copilot, opencode,
+# openclaw, ...] on PATH). Codex was the original target; opencode added
+# because codex app-server's /v1/responses streaming fails mid-stream
+# against Foundry — see codex-config.toml for the upstream issue note.
 #
 # Build context: this `platform/20-multica-daemon/` directory.
 # Build manually:
@@ -40,6 +46,12 @@ RUN chmod +x /usr/local/bin/multica
 RUN npm install -g @openai/codex@0.130.0 \
     && npm cache clean --force
 
+# opencode CLI (sst/opencode) — alternate coding-agent runtime that also
+# speaks OpenAI-compatible APIs. Configured against the same Foundry
+# endpoint via opencode.json / auth.json (entrypoint seeds auth.json).
+RUN npm install -g opencode-ai@1.15.0 \
+    && npm cache clean --force
+
 # Non-root user. The Debian base ships a `daemon` user, and node:20 ships
 # a `node` user at uid 1000, so use `multica` at uid 1001. The daemon
 # writes to ~/.multica and codex to ~/.codex — both go on the workspace
@@ -51,6 +63,13 @@ RUN useradd --system --uid 1001 --create-home --shell /bin/bash --home-dir /home
 # per-task scratch there too, and ~/.codex must be writable).
 COPY codex-config.toml /etc/codex/config.toml.template
 RUN chown -R multica:multica /etc/codex
+
+# opencode config template — defines an `azure-foundry` provider via the
+# @ai-sdk/openai-compatible npm package. The entrypoint copies this to
+# ~/.config/opencode/opencode.json and writes ~/.local/share/opencode/auth.json
+# from the AZURE_OPENAI_API_KEY env at startup.
+COPY opencode.json /etc/opencode/opencode.json.template
+RUN chown -R multica:multica /etc/opencode
 
 # Entrypoint: configure server URL, log in with the bootstrap PAT,
 # then exec `multica daemon start` in the foreground.

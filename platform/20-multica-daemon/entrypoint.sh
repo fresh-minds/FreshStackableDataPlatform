@@ -11,17 +11,32 @@
 
 set -euo pipefail
 
-# --- 1. Codex config on the writable volume -------------------------------
+# --- 1. Sanity-check the credentials both CLIs inherit from this process. ---
+if [[ -z "${AZURE_OPENAI_API_KEY:-}" ]]; then
+  echo "FATAL: AZURE_OPENAI_API_KEY is unset. Neither codex nor opencode can call Foundry." >&2
+  exit 1
+fi
+
+# --- 1a. Codex config on the writable volume ------------------------------
 mkdir -p "$HOME/.codex"
 if [[ ! -f "$HOME/.codex/config.toml" ]]; then
   cp /etc/codex/config.toml.template "$HOME/.codex/config.toml"
 fi
 
-# Sanity-check the credentials codex will inherit from this process.
-if [[ -z "${AZURE_OPENAI_API_KEY:-}" ]]; then
-  echo "FATAL: AZURE_OPENAI_API_KEY is unset. Codex will not be able to call Foundry." >&2
-  exit 1
+# --- 1b. opencode config + credentials on the writable volume -------------
+# opencode keeps its provider config at ~/.config/opencode/opencode.json
+# and its credentials at ~/.local/share/opencode/auth.json. The
+# credentials file isn't templatable in the image (we want the live env
+# value, not a placeholder), so it gets written every boot.
+mkdir -p "$HOME/.config/opencode" "$HOME/.local/share/opencode"
+if [[ ! -f "$HOME/.config/opencode/opencode.json" ]]; then
+  cp /etc/opencode/opencode.json.template "$HOME/.config/opencode/opencode.json"
 fi
+# jq writes the auth.json atomically and properly escapes the key value.
+jq -n --arg key "$AZURE_OPENAI_API_KEY" \
+  '{"azure-foundry": {"type": "api", "key": $key}}' \
+  > "$HOME/.local/share/opencode/auth.json"
+chmod 600 "$HOME/.local/share/opencode/auth.json"
 
 # --- 2. Point CLI at the Multica server ------------------------------------
 : "${MULTICA_SERVER_URL:?MULTICA_SERVER_URL must be set (e.g. http://multica-backend.uwv-platform:80)}"
@@ -52,7 +67,8 @@ fi
 # it attached so tini can supervise it and container stdout captures
 # every poll / claim / codex spawn.
 echo "multica daemon starting (foreground mode)"
-echo "  server:        $MULTICA_SERVER_URL"
-echo "  codex model:   ${MULTICA_CODEX_MODEL:-<default in config.toml>}"
-echo "  workspace:     $HOME"
+echo "  server:           $MULTICA_SERVER_URL"
+echo "  codex model:      ${MULTICA_CODEX_MODEL:-<default in config.toml>}"
+echo "  opencode model:   ${MULTICA_OPENCODE_MODEL:-<default in opencode.json>}"
+echo "  workspace:        $HOME"
 exec multica daemon start --foreground

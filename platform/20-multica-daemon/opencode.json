@@ -1,0 +1,20 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "azure-foundry": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Azure AI Foundry (UWV)",
+      "options": {
+        "baseURL": "https://devfreshmindsaifoundry.openai.azure.com/openai/v1"
+      },
+      "models": {
+        "gpt-4o": {
+          "limit": {
+            "context": 128000,
+            "output": 16384
+          }
+        }
+      }
+    }
+  }
+}
