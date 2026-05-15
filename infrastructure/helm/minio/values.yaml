@@ -59,7 +59,9 @@ consoleService:
   type: ClusterIP
   port: 9001
 
-# Ingress voor MinIO Console (UI)
+# Ingress voor MinIO API + Console (UI). Chart-managed; stays on .local
+# on every mode (used for in-cluster routing). The PUBLIC AKS access lives
+# in infrastructure/azure/public-ingresses.yaml (`minio-public`, `minio-api-public`).
 # backend-protocol HTTPS + ssl-verify off omdat tls.enabled=true (zie
 # onder) — zonder deze annotaties spreekt nginx-ingress HTTP naar de
 # TLS-luisterende MinIO pod = timeout.

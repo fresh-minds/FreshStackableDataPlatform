@@ -41,16 +41,9 @@ openmetadata:
     authorizer:
       principalDomain: eu-sovereigndataplatform.com
 
-ingress:
-  hosts:
-    - host: openmetadata.eu-sovereigndataplatform.com
-      paths:
-        - path: /
-          pathType: ImplementationSpecific
-  tls:
-    - hosts:
-        - openmetadata.eu-sovereigndataplatform.com
-      secretName: openmetadata-tls
+# Chart-managed ingress.hosts stays on .uwv-platform.local — public AKS
+# ingress at openmetadata.eu-sovereigndataplatform.com is in
+# infrastructure/azure/public-ingresses.yaml (`openmetadata-public`).
 
 # No self-signed CA on AKS — Let's Encrypt + default JDK trust store cover it.
 extraInitContainers: []

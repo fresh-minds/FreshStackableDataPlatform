@@ -52,12 +52,19 @@ grafana:
       memory: 128Mi
     limits:
       memory: 256Mi
+  # Chart-managed Grafana ingress on .uwv-platform.local for in-cluster
+  # routing. Public AKS access is in infrastructure/azure/public-ingresses.yaml
+  # (`grafana-public`).
   ingress:
     enabled: true
     ingressClassName: nginx
     annotations:
       cert-manager.io/cluster-issuer: uwv-platform-issuer
-    # hosts + tls hosts are set per-mode in values-{k3d,kind,aks}.yaml.
+    hosts:
+      - grafana.uwv-platform.local
+    tls:
+      - hosts: [grafana.uwv-platform.local]
+        secretName: grafana-tls
 
 # Operator
 prometheusOperator:

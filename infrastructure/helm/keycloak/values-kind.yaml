@@ -11,5 +11,4 @@ extraEnvVars:
   - name: KC_PROXY_HEADERS
     value: "xforwarded"
 
-ingress:
-  hostname: keycloak.uwv-platform.local
+# Chart-managed ingress.hostname is now in the base values.yaml.

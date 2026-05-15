@@ -1,18 +1,15 @@
+# AKS overlay for platform/07-nifi.
+# Chart/platform-level ingress on nifi.uwv-platform.local stays put for
+# in-cluster routing; public AKS ingress is `nifi-public` in
+# infrastructure/azure/public-ingresses.yaml.
+#
+# This overlay only adjusts NiFi's host-header allowlist so requests
+# arriving via the .com ingress aren't rejected by NiFi's strict check.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../../platform/07-nifi
 patches:
-  - target:
-      kind: Ingress
-      name: nifi
-    patch: |-
-      - op: replace
-        path: /spec/tls/0/hosts/0
-        value: nifi.eu-sovereigndataplatform.com
-      - op: replace
-        path: /spec/rules/0/host
-        value: nifi.eu-sovereigndataplatform.com
   - target:
       group: nifi.stackable.tech
       kind: NifiCluster

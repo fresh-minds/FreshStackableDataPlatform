@@ -1,3 +1,7 @@
+# AKS overlay for platform/16-jupyter.
+# No `jupyter-public` entry in infrastructure/azure/public-ingresses.yaml so
+# this overlay owns AKS public access to JupyterHub. cert-manager annotation
+# flipped to letsencrypt-prod for a real public cert.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -7,6 +11,9 @@ patches:
       kind: Ingress
       name: jupyter
     patch: |-
+      - op: replace
+        path: /metadata/annotations/cert-manager.io~1cluster-issuer
+        value: letsencrypt-prod
       - op: replace
         path: /spec/tls/0/hosts/0
         value: jupyter.eu-sovereigndataplatform.com

@@ -8,24 +8,11 @@ persistence:
   storageClass: "managed-csi-premium"
   size: 100Gi
 
-# Ingress hostnames — override the chart's k3d-shaped defaults with the
-# public AKS hostnames (port 443, no :8443 suffix because the Azure LB
-# terminates TLS on the standard port).
-ingress:
-  hosts:
-    - minio.eu-sovereigndataplatform.com
-  tls:
-    - hosts: [minio.eu-sovereigndataplatform.com]
-      secretName: minio-tls
-
-consoleIngress:
-  hosts:
-    - minio-console.eu-sovereigndataplatform.com
-  tls:
-    - hosts: [minio-console.eu-sovereigndataplatform.com]
-      secretName: minio-console-tls
+# Chart-managed ingress hostnames stay on .uwv-platform.local (in-cluster
+# routing). Public AKS access at *.eu-sovereigndataplatform.com is served
+# by infrastructure/azure/public-ingresses.yaml (`minio-public` + `minio-api-public`).
 
 # OIDC URLs visible to the browser must match the public hostname.
 environment:
   MINIO_IDENTITY_OPENID_CONFIG_URL: "https://keycloak.eu-sovereigndataplatform.com/realms/uwv/.well-known/openid-configuration"
-  MINIO_IDENTITY_OPENID_REDIRECT_URI: "https://minio-console.eu-sovereigndataplatform.com/oauth_callback"
+  MINIO_IDENTITY_OPENID_REDIRECT_URI: "https://minio.eu-sovereigndataplatform.com/oauth_callback"

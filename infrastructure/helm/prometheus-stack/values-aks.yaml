@@ -9,10 +9,5 @@ prometheus:
 grafana:
   persistence:
     storageClassName: "managed-csi"
-
-  ingress:
-    hosts:
-      - grafana.eu-sovereigndataplatform.com
-    tls:
-      - hosts: [grafana.eu-sovereigndataplatform.com]
-        secretName: grafana-tls
+  # Chart-managed Grafana ingress stays on .uwv-platform.local; public
+  # AKS ingress is in infrastructure/azure/public-ingresses.yaml.

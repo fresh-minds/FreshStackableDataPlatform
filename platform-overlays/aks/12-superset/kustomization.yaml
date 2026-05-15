@@ -1,18 +1,15 @@
+# AKS overlay for platform/12-superset.
+# Platform-level ingress on superset.uwv-platform.local stays put for
+# in-cluster routing; public AKS ingress is `superset-public` in
+# infrastructure/azure/public-ingresses.yaml.
+#
+# Only flips SupersetCluster's WEBSERVER_BASE_URL so OAuth redirect_uri
+# (built via ProxyFix from X-Forwarded headers) matches the public host.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../../platform/12-superset
 patches:
-  - target:
-      kind: Ingress
-      name: superset
-    patch: |-
-      - op: replace
-        path: /spec/tls/0/hosts/0
-        value: superset.eu-sovereigndataplatform.com
-      - op: replace
-        path: /spec/rules/0/host
-        value: superset.eu-sovereigndataplatform.com
   - target:
       group: superset.stackable.tech
       kind: SupersetCluster

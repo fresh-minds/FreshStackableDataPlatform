@@ -17,16 +17,7 @@ openmetadata:
     authorizer:
       principalDomain: uwv-platform.local
 
-ingress:
-  hosts:
-    - host: openmetadata.uwv-platform.local
-      paths:
-        - path: /
-          pathType: ImplementationSpecific
-  tls:
-    - hosts:
-        - openmetadata.uwv-platform.local
-      secretName: openmetadata-tls
+# Chart-managed ingress.hosts is now in the base values.yaml.
 
 persistence:
   storageClass: standard

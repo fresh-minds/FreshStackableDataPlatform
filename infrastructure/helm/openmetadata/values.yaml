@@ -189,13 +189,23 @@ resources:
 
 replicaCount: 1
 
-# Ingress — mode-agnostic shell; hosts + tls hosts zijn per-mode (zie
-# values-{k3d,kind,aks}.yaml).
+# Chart-managed ingress on .uwv-platform.local for in-cluster routing.
+# Public AKS access at openmetadata.eu-sovereigndataplatform.com is in
+# infrastructure/azure/public-ingresses.yaml (`openmetadata-public`).
 ingress:
   enabled: true
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
+  hosts:
+    - host: openmetadata.uwv-platform.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls:
+    - hosts:
+        - openmetadata.uwv-platform.local
+      secretName: openmetadata-tls
 
 # Persistentie van logs/configs — storageClass per-mode in values-{k3d,kind,aks}.yaml.
 persistence:

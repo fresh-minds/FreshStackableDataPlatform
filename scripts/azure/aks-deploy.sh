@@ -33,7 +33,8 @@ DNS_ZONE="${PUBLIC_DNS_ZONE:-eu-sovereigndataplatform.com}"
 if command -v az >/dev/null 2>&1 && az network dns zone show -g "$DNS_RG" -n "$DNS_ZONE" >/dev/null 2>&1; then
   log "AKS-post: ensure CNAMEs for all 13 public subdomains in $DNS_RG/$DNS_ZONE"
   for sub in platform www keycloak airflow grafana prometheus minio minio-api \
-             superset dbt-docs openmetadata opensearch nifi trino; do
+             superset dbt-docs openmetadata opensearch nifi trino \
+             spark jupyter multica; do
     az network dns record-set cname set-record \
       -g "$DNS_RG" -z "$DNS_ZONE" \
       --record-set-name "$sub" \

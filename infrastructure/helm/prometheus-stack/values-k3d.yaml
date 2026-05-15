@@ -9,10 +9,4 @@ prometheus:
 grafana:
   persistence:
     storageClassName: local-path
-
-  ingress:
-    hosts:
-      - grafana.uwv-platform.local
-    tls:
-      - hosts: [grafana.uwv-platform.local]
-        secretName: grafana-tls
+  # Chart-managed Grafana ingress is now in the base values.yaml.
