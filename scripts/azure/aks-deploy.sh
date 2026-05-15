@@ -35,6 +35,29 @@ kubectl -n uwv-platform delete deployment portal --ignore-not-found
 kubectl -n uwv-platform delete service portal --ignore-not-found
 kubectl -n uwv-platform delete ingress portal --ignore-not-found
 
+# ---- AKS-only: mirror postgres-postgresql secret naar uwv-meta ----
+# De openmetadata-jwt-rotate + openmetadata-to-opa-sync CronJobs draaien in
+# uwv-meta en hebben de Postgres-creds nodig om de bot-JWT uit user_entity
+# te lezen / patchen. scripts/bootstrap.sh:537 spiegelt dit secret naar
+# uwv-meta na de Postgres helm-install, maar op een fresh AKS-bootstrap
+# valt die spiegeling soms uit (Postgres-secret bestaat dan nog niet in
+# uwv-data) → uwv-meta blijft secret-loos en alle JWT-jobs schieten in
+# CreateContainerConfigError. Hier zelf-helend: idempotent re-mirror op
+# elke deploy.
+log "AKS-post: mirror postgres-postgresql secret naar uwv-meta (voor JWT-rotate + OPA-sync CronJobs)"
+PG_PW=$(kubectl -n uwv-data get secret postgres-postgresql -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || true)
+if [[ -z "${PG_PW:-}" ]]; then
+  # Bitnami chart pre-12.x exposeert de root-password onder `postgres-password`.
+  PG_PW=$(kubectl -n uwv-data get secret postgres-postgresql -o jsonpath='{.data.postgres-password}' 2>/dev/null | base64 -d || true)
+fi
+if [[ -n "${PG_PW:-}" ]]; then
+  kubectl -n uwv-meta create secret generic postgres-postgresql \
+    --from-literal=password="${PG_PW}" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+else
+  warn "  postgres-postgresql secret niet gevonden in uwv-data — JWT-rotate + OPA-sync zullen falen"
+fi
+
 # ---- AKS-only: ensure public-domain DNS records exist ----
 # Every *.eu-sovereigndataplatform.com subdomain needs a CNAME → apex (which
 # is an A record at the ingress static IP, set up by terraform/aks-up).
