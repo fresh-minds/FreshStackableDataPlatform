@@ -1,0 +1,36 @@
+# RBAC for the platform watcher's K8s event read access.
+#
+# Only the recent_k8s_warnings tool (in app/watcher.py) uses these
+# permissions. The watcher has no write verbs anywhere on the cluster —
+# its only write capability is filing Multica tasks via HTTP.
+#
+# Resources are kept to the minimum the watcher actually consults today.
+# When a future tool needs pods, configmaps, or prometheusrules, extend
+# this ClusterRole — do not pre-grant access we are not using.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nanitics-observatory-watcher
+  namespace: uwv-platform
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nanitics-observatory-watcher
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nanitics-observatory-watcher
+subjects:
+  - kind: ServiceAccount
+    name: nanitics-observatory-watcher
+    namespace: uwv-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nanitics-observatory-watcher

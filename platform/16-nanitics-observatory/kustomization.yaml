@@ -6,9 +6,10 @@ namespace: uwv-platform
 resources:
   - configmap.yaml
   # NOTE: secret.yaml is intentionally NOT in this list. Kustomize-applying
-  # it would overwrite the real key with the placeholder. Create the
-  # Secret out-of-band (see README) — kustomize only owns config that's
-  # safe to round-trip from disk.
+  # it would overwrite the real key with the placeholder. Same rationale
+  # for secret-multica.yaml and secret-opensearch.yaml — kustomize only
+  # owns config that's safe to round-trip from disk.
+  - rbac.yaml
   - deployment.yaml
   - service.yaml
   - ingress.yaml

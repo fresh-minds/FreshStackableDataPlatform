@@ -18,7 +18,11 @@ spec:
       labels:
         app.kubernetes.io/name: nanitics-observatory
     spec:
-      automountServiceAccountToken: false
+      # Slice 2 needed cluster events access for the watcher's
+      # recent_k8s_warnings tool — see rbac.yaml. The SA grants
+      # read-only `events` only; no other K8s API surface is reachable.
+      serviceAccountName: nanitics-observatory-watcher
+      automountServiceAccountToken: true
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -40,6 +44,12 @@ spec:
             # has not yet been provisioned. See secret-multica.yaml.
             - secretRef:
                 name: nanitics-multica-token
+                optional: true
+            # OpenSearch basic-auth credentials. Optional — empty
+            # OPENSEARCH_USERNAME means anonymous (works in dev where
+            # the security plugin is permissive). See secret-opensearch.yaml.
+            - secretRef:
+                name: nanitics-opensearch
                 optional: true
           readinessProbe:
             httpGet:

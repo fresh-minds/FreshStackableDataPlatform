@@ -26,18 +26,34 @@ data:
   AZURE_AI_FOUNDRY_ENDPOINT: "https://devfreshmindsaifoundry.services.ai.azure.com/api/projects/proj-default/openai/v1"
   LOG_LEVEL: "INFO"
 
-  # --- Platform watcher (slice 1) ---------------------------------------
-  # The watcher agent reads Prometheus and writes to Multica. Both URLs
-  # are in-cluster Service names. The watcher's only write capability is
-  # filing Multica tasks — it has no Kubernetes API access.
+  # --- Platform watcher -------------------------------------------------
+  # The watcher agent reads platform signals and writes Multica tasks.
+  # Slice 1 added Prometheus + Multica. Slice 2 adds Alertmanager,
+  # OpenSearch logs, and K8s events. The watcher's only write capability
+  # remains `file_multica_task` — no K8s write verbs, no other side
+  # effects. K8s events are reachable via the SA defined in rbac.yaml.
   #
   # Filed tasks start WITHOUT the 'approved' label; humans must add
   # 'approved' before any coding agent claims the work.
+
+  # Read-only metrics + alerts (kube-prometheus-stack).
   PROMETHEUS_URL: "http://prometheus-kube-prometheus-prometheus.uwv-monitoring:9090"
+  ALERTMANAGER_URL: "http://prometheus-kube-prometheus-alertmanager.uwv-monitoring:9093"
+
+  # Read-only log search (Vector → OpenSearch indices defined in
+  # platform/14-monitoring/opensearch-ilm-job.yaml).
+  OPENSEARCH_URL: "http://opensearch-uwv.uwv-meta.svc.cluster.local:9200"
+  OPENSEARCH_INDEX_PATTERN: "uwv-logs-*"
+
+  # Multica task surface.
   MULTICA_API_URL: "http://multica-backend.uwv-platform:8080"
   MULTICA_WORKSPACE: "platform-ops"
   # Dry-run mode logs the payload and returns a synthetic task_id instead
   # of POSTing to Multica. Flip to 'false' once a real MULTICA_API_TOKEN
   # secret is provisioned (see secret-multica.yaml).
   MULTICA_DRY_RUN: "true"
+
+  # Per-tool budgets.
   WATCHER_HTTP_TIMEOUT: "10"
+  WATCHER_MAX_OPENSEARCH_HITS: "25"
+  WATCHER_MAX_K8S_EVENTS: "50"

@@ -23,7 +23,7 @@ ReWOO plan, Reflexion retry, LATS MCTS tree) has traces to render.
 
 The four demo agents (`react`, `rewoo`, `reflexion`, `lats`) each emit a distinctive event signature that drives the Observatory's agent-specific views — see [Observatory views](#observatory-views) below.
 
-A fifth agent, [`watcher`](#platform-watcher), is the real-work surface: it investigates platform health signals (Prometheus first, logs + K8s events in later slices) and files Multica tasks against the `platform-ops` workspace when something needs human attention. Tasks are filed without the `approved` label — explicit human approval is required before any coding agent can claim the work.
+A fifth agent, [`watcher`](#platform-watcher), is the real-work surface: it investigates platform health signals (Alertmanager + Prometheus + OpenSearch logs + K8s events) and files Multica tasks against the `platform-ops` workspace when something needs human attention. Tasks are filed without the `approved` label — explicit human approval is required before any coding agent can claim the work.
 
 > **Status: dev-only.** Per the SDK docs, Observatory v0.1.0 is not a
 > production observability platform — no built-in auth, no
@@ -45,13 +45,15 @@ platform/16-nanitics-observatory/
 ├── configmap.yaml             ← non-sensitive config (endpoint URL, model, watcher URLs)
 ├── secret.yaml                ← Azure AI Foundry API key (placeholder!)
 ├── secret-multica.yaml        ← Multica bearer token (placeholder!)
+├── secret-opensearch.yaml     ← OpenSearch basic-auth creds (placeholder, optional)
+├── rbac.yaml                  ← SA + ClusterRole (events read-only) for the watcher
 ├── deployment.yaml            ← single-pod Deployment
 ├── service.yaml               ← ClusterIP :80 → :8001
 ├── ingress.yaml               ← nanitics.uwv-platform.local
 └── app/
-    ├── Dockerfile             ← Python 3.11 + nanitics[api] + uvicorn + httpx
+    ├── Dockerfile             ← Python 3.11 + nanitics[api] + uvicorn + httpx + kubernetes_asyncio
     ├── app.py                 ← FastAPI + Observatory + agent registry
-    ├── watcher.py             ← platform watcher tools (Prometheus, Multica)
+    ├── watcher.py             ← platform watcher tools (alerts, prom, logs, events, multica)
     ├── .gitignore             ← excludes the synced UI bundle
     └── observatory-ui/        ← (synced at build time, gitignored)
 ```
@@ -213,20 +215,24 @@ demo agents exist to drive Observatory views, the watcher investigates
 platform health signals and files Multica tasks for issues a human
 should review.
 
-### Slice 1 — what is in this build
+### Tools
 
 | Tool | What it does | Side effect |
 |---|---|---|
+| `list_firing_alerts(severity?)` | Curated list of active Alertmanager alerts with `fingerprint`, `runbook_url`, `severity` | Read-only |
 | `query_prometheus(promql)` | Instant query against in-cluster Prometheus | Read-only |
+| `search_opensearch_logs(query, time_range_minutes?, max_hits?)` | Lucene search over `uwv-logs-*` | Read-only |
+| `recent_k8s_warnings(namespace?, since_minutes?)` | Warning-type K8s events (CrashLoopBackOff, OOMKilled, ImagePullBackOff, …) | Read-only |
 | `find_existing_multica_tasks(fingerprint)` | Dedup check before filing | Read-only |
 | `file_multica_task(title, body, severity, area, fingerprint)` | Create a Multica task in `platform-ops` | **Write** |
 
-The system prompt forces the agent to query Prometheus first, dedup
-before filing, and limit itself to one task per run. Tasks carry the
-labels `watcher-filed`, `severity:<info|warning|critical>`, `area:<workload>`
-and **never** carry the `approved` label — only humans set that, and
-Multica's coding-agent daemon filters on its presence. Two human gates
-remain in place: Multica approval gate, and the existing PR review path.
+The system prompt enforces the order: **list alerts → pick the most severe →
+confirm with Prometheus / logs → dedup using Alertmanager's `fingerprint` →
+file at most one task**. Tasks carry the labels `watcher-filed`,
+`severity:<info|warning|critical>`, `area:<workload>` and **never** carry
+the `approved` label — only humans set that, and Multica's coding-agent
+daemon filters on its presence. Two human gates remain in place: Multica
+approval gate, and the existing PR review path.
 
 ### Trigger a run
 
@@ -270,13 +276,16 @@ To go live:
 3. Flip `MULTICA_DRY_RUN: "false"` in `configmap.yaml` and roll the
    deployment.
 
-### What's deliberately not in slice 1
+### What's deliberately not in this build
 
-- **No autonomous fixes** — the watcher only writes Multica tasks.
-- **No K8s API calls** — the pod still runs with `automountServiceAccountToken: false`.
+- **No autonomous fixes** — the watcher only writes Multica tasks. Every
+  change to the platform still goes through `human approves Multica task
+  → coding agent opens PR → human merges PR`. Two human gates by design.
+- **No K8s write verbs** — the ClusterRole in `rbac.yaml` grants only
+  `events: get/list/watch`. The watcher cannot mutate cluster state.
 - **No cron yet** — runs are manual via curl until slice 4 adds a CronJob.
-- **No logs / events / traces yet** — Prometheus only. Slice 2 adds
-  OpenSearch logs and K8s events. Slice 3 (deferred) would add Tempo.
+- **No distributed traces** — Tempo (slice 3) is intentionally deferred;
+  logs + metrics + events get ~80% of the signal.
 
 ### Multica API caveat
 

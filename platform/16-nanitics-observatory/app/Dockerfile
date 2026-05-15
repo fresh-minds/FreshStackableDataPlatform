@@ -32,7 +32,8 @@ WORKDIR /srv
 RUN pip install \
         "nanitics[api]==0.1.0" \
         "uvicorn[standard]>=0.30" \
-        "httpx>=0.27"
+        "httpx>=0.27" \
+        "kubernetes_asyncio>=29"
 
 # Embedded Observatory UI bundle. Populated from the nanitics repo at
 # build-time by the helper script. If absent, the API still works but
