@@ -27,5 +27,16 @@ else
   k3d cluster create --config "$CONFIG"
 fi
 
-echo "==> kubectl context: $(kubectl config current-context)"
+# Pin kubectl's current-context to the local cluster.
+#
+# `k3d cluster create` sets the context on first creation, but
+# `k3d cluster start` (the idempotent re-run path above) does NOT touch
+# kubeconfig. Meanwhile `scripts/azure/aks-context.sh` (via
+# `az aks get-credentials --overwrite-existing`) flips current to AKS.
+# So after even one round-trip — "did some AKS work, came back locally,
+# re-ran make cluster" — the current-context is still AKS and every
+# kubectl that followed silently targeted the wrong cluster.
+# This line closes the hole symmetrically with the AKS path.
+echo "==> setting kubectl context: k3d-${CLUSTER_NAME}"
+kubectl config use-context "k3d-${CLUSTER_NAME}"
 kubectl get nodes
