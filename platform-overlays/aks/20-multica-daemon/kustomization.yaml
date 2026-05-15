@@ -1,0 +1,30 @@
+# AKS overlay for platform/20-multica-daemon.
+#
+# Only difference from the base: MULTICA_APP_URL points at the public
+# hostname instead of the local one. The daemon talks to the Multica
+# backend over the in-cluster Service (http://multica-backend.uwv-platform:80),
+# which is identical on both clusters — so MULTICA_SERVER_URL needs no
+# patch. MULTICA_APP_URL is only used to build task-URL strings that
+# end up in comments / metadata, so it must match the ingress humans
+# actually browse to (which is patched in platform-overlays/aks/17-multica/).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/20-multica-daemon
+patches:
+  - target:
+      kind: Deployment
+      name: multica-daemon
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: multica-daemon
+      spec:
+        template:
+          spec:
+            containers:
+              - name: daemon
+                env:
+                  - name: MULTICA_APP_URL
+                    value: "https://multica.eu-sovereigndataplatform.com"
