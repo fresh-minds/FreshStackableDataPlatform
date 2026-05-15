@@ -1,0 +1,22 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: stackable-platform
+  namespace: uwv-platform
+spec:
+  selector:
+    matchLabels:
+      stackable.tech/vendor: Stackable
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 25s
+      relabelings:
+        # Stackable's "listener" resources also carry the stackable vendor
+        # label and expose a metrics port; drop them so we don't double-scrape
+        # the underlying broker metrics under job=listener.
+        - sourceLabels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
+          regex: listener
+          action: drop
+        - sourceLabels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
+          targetLabel: job

@@ -1,0 +1,101 @@
+# Continuous deploy: bij elke push naar main re-apply alle platform-manifests
+# op het AKS cluster en publish een verse portal-bundle.
+#
+# Smoke draait NIET hier — die zit in .github/workflows/aks-smoke.yml en
+# wordt automatisch getriggerd via `workflow_run` zodra deze CD groen is.
+# Voor handmatige deploys met fijnmazige toggles: gebruik
+# .github/workflows/aks-deploy.yml (workflow_dispatch).
+#
+# Path-filter: alleen runnen als iets verandert dat het cluster-state
+# beïnvloedt. Doc-only of data-generation changes triggeren géén deploy.
+#
+# Vereiste secret: AZURE_CREDENTIALS (zie aks-deploy.yml header).
+name: aks-cd
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'platform/**'
+      - 'platform-overlays/**'
+      - 'infrastructure/**'
+      - 'portal/**'
+      - 'scripts/**'
+      - 'opa-policies-src/**'
+      - 'dbt/**'
+      - 'nifi-flows/**'
+      - 'Makefile'
+      - '.github/workflows/aks-cd.yml'
+
+# Eén AKS-deploy tegelijk. Niet cancellen — een half afgebroken apply
+# kan het cluster in een rare staat achterlaten. Queue liever (zelfde
+# group als aks-deploy.yml zodat manual + auto elkaar niet bijten).
+concurrency:
+  group: aks-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read   # ghcr.io image-pulls (portal-build dependencies)
+
+env:
+  AKS_RESOURCE_GROUP: dev-stackable-rg
+  AKS_CLUSTER_NAME:   uwv-platform-aks
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repo @ ${{ github.sha }}
+        uses: actions/checkout@v4
+
+      - name: Setup Python (voor render-trino-catalogs.py)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyYAML (vereist door render-trino-catalogs.py)
+        run: pip install pyyaml
+
+      - name: Setup Node.js (voor portal-build)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: portal/package-lock.json
+
+      - name: Azure login (service principal)
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get AKS kubeconfig
+        run: |
+          az aks get-credentials \
+            --resource-group "$AKS_RESOURCE_GROUP" \
+            --name "$AKS_CLUSTER_NAME" \
+            --overwrite-existing
+          kubectl config current-context
+          kubectl get nodes -o wide
+
+      - name: Apply platform manifests (make aks-deploy)
+        run: make aks-deploy
+
+      - name: Build + publish portal (make aks-portal-publish)
+        run: make aks-portal-publish
+
+      - name: Dump pod-status bij failure
+        if: failure()
+        run: |
+          echo "::group::Pods across UWV namespaces"
+          for ns in uwv-platform uwv-auth uwv-data uwv-meta ingress-nginx; do
+            echo "--- $ns ---"
+            kubectl -n "$ns" get pods -o wide 2>/dev/null || true
+          done
+          echo "::endgroup::"
+          echo "::group::Recent events (laatste 50)"
+          kubectl get events --all-namespaces \
+            --sort-by=.lastTimestamp 2>/dev/null \
+            | tail -n 50 || true
+          echo "::endgroup::"

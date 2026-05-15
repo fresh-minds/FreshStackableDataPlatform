@@ -1,14 +1,11 @@
 # CI: Trivy vulnerability + SBOM scan (R-BIO-15, R-NIS2-03).
 # Scant manifests + container-images die in release.yaml + helm-values staan.
+#
+# Alleen via manual dispatch (Actions-tab → "security-scan" → Run workflow).
 name: security-scan
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    - cron: '0 6 * * 1'  # weekly Mon 06:00 UTC
+  workflow_dispatch:
 
 jobs:
   trivy-config:

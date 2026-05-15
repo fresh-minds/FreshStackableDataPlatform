@@ -1,74 +1,18 @@
-# PodDisruptionBudgets (improvements #3) — voorkomt dat node-drain meerdere
-# replicas tegelijk omlegt. Voor een single-replica scaled-down setup is dit
-# weinig zinvol; we zetten desondanks PDB's zodat productie-overlay alleen
-# de replicas hoeft op te schalen.
+# PodDisruptionBudgets — voorkomt dat node-drain meerdere replicas tegelijk
+# omlegt. Voor een single-replica scaled-down setup is dit weinig zinvol; we
+# zetten desondanks PDB's zodat productie-overlay alleen de replicas hoeft op
+# te schalen.
 #
-# Convention: minAvailable: 1 voor alle workloads die data hebben (Kafka, ZK,
-# Hive Metastore); maxUnavailable: 1 voor stateless (Trino-coordinator).
+# NB: De Stackable-operatoren genereren zelf PDB's voor de producten die ze
+# beheren (kafka-broker, hive-metastore, zookeeper-server, trino-coordinator,
+# trino-worker, nifi-node, airflow-scheduler, airflow-webserver,
+# superset-node). Eigen PDB's daarvoor leveren `MultiplePodDisruptionBudgets`-
+# waarschuwingen op (incident 2026-05-15). Hier alleen PDB's voor componenten
+# die de operatoren NIET zelf afdekken.
+#
+# Convention: minAvailable: 1 voor alle workloads die data hebben.
 ---
-# Trino coordinator
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: uwv-trino-coordinator-pdb
-  namespace: uwv-platform
-spec:
-  maxUnavailable: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: trino
-      app.kubernetes.io/component: coordinator
----
-# Trino workers
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: uwv-trino-worker-pdb
-  namespace: uwv-platform
-spec:
-  maxUnavailable: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: trino
-      app.kubernetes.io/component: worker
----
-# Kafka brokers
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: uwv-kafka-pdb
-  namespace: uwv-platform
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: kafka
----
-# ZooKeeper servers
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: uwv-zookeeper-pdb
-  namespace: uwv-platform
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: zookeeper
----
-# Hive Metastore
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: uwv-hive-pdb
-  namespace: uwv-platform
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: hive
----
-# OPA
+# OPA — Stackable-OPA-operator levert geen eigen PDB.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

@@ -11,7 +11,12 @@ kind: Kustomization
 namespace: uwv-platform
 
 resources:
-  - apps/streaming-bronze.yaml
+  # streaming-bronze (zie apps/streaming-bronze.yaml) is uitgeschakeld omdat
+  # de long-running driver/executor onder load de k3d-nodes verzadigde en
+  # de kubelet-probes deed timeouten (incident 2026-05-15). Manifest blijft
+  # in repo; her-enable nadat resource-ceilings of executor-count zijn
+  # heroverwogen voor de doel-cluster.
+  # - apps/streaming-bronze.yaml
   - ingress.yaml
 
 configMapGenerator:

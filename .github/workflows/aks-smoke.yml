@@ -1,0 +1,105 @@
+# Smoke-tests tegen het AKS cluster — verifieert dat alle endpoints
+# (Trino, Airflow, Superset, OpenMetadata, Portal, Jupyter, OPA-decisions, ...)
+# bereikbaar en healthy zijn na een deploy.
+#
+# Triggers:
+#   1. workflow_run    — automatisch na succesvolle aks-cd run
+#   2. workflow_dispatch — handmatig (Actions-tab → "aks-smoke" → Run workflow)
+#
+# Smoke-failures zijn fataal voor deze pipeline (rode run = pager-worthy).
+# Voor non-fatale "warning-only" smoke: gebruik aks-deploy.yml met
+# smoke_required=false.
+#
+# Vereiste secret: AZURE_CREDENTIALS.
+name: aks-smoke
+
+on:
+  workflow_run:
+    workflows: [aks-cd]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# Nieuwe smoke-run cancelt oude — relevantste smoke is altijd de laatste.
+concurrency:
+  group: aks-smoke
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read   # smoke 04-dbt-parse pulls ghcr.io/dbt-labs/dbt-trino
+
+env:
+  AKS_RESOURCE_GROUP: dev-stackable-rg
+  AKS_CLUSTER_NAME:   uwv-platform-aks
+
+jobs:
+  smoke:
+    # Bij workflow_run alleen draaien als CD groen was — anders is smoke
+    # ruis (cluster ligt mogelijk half-deployed). Bij workflow_dispatch
+    # altijd doorgaan.
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event.workflow_run.conclusion == 'success'
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          # Bij workflow_run: pak dezelfde commit als de triggering CD-run.
+          # Bij workflow_dispatch: github.sha = head van branch waarop
+          # gerund (default main) — werkt out of the box.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install OPA CLI (voor smoke 11-uc11-klantreis)
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/opa \
+            https://github.com/open-policy-agent/opa/releases/latest/download/opa_linux_amd64_static
+          sudo chmod +x /usr/local/bin/opa
+          opa version
+
+      - name: Login to ghcr.io (voor smoke 04-dbt-parse)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Azure login (service principal)
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get AKS kubeconfig
+        run: |
+          az aks get-credentials \
+            --resource-group "$AKS_RESOURCE_GROUP" \
+            --name "$AKS_CLUSTER_NAME" \
+            --overwrite-existing
+          kubectl config current-context
+
+      - name: Smoke tests (make aks-smoke)
+        run: make aks-smoke
+
+      - name: Dump pod-status bij failure
+        if: failure()
+        run: |
+          echo "::group::Pods across UWV namespaces"
+          for ns in uwv-platform uwv-auth uwv-data uwv-meta ingress-nginx; do
+            echo "--- $ns ---"
+            kubectl -n "$ns" get pods -o wide 2>/dev/null || true
+          done
+          echo "::endgroup::"
+          echo "::group::Recent events (laatste 50)"
+          kubectl get events --all-namespaces \
+            --sort-by=.lastTimestamp 2>/dev/null \
+            | tail -n 50 || true
+          echo "::endgroup::"

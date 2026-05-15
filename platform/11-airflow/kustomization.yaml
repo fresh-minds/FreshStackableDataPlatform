@@ -31,7 +31,10 @@ configMapGenerator:
       - dags/governance_om_ingest.py
       - dags/bewaartermijn_enforcer.py
       - dags/lakehouse_maintenance.py
-      - dags/watch_csv_staging.py
+      # watch_csv_staging.py uitgesloten — runtime-fouten (KPO `scan_and_trigger`
+      # faalt iedere 2 min en blijft pods produceren). DAG-bron blijft in repo;
+      # re-enable na fix van jobs/watch_staging.py.
+      # - dags/watch_csv_staging.py
       # synthetic_data_load.py uitgesloten — gebruikt verouderde
       # KubernetesJobOperator signature (job_template is geen geldige arg meer).
       # Voor seed: gebruik `make seed` of `kubectl apply -f data-generation/k8s/`.
