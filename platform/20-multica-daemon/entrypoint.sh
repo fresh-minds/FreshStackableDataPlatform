@@ -47,8 +47,12 @@ else
 fi
 
 # --- 4. Daemon -------------------------------------------------------------
-echo "multica daemon starting"
+# `multica daemon start` daemonizes (forks + returns) by default — that
+# would kill PID 1 and crash-loop the container. `--foreground` keeps
+# it attached so tini can supervise it and container stdout captures
+# every poll / claim / codex spawn.
+echo "multica daemon starting (foreground mode)"
 echo "  server:        $MULTICA_SERVER_URL"
 echo "  codex model:   ${MULTICA_CODEX_MODEL:-<default in config.toml>}"
 echo "  workspace:     $HOME"
-exec multica daemon start
+exec multica daemon start --foreground
