@@ -38,7 +38,7 @@ A fifth agent, [`watcher`](#platform-watcher), is the real-work surface: it inve
 ## Layout
 
 ```
-platform/16-nanitics-observatory/
+platform/19-nanitics-observatory/
 ├── README.md                  ← this file
 ├── build-and-load.sh          ← build image + k3d import
 ├── kustomization.yaml         ← kustomize entry point
@@ -152,7 +152,7 @@ convenience — usually you can skip this.)
 
 ```sh
 # From repo root.
-cd platform/16-nanitics-observatory
+cd platform/19-nanitics-observatory
 
 # Build the image and import it into the running k3d cluster.
 ./build-and-load.sh

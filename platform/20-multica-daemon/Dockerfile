@@ -1,10 +1,10 @@
 # In-cluster Multica daemon, bundled with the OpenAI Codex CLI wired to
 # the UWV Azure AI Foundry endpoint.
 #
-# Build context: this `platform/18-multica-daemon/` directory.
+# Build context: this `platform/20-multica-daemon/` directory.
 # Build manually:
 #
-#   ./build-and-load.sh        # from platform/18-multica-daemon/
+#   ./build-and-load.sh        # from platform/20-multica-daemon/
 #
 # Or:
 #

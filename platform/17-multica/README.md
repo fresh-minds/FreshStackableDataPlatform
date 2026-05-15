@@ -11,7 +11,7 @@ Gemini, Kimi, Kiro CLI, …) — alongside the platform.
 
 ---
 
-## How this differs from `16-nanitics-observatory`
+## How this differs from `19-nanitics-observatory`
 
 Both are agent-flavoured, but they sit in different lanes — so they
 coexist cleanly rather than compete.
@@ -25,7 +25,7 @@ coexist cleanly rather than compete.
 | Use-case       | "Build a `query_trino` tool, watch the span tree"    | "Assign a dbt-PR task to Claude Code, track progress" |
 
 The natural workflow ties them together: assign a Multica task to a
-coding agent → it edits `platform/16-nanitics-observatory/app/app.py` →
+coding agent → it edits `platform/19-nanitics-observatory/app/app.py` →
 new agent runs are visible in the Nanitics UI. **One builds, the other
 observes.** See `docs/explorations/multica-vs-nanitics.md` (this branch)
 for the full design memo.
@@ -136,7 +136,7 @@ hitting `multica.uwv-platform.local:8443`.
 at request time inside the frontend container). Real-time features
 (chat streaming, live issue updates, daemon status) **fail to connect**.
 
-**v2 fix**: mirror `16-nanitics-observatory/build-and-load.sh` — clone
+**v2 fix**: mirror `19-nanitics-observatory/build-and-load.sh` — clone
 multica, run `docker compose -f docker-compose.selfhost.build.yml build`
 with `NEXT_PUBLIC_WS_URL=wss://multica.uwv-platform.local:8443/ws`, push
 to the local k3d registry, swap the `image:` field in `frontend.yaml`.
@@ -171,7 +171,7 @@ kubectl -n uwv-platform create secret generic multica-backend \
 
 These secrets are **not** managed by kustomize (`*-secret.yaml` files
 are templates only) — same anti-clobber pattern as
-`16-nanitics-observatory/secret.yaml`.
+`19-nanitics-observatory/secret.yaml`.
 
 ### 3. Apply the manifests
 

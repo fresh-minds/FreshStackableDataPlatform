@@ -26,7 +26,7 @@ CLI configured to drive the existing UWV Azure AI Foundry deployment
 
 The upstream design assumes daemons run on developer laptops. This
 deployment is a deliberate divergence: the watcher in
-[`16-nanitics-observatory`](../16-nanitics-observatory/) files tasks
+[`19-nanitics-observatory`](../19-nanitics-observatory/) files tasks
 into Multica, humans approve them, and now those approvals get claimed
 and executed without any laptop in the loop.
 
@@ -35,7 +35,7 @@ and executed without any laptop in the loop.
 ## Layout
 
 ```
-platform/18-multica-daemon/
+platform/20-multica-daemon/
 ├── README.md                 ← this file
 ├── Dockerfile                ← multica CLI + Codex + git on Node 20 / Debian slim
 ├── codex-config.toml         ← Azure Foundry provider config baked into the image
@@ -56,7 +56,7 @@ platform/18-multica-daemon/
 - **Foundry secret** — the daemon's Codex inherits `AZURE_OPENAI_API_KEY`
   from the existing `nanitics-azure-foundry` Secret (key
   `AZURE_AI_FOUNDRY_API_KEY`). If you already set that up for the
-  watcher in `16-nanitics-observatory`, you're done.
+  watcher in `19-nanitics-observatory`, you're done.
 - **Multica server** — `multica-backend.uwv-platform:80` must answer.
   `kubectl -n uwv-platform get pods -l app.kubernetes.io/component=multica`
   should list four Running pods.
@@ -64,7 +64,7 @@ platform/18-multica-daemon/
 ### 2. Build the image and import into k3d
 
 ```sh
-cd platform/18-multica-daemon
+cd platform/20-multica-daemon
 ./build-and-load.sh
 ```
 
@@ -91,7 +91,7 @@ kubectl -n uwv-platform create secret generic multica-daemon-auth \
   --from-literal=MULTICA_API_TOKEN='mul_<paste>' \
   --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl apply -k platform/18-multica-daemon
+kubectl apply -k platform/20-multica-daemon
 kubectl -n uwv-platform rollout status deploy/multica-daemon
 ```
 

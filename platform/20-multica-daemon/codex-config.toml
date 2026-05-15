@@ -7,7 +7,7 @@
 # layer).
 #
 # The `azure` provider here points at the same Foundry resource the
-# Nanitics watcher uses (see platform/16-nanitics-observatory/configmap.yaml).
+# Nanitics watcher uses (see platform/19-nanitics-observatory/configmap.yaml).
 # Codex picks up AZURE_OPENAI_API_KEY from the process env, which the
 # Deployment populates from a Secret.
 

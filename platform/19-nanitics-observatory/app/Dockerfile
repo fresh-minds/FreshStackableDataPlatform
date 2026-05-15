@@ -7,7 +7,7 @@
 #
 # Build manually:
 #
-#   ./build-and-load.sh   # from platform/16-nanitics-observatory/
+#   ./build-and-load.sh   # from platform/19-nanitics-observatory/
 #
 # Or:
 #
