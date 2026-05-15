@@ -28,11 +28,15 @@
 if [[ -n "${__UWV_MODE_LIB_LOADED:-}" ]]; then return 0; fi
 __UWV_MODE_LIB_LOADED=1
 
-# ---- logging helpers (idempotent: re-define only if not already set) ----
-type log   >/dev/null 2>&1 || log()   { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-type ok    >/dev/null 2>&1 || ok()    { printf '\033[1;32mOK\033[0m %s\n' "$*"; }
-type warn  >/dev/null 2>&1 || warn()  { printf '\033[1;33m!!\033[0m %s\n' "$*"; }
-type error >/dev/null 2>&1 || error() { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
+# ---- logging helpers ----
+# Always define our shell functions. We can't use `type log >/dev/null` to
+# skip — on macOS `log` is a system binary (Console.app's CLI), so the
+# check would always be truthy and our calls would fall through to it.
+# `declare -F` only matches shell functions, so we check that.
+declare -F log   >/dev/null || log()   { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+declare -F ok    >/dev/null || ok()    { printf '\033[1;32mOK\033[0m %s\n' "$*"; }
+declare -F warn  >/dev/null || warn()  { printf '\033[1;33m!!\033[0m %s\n' "$*"; }
+declare -F error >/dev/null || error() { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
 
 # ---- mode parsing -----------------------------------------------------
 # Accepts:

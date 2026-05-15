@@ -6,17 +6,27 @@
 #   2. nginx-container antwoordt op /api/health (200 + status:ok)
 #   3. oauth2-proxy luistert (kan /ping antwoorden)
 #   4. Service portal:80 routeert naar oauth2-proxy:4180
-#   5. Ingress platform.uwv-platform.local bestaat met TLS-secret
+#   5. Ingress platform.${PLATFORM_DOMAIN} bestaat met TLS-secret
 #   6. Keycloak-realm 'uwv' kent een client met clientId=portal
 #
-# Skipt elegant als de portal nog niet gedeployd is, identiek patroon
-# aan de andere smoke-tests in deze map.
+# Mode-aware via DEPLOYMENT_MODE env. On AKS the public portal is the
+# `platform-landing` Deployment from infrastructure/azure/public-ingresses.yaml
+# (different shape — Astro-tarball + sidecar oauth2-proxy); the chart-style
+# `portal` Deployment from platform/15-portal/ is dead weight there. We
+# skip this whole test on aks.
 set -euo pipefail
 
 pass() { printf '\033[1;32m  OK\033[0m  %s\n' "$*"; }
 fail() { printf '\033[1;31m  FAIL\033[0m %s\n' "$*" >&2; exit 1; }
 skip() { printf '  [SKIP] %s\n' "$*"; }
 log()  { printf '\033[1;34m  ==>\033[0m %s\n' "$*"; }
+
+DEPLOYMENT_MODE="${DEPLOYMENT_MODE:-${MODE:-k3d}}"
+PLATFORM_DOMAIN="${PLATFORM_DOMAIN:-uwv-platform.local}"
+if [[ "$DEPLOYMENT_MODE" == "aks" ]]; then
+  skip "mode=aks — chart-style portal niet de public entry point; zie infrastructure/azure/public-ingresses.yaml (platform-landing)"
+  exit 0
+fi
 
 NS=uwv-platform
 DEP=portal
@@ -72,13 +82,14 @@ else
 fi
 
 # 5. Ingress + TLS
-log "Ingress platform.uwv-platform.local"
+expected_host="platform.${PLATFORM_DOMAIN}"
+log "Ingress $expected_host"
 INGRESS_HOST=$(kubectl -n "$NS" get ingress portal -o jsonpath='{.spec.rules[0].host}' 2>/dev/null || true)
 INGRESS_TLS=$(kubectl -n "$NS" get ingress portal -o jsonpath='{.spec.tls[0].secretName}' 2>/dev/null || true)
-if [[ "$INGRESS_HOST" == "platform.uwv-platform.local" && -n "$INGRESS_TLS" ]]; then
+if [[ "$INGRESS_HOST" == "$expected_host" && -n "$INGRESS_TLS" ]]; then
   pass "ingress host=$INGRESS_HOST tls-secret=$INGRESS_TLS"
 else
-  fail "ingress portal niet correct (host=$INGRESS_HOST tls=$INGRESS_TLS)"
+  fail "ingress portal niet correct (host=$INGRESS_HOST tls=$INGRESS_TLS, expected host=$expected_host)"
 fi
 
 # 6. Keycloak realm bevat client 'portal'

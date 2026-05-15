@@ -206,7 +206,8 @@ fi
 # access_token zit; in deze realm zit die niet altijd, dus we promoten
 # alle Public-only users handmatig naar Admin (demo-cluster only).
 log "Superset: Admin-rol op demo-users zonder rollen"
-if kubectl -n uwv-platform get pod uwv-superset-node-default-0 >/dev/null 2>&1; then
+# Use a Ready-check rather than just `get pod` — see DAG-unpause block below.
+if kubectl -n uwv-platform wait --for=condition=Ready pod/uwv-superset-node-default-0 --timeout=1s >/dev/null 2>&1; then
   kubectl -n uwv-platform exec uwv-superset-node-default-0 -c superset -- python3 -c '
 from superset.app import create_app
 app = create_app()
@@ -318,7 +319,10 @@ fi
 # de scheduler ze ziet. Airflow's default is is_paused_upon_creation=true,
 # en op een verse cluster betekent dat ze stilstaan tot je via de UI klikt.
 log "Unpause UWV DAGs (governance/ingest/transform/maintenance)"
-if kubectl -n uwv-platform get pod uwv-airflow-scheduler-default-0 >/dev/null 2>&1; then
+# Pod-readiness gate: `kubectl get pod` succeeds even when the pod is
+# pending/no-host (the resource exists). With `set -o pipefail` an
+# `exec` failure here aborts the whole script. Use a `Ready` check.
+if kubectl -n uwv-platform wait --for=condition=Ready pod/uwv-airflow-scheduler-default-0 --timeout=1s >/dev/null 2>&1; then
   kubectl -n uwv-platform exec uwv-airflow-scheduler-default-0 -c airflow -- bash -c '
 for dag in bronze_watch \
            silver_persoon silver_polisadm silver_ww silver_wia \
@@ -330,9 +334,9 @@ for dag in bronze_watch \
   airflow dags unpause "$dag" >/dev/null 2>&1 || true
 done
 echo "DAGs unpaused (skipped any that don'\''t exist yet — parse delay is normal)"
-  ' 2>&1 | tail -2
+  ' 2>&1 | tail -2 || true
 else
-  printf '\033[1;33m!!\033[0m uwv-airflow-scheduler-default-0 nog niet up — DAGs blijven paused tot je manueel `airflow dags unpause` draait\n'
+  printf '\033[1;33m!!\033[0m uwv-airflow-scheduler-default-0 nog niet ready — DAGs blijven paused tot je manueel `airflow dags unpause` draait\n'
 fi
 
 log "Deploy-platform fase 1 stub klaar."

@@ -22,6 +22,9 @@ fail() { printf '\033[1;31m  FAIL\033[0m %s\n' "$*" >&2; exit 1; }
 skip() { printf '  [SKIP] %s\n' "$*"; }
 log()  { printf '\033[1;34m  ==>\033[0m %s\n' "$*"; }
 
+DEPLOYMENT_MODE="${DEPLOYMENT_MODE:-${MODE:-k3d}}"
+PLATFORM_DOMAIN="${PLATFORM_DOMAIN:-uwv-platform.local}"
+
 NS=uwv-platform
 DEP=jupyterhub
 
@@ -86,13 +89,14 @@ else
 fi
 
 # 6. Ingress + TLS
-log "Ingress jupyter.uwv-platform.local"
+expected_host="jupyter.${PLATFORM_DOMAIN}"
+log "Ingress $expected_host"
 J_HOST=$(kubectl -n "$NS" get ingress jupyter -o jsonpath='{.spec.rules[0].host}' 2>/dev/null || true)
 J_TLS=$(kubectl -n "$NS" get ingress jupyter -o jsonpath='{.spec.tls[0].secretName}' 2>/dev/null || true)
-if [[ "$J_HOST" == "jupyter.uwv-platform.local" && -n "$J_TLS" ]]; then
+if [[ "$J_HOST" == "$expected_host" && -n "$J_TLS" ]]; then
   pass "ingress host=$J_HOST tls-secret=$J_TLS"
 else
-  fail "ingress jupyter niet correct (host=$J_HOST tls=$J_TLS)"
+  fail "ingress jupyter niet correct (host=$J_HOST tls=$J_TLS, expected host=$expected_host)"
 fi
 
 # 7. ConfigMap jupyterhub-config
@@ -137,21 +141,29 @@ fi
 
 # 11. uwv_lab helper importeert in een kernel-test-pod (lichtgewicht — pod
 #     runt python -c en sluit weer af).
-log "uwv_lab helper import in kernel-image"
-if kubectl -n "$NS" get pod kernel-smoketest >/dev/null 2>&1; then
-  kubectl -n "$NS" delete pod kernel-smoketest --ignore-not-found >/dev/null 2>&1 || true
-fi
-IMG=$(kubectl -n "$NS" get deployment "$DEP" -o jsonpath='{.spec.template.spec.containers[?(@.name=="hub")].env[?(@.name=="SINGLEUSER_IMAGE")].value}')
-[[ -z "$IMG" ]] && IMG="uwv-platform/jupyter-kernel:dev"
-KERNEL_OUT=$(kubectl -n "$NS" run kernel-smoketest \
-               --image="$IMG" --image-pull-policy=IfNotPresent \
-               --restart=Never --rm -i --quiet --command -- \
-               python -c "import uwv_lab; print('uwv_lab', 'OK', list(uwv_lab.env().keys())[:3])" \
-               2>/dev/null || true)
-if echo "$KERNEL_OUT" | grep -q "uwv_lab OK"; then
-  pass "kernel-image kan 'import uwv_lab' (output: $KERNEL_OUT)"
+#
+# Op AKS is `uwv-platform/jupyter-kernel:dev` niet pullable zonder dat het
+# image naar een registry is gepusht (geen `kind load` / `k3d image import`
+# beschikbaar). Sla de check over tot er een registry-push-flow is.
+if [[ "$DEPLOYMENT_MODE" == "aks" ]]; then
+  skip "uwv_lab kernel-import — kernel-image staat niet op een registry die AKS kan pullen (TODO: ACR-push)"
 else
-  fail "kernel-image kon 'uwv_lab' niet importeren — image-build of import-error. Output: ${KERNEL_OUT:-leeg}"
+  log "uwv_lab helper import in kernel-image"
+  if kubectl -n "$NS" get pod kernel-smoketest >/dev/null 2>&1; then
+    kubectl -n "$NS" delete pod kernel-smoketest --ignore-not-found >/dev/null 2>&1 || true
+  fi
+  IMG=$(kubectl -n "$NS" get deployment "$DEP" -o jsonpath='{.spec.template.spec.containers[?(@.name=="hub")].env[?(@.name=="SINGLEUSER_IMAGE")].value}')
+  [[ -z "$IMG" ]] && IMG="uwv-platform/jupyter-kernel:dev"
+  KERNEL_OUT=$(kubectl -n "$NS" run kernel-smoketest \
+                 --image="$IMG" --image-pull-policy=IfNotPresent \
+                 --restart=Never --rm -i --quiet --command -- \
+                 python -c "import uwv_lab; print('uwv_lab', 'OK', list(uwv_lab.env().keys())[:3])" \
+                 2>/dev/null || true)
+  if echo "$KERNEL_OUT" | grep -q "uwv_lab OK"; then
+    pass "kernel-image kan 'import uwv_lab' (output: $KERNEL_OUT)"
+  else
+    fail "kernel-image kon 'uwv_lab' niet importeren — image-build of import-error. Output: ${KERNEL_OUT:-leeg}"
+  fi
 fi
 
 echo

@@ -284,7 +284,7 @@ aks-deploy: render-catalogs ## Deploy platform manifests on AKS
 
 .PHONY: aks-smoke
 aks-smoke: ## Run smoke tests against the AKS context
-	bash scripts/run-smoke-tests.sh
+	DEPLOYMENT_MODE=aks PLATFORM_DOMAIN=eu-sovereigndataplatform.com bash scripts/run-smoke-tests.sh
 
 .PHONY: aks-all
 aks-all: aks-up aks-context aks-bootstrap aks-deploy aks-smoke ## End-to-end AKS lifecycle: up + context + bootstrap + deploy + smoke
