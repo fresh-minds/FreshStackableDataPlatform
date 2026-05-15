@@ -2,7 +2,7 @@
 
 > **Status: exploratory memo** in branch `feat/multica-explore`. Not yet
 > an ADR. Outcome of running `multica-ai/multica` self-host locally and
-> comparing the integration surface against `16-nanitics-observatory`.
+> comparing the integration surface against `19-nanitics-observatory`.
 >
 > Promote to ADR-0008 when:
 > - we've run `platform/17-multica/` end-to-end on k3d, confirmed login
@@ -31,7 +31,7 @@ That single line resolves most "wait, what does this do" conversations.
 
 ## Two lanes, one platform
 
-|                                | **Nanitics Observatory** ([platform/16-nanitics-observatory](../../platform/16-nanitics-observatory/README.md)) | **Multica** ([platform/17-multica](../../platform/17-multica/README.md)) |
+|                                | **Nanitics Observatory** ([platform/19-nanitics-observatory](../../platform/19-nanitics-observatory/README.md)) | **Multica** ([platform/17-multica](../../platform/17-multica/README.md)) |
 |--------------------------------|----------------------------------------------------|----------------------------------------------------|
 | Lane                           | Runtime / inside-the-platform                      | Dev-loop / build-time                              |
 | What runs in-cluster           | One pod: FastAPI + Nanitics SDK                    | Three pods: Postgres (pgvector), Go backend, Next.js frontend |
@@ -43,7 +43,7 @@ That single line resolves most "wait, what does this do" conversations.
 | Killer use-case                | "Build a `query_trino` tool, watch the trace"      | "Assign a dbt-PR task to Claude Code, track it"    |
 
 The natural workflow ties them: assign a Multica task to a coding agent
-→ it edits `platform/16-nanitics-observatory/app/app.py` to add a new
+→ it edits `platform/19-nanitics-observatory/app/app.py` to add a new
 runtime tool → the developer triggers a run and the new agent run shows
 up in the Nanitics UI. **One builds, the other observes.**
 
@@ -118,7 +118,7 @@ These are conscious deferrals, not omissions:
 
 - **oauth2-proxy + Keycloak.** Captured above.
 - **Custom web image with `NEXT_PUBLIC_WS_URL` baked.** Mirror the
-  `16-nanitics-observatory/build-and-load.sh` pattern; touches
+  `19-nanitics-observatory/build-and-load.sh` pattern; touches
   `infrastructure/` for image push, hence postponed.
 - **MinIO bucket for uploads.** Provisioning a bucket means touching
   `infrastructure/` (MinIO Helm values + bucket policy). Not needed

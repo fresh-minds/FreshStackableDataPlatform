@@ -1,7 +1,7 @@
 # Exploration: Wachter — een agent-aangedreven log/trace-triage met human-in-the-loop fixes
 
 > **Status: design-memo** in een nog te creëren branch `feat/wachter-explore`.
-> Voorgesteld als derde "agent-lane" naast `16-nanitics-observatory`
+> Voorgesteld als derde "agent-lane" naast `19-nanitics-observatory`
 > (build-time observability) en `17-multica` (dev-loop coordination).
 >
 > Promote to ADR-0009 zodra:
@@ -95,7 +95,7 @@ Deze splitsing is bewust — zie `## Risks` voor de motivatie.
                                        └──────────┬───────────┘
                                                   │  span tree
                                                   ▼
-                                  16-nanitics-observatory  (audit + visualisatie)
+                                  19-nanitics-observatory  (audit + visualisatie)
 ```
 
 Vier observaties uit dit plaatje die ontwerpkeuzes vastleggen:
@@ -465,7 +465,7 @@ groeit.
 
 ## Cross-references
 
-- [`platform/16-nanitics-observatory/README.md`](../../platform/16-nanitics-observatory/README.md) — agent-runtime + trace-viewer; Wachter hergebruikt de SDK + Observatory.
+- [`platform/19-nanitics-observatory/README.md`](../../platform/19-nanitics-observatory/README.md) — agent-runtime + trace-viewer; Wachter hergebruikt de SDK + Observatory.
 - [`platform/17-multica/README.md`](../../platform/17-multica/README.md) — issue/task/agent-registry; Wachter is een API-client.
 - [`platform/14-monitoring/README.md`](../../platform/14-monitoring/README.md) — bron van alle telemetrie.
 - [`docs/explorations/multica-vs-nanitics.md`](./multica-vs-nanitics.md) — eerste lane-mapping; Wachter is daar het derde stipje op.

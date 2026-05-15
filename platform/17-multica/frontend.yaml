@@ -8,7 +8,7 @@
 # updates) will fail to connect.
 #
 # Fix: rebuild the web image with the correct NEXT_PUBLIC_WS_URL baked
-# in. Mirrors 16-nanitics-observatory's build-and-load.sh pattern. See
+# in. Mirrors 19-nanitics-observatory's build-and-load.sh pattern. See
 # v2 in this directory's README.
 
 apiVersion: v1

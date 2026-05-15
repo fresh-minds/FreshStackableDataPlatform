@@ -6,7 +6,7 @@ namespace: uwv-platform
 # Note on secrets:
 #   postgres-secret.yaml and backend-secret.yaml are TEMPLATES showing the
 #   expected keys. They are deliberately NOT listed below — same pattern as
-#   16-nanitics-observatory. Apply real values out-of-band:
+#   19-nanitics-observatory. Apply real values out-of-band:
 #
 #     kubectl -n uwv-platform create secret generic multica-postgres \
 #       --from-literal=POSTGRES_PASSWORD=$(openssl rand -hex 24) \
