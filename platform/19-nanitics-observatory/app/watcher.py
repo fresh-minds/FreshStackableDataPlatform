@@ -96,15 +96,15 @@ async def find_existing_multica_tasks(fingerprint: str) -> str:
     if MULTICA_DRY_RUN:
         return json.dumps({"matches": [], "dry_run": True})
 
-    url = f"{MULTICA_API_URL}/api/tasks"
+    # Multica's REST surface uses "issues" not "tasks". The watcher
+    # embeds the fingerprint as an HTML comment inside each filed
+    # issue's description (see _build_issue_payload), so a `?search=`
+    # for the fingerprint string finds prior filings.
+    url = f"{MULTICA_API_URL}/api/issues"
     headers = _multica_auth_headers()
     params = {
-        "workspace": MULTICA_WORKSPACE,
-        # NOTE: exact query-param name depends on Multica's API surface.
-        # The watcher writes this same key on the way in (see _build_task_payload),
-        # so when the real Multica search parameter name is confirmed, fix
-        # it in both places.
-        "metadata.watcher_fingerprint": fingerprint,
+        "workspace_slug": MULTICA_WORKSPACE,
+        "search": fingerprint,
     }
     try:
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
@@ -114,10 +114,17 @@ async def find_existing_multica_tasks(fingerprint: str) -> str:
     except httpx.HTTPError as exc:
         return json.dumps({"error": f"Multica lookup failed: {exc}"})
 
-    tasks = body.get("tasks") if isinstance(body, dict) else body
-    if not isinstance(tasks, list):
+    issues = body.get("issues") if isinstance(body, dict) else body
+    if not isinstance(issues, list):
         return json.dumps({"error": "unexpected Multica response shape", "raw": body})
-    matches = [t.get("id") for t in tasks if isinstance(t, dict) and t.get("id")]
+    # `search=` is fuzzy — re-verify the fingerprint is actually in the
+    # description (the HTML comment) before claiming a match.
+    matches = [
+        i.get("identifier") or i.get("id")
+        for i in issues
+        if isinstance(i, dict)
+        and fingerprint in (i.get("description") or "")
+    ]
     return json.dumps({"matches": matches})
 
 
@@ -147,7 +154,7 @@ async def file_multica_task(
             {"error": f"Invalid severity {severity!r}; allowed: {ALLOWED_SEVERITIES}"}
         )
 
-    payload = _build_task_payload(title, body, severity, area, fingerprint)
+    payload = _build_issue_payload(title, body, severity, area, fingerprint)
 
     if MULTICA_DRY_RUN:
         LOG.info("[DRY_RUN] would POST to Multica: %s", json.dumps(payload))
@@ -155,19 +162,32 @@ async def file_multica_task(
             {"task_id": f"dry-run-{fingerprint[:24]}", "dry_run": True}
         )
 
-    url = f"{MULTICA_API_URL}/api/tasks"
+    # Multica's REST surface uses "issues". The workspace identifier
+    # goes on the query string; the body is JUST {title, description}.
+    url = f"{MULTICA_API_URL}/api/issues"
     headers = _multica_auth_headers()
     headers["Content-Type"] = "application/json"
+    params = {"workspace_slug": MULTICA_WORKSPACE}
     try:
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
-            response = await client.post(url, json=payload, headers=headers)
+            response = await client.post(url, params=params, json=payload, headers=headers)
             response.raise_for_status()
             result = response.json()
     except httpx.HTTPError as exc:
-        return json.dumps({"error": f"Multica task creation failed: {exc}"})
+        return json.dumps({"error": f"Multica issue creation failed: {exc}"})
 
-    task_id = result.get("id") or result.get("task_id") or "unknown"
-    return json.dumps({"task_id": task_id})
+    issue_id = result.get("identifier") or result.get("id") or "unknown"
+    # Labels are attached post-create via a separate endpoint so the
+    # `watcher-filed`, `severity:*`, and `area:*` tags carry over. The
+    # `approved` label is INTENTIONALLY NOT attached — humans set it.
+    label_errors = await _attach_labels(
+        result.get("id"),
+        ["watcher-filed", f"severity:{severity}", f"area:{area}"],
+    )
+    out: dict[str, Any] = {"task_id": issue_id}
+    if label_errors:
+        out["label_errors"] = label_errors
+    return json.dumps(out)
 
 
 def _multica_auth_headers() -> dict[str, str]:
@@ -176,22 +196,78 @@ def _multica_auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {MULTICA_API_TOKEN}"}
 
 
-def _build_task_payload(
+def _build_issue_payload(
     title: str, body: str, severity: str, area: str, fingerprint: str
 ) -> dict[str, Any]:
-    # `approved` is intentionally absent — only humans set it, and the
-    # coding-agent daemon filters on its presence.
-    labels = ["watcher-filed", f"severity:{severity}", f"area:{area}"]
-    return {
-        "title": title,
-        "description": _wrap_body_with_approval_checklist(body, fingerprint),
-        "workspace_slug": MULTICA_WORKSPACE,
-        "labels": labels,
-        "metadata": {
-            "watcher_fingerprint": fingerprint,
-            "watcher_version": "slice-5",
-        },
-    }
+    # Multica's issue body is just title + description. The fingerprint
+    # and watcher version are embedded into the description as HTML
+    # comments — invisible in the rendered markdown, but searchable
+    # via the API's `?search=` for dedup. Labels go on after creation
+    # (separate /labels endpoint).
+    description = (
+        _wrap_body_with_approval_checklist(body, fingerprint)
+        + f"\n\n<!-- watcher-fingerprint: {fingerprint} -->\n"
+        + f"<!-- watcher-version: slice-6 -->\n"
+        + f"<!-- watcher-severity: {severity} -->\n"
+        + f"<!-- watcher-area: {area} -->\n"
+    )
+    return {"title": title, "description": description}
+
+
+# Workspace labels are stable, so cache them in-process by name → uuid.
+# First filing pays the GET /api/labels cost; subsequent ones are free.
+_LABEL_ID_CACHE: dict[str, str] = {}
+
+
+async def _attach_labels(issue_id: str | None, label_names: list[str]) -> list[str]:
+    """Attach labels by name. Returns a list of names that failed (empty on
+    success). Labels MUST already exist in the workspace; this function
+    does not create them. The platform-ops workspace is seeded with
+    `watcher-filed`, `severity:{info,warning,critical}`, `area:*`, and
+    `approved` (see platform/17-multica seeding step in the README)."""
+    if not issue_id or not label_names:
+        return []
+    ids = await _resolve_label_ids(label_names)
+    failures: list[str] = []
+    url = f"{MULTICA_API_URL}/api/issues/{issue_id}/labels"
+    headers = _multica_auth_headers()
+    headers["Content-Type"] = "application/json"
+    params = {"workspace_slug": MULTICA_WORKSPACE}
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
+        for name in label_names:
+            label_id = ids.get(name)
+            if not label_id:
+                failures.append(f"{name}: not found in workspace")
+                continue
+            try:
+                resp = await client.post(
+                    url, params=params, json={"label_id": label_id}, headers=headers
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                failures.append(f"{name}: {exc}")
+    return failures
+
+
+async def _resolve_label_ids(names: list[str]) -> dict[str, str]:
+    """Return {name: uuid} for the requested names, populating the cache
+    from `GET /api/labels?workspace_slug=…` on first cache miss."""
+    missing = [n for n in names if n not in _LABEL_ID_CACHE]
+    if missing:
+        url = f"{MULTICA_API_URL}/api/labels"
+        headers = _multica_auth_headers()
+        params = {"workspace_slug": MULTICA_WORKSPACE}
+        try:
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
+                response = await client.get(url, params=params, headers=headers)
+                response.raise_for_status()
+                body = response.json()
+            for label in body.get("labels", []) or []:
+                if isinstance(label, dict) and label.get("name") and label.get("id"):
+                    _LABEL_ID_CACHE[label["name"]] = label["id"]
+        except httpx.HTTPError as exc:
+            LOG.warning("Multica labels lookup failed: %s", exc)
+    return {n: _LABEL_ID_CACHE[n] for n in names if n in _LABEL_ID_CACHE}
 
 
 _APPROVAL_CHECKLIST = """
