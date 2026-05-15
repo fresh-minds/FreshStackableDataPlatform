@@ -184,14 +184,56 @@ def _build_task_payload(
     labels = ["watcher-filed", f"severity:{severity}", f"area:{area}"]
     return {
         "title": title,
-        "description": body,
+        "description": _wrap_body_with_approval_checklist(body, fingerprint),
         "workspace_slug": MULTICA_WORKSPACE,
         "labels": labels,
         "metadata": {
             "watcher_fingerprint": fingerprint,
-            "watcher_version": "slice-2",
+            "watcher_version": "slice-5",
         },
     }
+
+
+_APPROVAL_CHECKLIST = """
+---
+
+## Approval checklist (read before adding the `approved` label)
+
+This task was filed automatically by `platform-watcher@uwv`. The
+**Suggested fix** above is a proposal, not a prescription.
+
+Before adding the `approved` label and assigning the task to a coding
+agent, confirm:
+
+- [ ] **Signal is real.** Open the linked runbook (if any) or check
+      Grafana/Alertmanager — is the symptom still present, or has it
+      cleared since this task was filed?
+- [ ] **Scope is right.** Does the Suggested fix actually address the
+      hypothesis? Or does it paper over a deeper issue?
+- [ ] **Blast radius is acceptable.** Will the fix touch shared
+      infrastructure (Trino coordinator, Hive metastore, Kafka brokers,
+      OPA policy)? If yes, line up a maintenance window first.
+- [ ] **No active incident.** Don't approve mid-incident — let the
+      oncall stabilise first, then revisit.
+
+When all four are checked, add the `approved` label and assign the task
+to the coding-agent user. Multica's daemon will then claim it on a
+developer laptop and the existing PR / CI / review flow applies.
+
+> Dedup fingerprint: `{fingerprint}` — use this if you need to find
+> related tasks in Multica.
+"""
+
+
+def _wrap_body_with_approval_checklist(body: str, fingerprint: str) -> str:
+    """Append a deterministic approval checklist to the LLM-authored body.
+
+    The checklist is identical across every filed task so reviewers
+    know exactly what to confirm before flipping the `approved` label.
+    Generating it deterministically (rather than via the prompt) keeps
+    the human gate unambiguous even if the LLM drifts.
+    """
+    return body.rstrip() + _APPROVAL_CHECKLIST.format(fingerprint=fingerprint)
 
 
 @tool(

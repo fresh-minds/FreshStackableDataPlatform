@@ -299,6 +299,51 @@ CronJob has `concurrencyPolicy: Forbid`, so a long-running ReAct loop
 is not overlapped by the next tick; the 30-min cadence is the natural
 rate limiter rather than a hard per-day cap.
 
+### Operator runbook — the full approval loop
+
+This is the end-to-end flow once the watcher is live (out of dry-run and
+the CronJob un-suspended):
+
+1. **Cron tick** — every 30 min, the CronJob POSTs to `/run/watcher`.
+   The agent calls `list_firing_alerts`, picks the most severe, confirms
+   with Prometheus / logs / events, dedup-checks against existing
+   Multica tasks, and either files a new task or reports "no issue
+   found".
+
+2. **Triage** — in Multica, filter the `platform-ops` workspace by
+   label `watcher-filed`. New tasks have severity + area labels
+   (`severity:critical`, `area:trino`, …) but **no `approved` label**.
+
+3. **Decide** — open the task and read the deterministic *Approval
+   checklist* at the bottom of the body (appended by the watcher, not
+   the LLM):
+     - Is the signal still real?
+     - Is the Suggested fix appropriate scope?
+     - Is the blast radius acceptable?
+     - Is there an active incident that would conflict?
+
+   If any check fails, comment on the task, optionally adjust the body,
+   and **do not** add `approved`. If the issue cleared on its own,
+   close the task — that information helps the next dedup pass.
+
+4. **Approve** — add the `approved` label and assign the task to the
+   coding-agent user (e.g. `claude-code@<email>`). Multica's daemon
+   running on a developer laptop will claim the task; the agent runs
+   inside this repo's working tree and opens a PR.
+
+5. **Review the PR** — existing CI runs, existing review path applies.
+   The watcher has *no role* past step 1 — there is no auto-merge, no
+   ChatOps shortcut, no second AI involvement in the merge gate.
+
+6. **Merge** — fix lands. Next cron tick may re-investigate the same
+   fingerprint; if the symptom is gone, the agent reports "no issue
+   found" and the task lifecycle is complete. If the symptom returns,
+   a new task is filed (the previous one is closed and so doesn't
+   dedup it away).
+
+Two human gates by construction: the `approved` label flip, and the PR
+merge. The watcher cannot bypass either.
+
 ### What's deliberately not in this build
 
 - **No autonomous fixes** — the watcher only writes Multica tasks. Every
