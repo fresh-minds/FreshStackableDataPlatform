@@ -19,7 +19,7 @@ data:
   # /v1/chat/completions — confirmed deployments: gpt-4o, gpt-5-nano
   # (gpt-5-nano is a reasoning model and needs max_completion_tokens
   # instead of max_tokens; gpt-4o is the safe default).
-  LLM_MODEL: "gpt-4o"
+  LLM_MODEL: "gpt-5.4-nano"
   # Azure AI Foundry Project endpoint. Stripped the /responses suffix —
   # the OpenAI SDK appends /chat/completions itself. Both endpoints live
   # under the same /openai/v1/ base on Foundry Projects.
