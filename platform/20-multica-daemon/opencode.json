@@ -5,10 +5,10 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "Azure AI Foundry (UWV)",
       "options": {
-        "baseURL": "https://devfreshmindsaifoundry.openai.azure.com/openai/v1"
+        "baseURL": "https://devfreshmindsaifoundry.services.ai.azure.com/api/projects/proj-default/openai/v1"
       },
       "models": {
-        "gpt-4o": {
+        "gpt-5.4-nano": {
           "limit": {
             "context": 128000,
             "output": 16384

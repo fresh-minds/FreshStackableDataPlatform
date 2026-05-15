@@ -12,35 +12,32 @@
 # Deployment populates from a Secret.
 
 model_provider = "azure"
-model = "gpt-4o"
+model = "gpt-5.4-nano"
 
-# Disable reasoning request/summary params globally. gpt-4o on Foundry's
-# /v1/responses surface rejects requests whose `reasoning` field is
-# anything other than absent — codex app-server's defaults include
-# reasoning_effort and reasoning_summary, which produced
-# `response.failed` events mid-stream (~20s into every task). Setting
-# both to "none" makes codex omit them from the wire payload.
+# Disable reasoning request/summary params globally. The project-form
+# Foundry /v1/responses surface rejects requests whose `reasoning` field
+# is `null` ("invalid_payload param=/reasoning"). Setting both to "none"
+# makes codex omit the field from the wire payload entirely.
 model_reasoning_effort = "none"
 model_reasoning_summary = "none"
 
 [model_providers.azure]
 name = "Azure AI Foundry (UWV)"
-# Use the openai.azure.com URL form — verified working end-to-end via codex
-# in docs/explorations/multica-foundry.md. The project-form URL
-# (`*.services.ai.azure.com/api/projects/proj-default/openai/v1`) accepts
-# requests but its /responses surface rejects codex's "reasoning: null"
-# payload as invalid_payload param=/reasoning, blocking every turn/start.
-# This form does not have that quirk.
-base_url = "https://devfreshmindsaifoundry.openai.azure.com/openai/v1"
+# Project-form URL — the same endpoint the watcher uses successfully
+# against gpt-5.4-nano. Switched from the openai.azure.com URL form
+# because gpt-5.4-nano is deployed on this specific project endpoint
+# (per the Foundry portal Deployment info: GlobalStandard, version
+# 2026-03-17, model name gpt-5.4-nano).
+base_url = "https://devfreshmindsaifoundry.services.ai.azure.com/api/projects/proj-default/openai/v1"
 env_key = "AZURE_OPENAI_API_KEY"
 # wire_api = "responses" is the only supported value in codex >= 0.130.
 # (See https://github.com/openai/codex/discussions/7782 — `chat` was removed.)
 wire_api = "responses"
-# `preview` is the only api-version this Foundry deployment accepts on
-# the /v1/responses path (pinned versions like 2025-04-01-preview return
-# "API version not supported"; absent param returns "api-version
-# parameter is required").
-query_params = { api-version = "preview" }
+# No `query_params = { api-version = ... }` — this URL form REJECTS
+# api-version with "api-version query parameter is not allowed when
+# using /v1 path". The openai.azure.com form is the opposite (it
+# REQUIRES api-version), so the two URL forms have inverse query
+# requirements.
 
 # KNOWN UPSTREAM ISSUE — codex app-server ↔ Foundry /v1/responses streaming:
 #

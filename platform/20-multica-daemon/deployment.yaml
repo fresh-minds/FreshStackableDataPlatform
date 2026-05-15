@@ -48,7 +48,7 @@ spec:
             # `opencode models` listing. Multica's `MULTICA_OPENCODE_MODEL`
             # env overrides what opencode picks by default.
             - name: MULTICA_OPENCODE_MODEL
-              value: "azure-foundry/gpt-4o"
+              value: "azure-foundry/gpt-5.4-nano"
             # Both codex and opencode inherit this from the process env.
             - name: AZURE_OPENAI_API_KEY
               valueFrom:
