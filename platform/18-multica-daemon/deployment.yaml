@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multica-daemon
+  namespace: uwv-platform
+spec:
+  replicas: 1
+  strategy:
+    # The daemon is stateful (it holds PAT-derived auth in the PVC and
+    # may be mid-task when a rollout starts). Recreate avoids two daemons
+    # claiming tasks simultaneously during the rollover window.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: multica-daemon
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: multica-daemon
+    spec:
+      # The daemon's own writes are confined to the workspace volume.
+      # No K8s API calls are made, so SA token mounting stays off.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: daemon
+          image: uwv-platform/multica-daemon:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            # Pointers — the daemon talks to the backend Service on the
+            # cluster network. The app_url is what Multica embeds in
+            # task URLs etc.; humans use the ingress hostname.
+            - name: MULTICA_SERVER_URL
+              value: "http://multica-backend.uwv-platform:80"
+            - name: MULTICA_APP_URL
+              value: "https://multica.uwv-platform.local:8443"
+            # Tell the daemon which Foundry deployment to drive codex at.
+            # The codex CLI ALSO reads its own model from ~/.codex/config.toml;
+            # this var is Multica's override and wins.
+            - name: MULTICA_CODEX_MODEL
+              value: "gpt-5.4-nano"
+            # Codex inherits this from the process env.
+            - name: AZURE_OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nanitics-azure-foundry
+                  key: AZURE_AI_FOUNDRY_API_KEY
+            # Bootstrap PAT — used by entrypoint.sh on first boot to do
+            # `multica login --token`. Empty by default; pod will refuse
+            # to start until the operator provisions the Secret.
+            - name: MULTICA_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: multica-daemon-auth
+                  key: MULTICA_API_TOKEN
+                  optional: true
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: "2",  memory: 2Gi }
+          # No HTTP port — the daemon is purely an outbound client of
+          # the Multica server. No readiness probe; `multica daemon
+          # start` either runs or exits, and Recreate handles restarts.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # codex writes ~/.codex/.tmp
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: workspace
+              mountPath: /home/multica
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: multica-daemon-workspace

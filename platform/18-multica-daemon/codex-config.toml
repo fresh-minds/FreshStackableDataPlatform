@@ -1,0 +1,22 @@
+# Codex configuration for the UWV in-cluster Multica daemon.
+#
+# This file is shipped inside the image at /etc/codex/config.toml.template
+# and copied to ~/.codex/config.toml by entrypoint.sh on container start
+# (codex writes per-task scratch under ~/.codex, so that directory must
+# live on the writable workspace volume — not on the read-only image
+# layer).
+#
+# The `azure` provider here points at the same Foundry resource the
+# Nanitics watcher uses (see platform/16-nanitics-observatory/configmap.yaml).
+# Codex picks up AZURE_OPENAI_API_KEY from the process env, which the
+# Deployment populates from a Secret.
+
+model_provider = "azure"
+model = "gpt-5.4-nano"
+
+[model_providers.azure]
+name = "Azure AI Foundry (UWV)"
+base_url = "https://devfreshmindsaifoundry.services.ai.azure.com/api/projects/proj-default/openai/v1"
+env_key = "AZURE_OPENAI_API_KEY"
+wire_api = "responses"
+query_params = { api-version = "preview" }
