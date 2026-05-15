@@ -17,4 +17,4 @@ resources:
 
 commonLabels:
   app.kubernetes.io/part-of: uwv-platform
-  app.kubernetes.io/component: om-access-bridge
+  app.kubernetes.io/component: nanitics-observatory

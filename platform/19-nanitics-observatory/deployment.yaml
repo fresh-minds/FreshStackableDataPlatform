@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: om-access-bridge
+  name: nanitics-observatory
   namespace: uwv-platform
 spec:
   replicas: 1
@@ -12,11 +12,11 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app.kubernetes.io/name: om-access-bridge
+      app.kubernetes.io/name: nanitics-observatory
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: om-access-bridge
+        app.kubernetes.io/name: nanitics-observatory
     spec:
       # Slice 2 needed cluster events access for the watcher's
       # recent_k8s_warnings tool — see rbac.yaml. The SA grants
@@ -29,16 +29,15 @@ spec:
           type: RuntimeDefault
       containers:
         - name: app
-          image: uwv-platform/om-access-bridge:dev
+          image: uwv-platform/nanitics-observatory:dev
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
-              containerPort: 8002
+              containerPort: 8001
           envFrom:
             - configMapRef:
-                name: om-access-bridge-config
+                name: nanitics-observatory-config
             - secretRef:
-<<<<<<<< HEAD:platform/19-nanitics-observatory/deployment.yaml
                 name: nanitics-azure-foundry
             # Watcher's Multica bearer token. `optional: true` keeps the
             # pod startable while MULTICA_DRY_RUN=true and the real token
@@ -52,9 +51,6 @@ spec:
             - secretRef:
                 name: nanitics-opensearch
                 optional: true
-========
-                name: om-access-bridge-secret
->>>>>>>> main:platform/18-om-access-bridge/deployment.yaml
           readinessProbe:
             httpGet:
               path: /health
@@ -68,13 +64,15 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 30
           resources:
-            requests: { cpu: 25m, memory: 96Mi }
-            limits:   { cpu: 250m, memory: 256Mi }
+            requests: { cpu: 50m, memory: 256Mi }
+            limits:   { cpu: 500m, memory: 1Gi }
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
           volumeMounts:
+            # uvicorn writes a small pid/access log here on some setups;
+            # easier to grant a writable tmpfs than fight it.
             - name: tmp
               mountPath: /tmp
       volumes:

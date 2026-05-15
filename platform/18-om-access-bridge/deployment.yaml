@@ -18,11 +18,7 @@ spec:
       labels:
         app.kubernetes.io/name: om-access-bridge
     spec:
-      # Slice 2 needed cluster events access for the watcher's
-      # recent_k8s_warnings tool — see rbac.yaml. The SA grants
-      # read-only `events` only; no other K8s API surface is reachable.
-      serviceAccountName: nanitics-observatory-watcher
-      automountServiceAccountToken: true
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -38,23 +34,7 @@ spec:
             - configMapRef:
                 name: om-access-bridge-config
             - secretRef:
-<<<<<<<< HEAD:platform/19-nanitics-observatory/deployment.yaml
-                name: nanitics-azure-foundry
-            # Watcher's Multica bearer token. `optional: true` keeps the
-            # pod startable while MULTICA_DRY_RUN=true and the real token
-            # has not yet been provisioned. See secret-multica.yaml.
-            - secretRef:
-                name: nanitics-multica-token
-                optional: true
-            # OpenSearch basic-auth credentials. Optional — empty
-            # OPENSEARCH_USERNAME means anonymous (works in dev where
-            # the security plugin is permissive). See secret-opensearch.yaml.
-            - secretRef:
-                name: nanitics-opensearch
-                optional: true
-========
                 name: om-access-bridge-secret
->>>>>>>> main:platform/18-om-access-bridge/deployment.yaml
           readinessProbe:
             httpGet:
               path: /health
