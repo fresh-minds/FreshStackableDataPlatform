@@ -7,11 +7,9 @@
 
 mode: standalone
 
-# Storage
+# Storage — storageClass + size set per-mode in values-{k3d,kind,aks}.yaml.
 persistence:
   enabled: true
-  storageClass: "local-path"   # k3d default
-  size: 30Gi
   accessMode: ReadWriteOnce
 
 # Auth (DEV ONLY — vervangen in productie via Secret)

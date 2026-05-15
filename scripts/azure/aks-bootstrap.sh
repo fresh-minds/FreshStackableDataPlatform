@@ -1,28 +1,22 @@
 #!/usr/bin/env bash
 # Bootstrap helm charts + Stackable operators on the AKS cluster.
-# Runs scripts/bootstrap.sh with HELM_OVERRIDES_DIR pointing at the AKS
-# helm overlays, which switch local-path storage class to managed-csi.
+# Thin wrapper around scripts/bootstrap.sh --mode=aks; the mode flag selects
+# the values-aks.yaml overlays per chart (managed-csi storage, LoadBalancer
+# service, public-domain hostnames).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-log()   { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-warn()  { printf '\033[1;33m!!\033[0m %s\n' "$*"; }
-error() { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
+# Force mode=aks regardless of what the caller passed — this script only
+# makes sense for AKS.
+export DEPLOYMENT_MODE=aks
+# shellcheck source=../lib/mode.sh
+source "$ROOT/scripts/lib/mode.sh"
+parse_mode_args   # picks up DEPLOYMENT_MODE=aks from env
+require_context
 
-# Safety: refuse to run against a non-AKS context.
-ctx="$(kubectl config current-context 2>/dev/null || true)"
-case "$ctx" in
-  uwv-platform-aks|*aks*) ;;
-  *) error "kubectl context is '$ctx', not the AKS cluster. Run: make aks-context" ;;
-esac
-log "kubectl context: $ctx"
-
-export HELM_OVERRIDES_DIR="$ROOT/infrastructure/azure/helm-overrides"
-log "Using helm overrides from: $HELM_OVERRIDES_DIR"
-
-bash "$ROOT/scripts/bootstrap.sh"
+bash "$ROOT/scripts/bootstrap.sh" --mode=aks
 
 # AKS-specific post-install: the Bitnami postgres chart's first-init silently
 # fails on AKS — the data dir gets created but the chart's
@@ -77,7 +71,7 @@ done
 if [[ -n "${LB_IP:-}" ]]; then
   log "Ingress LoadBalancer IP: $LB_IP"
   echo "Add to /etc/hosts:"
-  echo "  $LB_IP keycloak.uwv-platform.local minio-console.uwv-platform.local grafana.uwv-platform.local openmetadata.uwv-platform.local trino.uwv-platform.local airflow.uwv-platform.local superset.uwv-platform.local nifi.uwv-platform.local"
+  echo "  $LB_IP keycloak.uwv-platform.local minio-console.uwv-platform.local grafana.uwv-platform.local openmetadata.uwv-platform.local trino.uwv-platform.local airflow.uwv-platform.local superset.uwv-platform.local nifi.uwv-platform.local spark.uwv-platform.local"
 else
   warn "LoadBalancer IP not yet allocated; run 'kubectl -n ingress-nginx get svc' later."
 fi

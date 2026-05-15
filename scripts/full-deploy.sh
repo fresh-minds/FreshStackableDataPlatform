@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
 # UWV Reference Data Platform — alles-in-één deploy.
 #
-# Wat dit doet:
-#   1. k3d-cluster aanmaken
-#   2. /etc/hosts patchen (sudo, alleen indien nodig)
-#   3. make bootstrap (alle Helm charts: cert-manager, ingress, postgres,
-#      minio, keycloak, prometheus, stackable-operators, opensearch,
-#      openmetadata, vector)
-#   4. uwv-ca-bundle ConfigMap (cert-manager CA voor in-cluster TLS-verify)
-#   5. CoreDNS NodeHosts patch (keycloak.uwv-platform.local → svc-IP)
-#   6. make deploy-platform (alle K8s manifests incl. portal)
-#   7. Portal Docker-image bouwen + importeren in k3d
-#   8. Live-only Keycloak realm patches (TOTP-requirement clearen, profile-
-#      scope aanmaken, policy attribute op demo-users) die niet via
-#      realm-import komen (IGNORE_EXISTING strategy)
-#   9. Bootstrap Airflow/Superset Admin-rol per UWV-user (na eerste login
-#      auto-aangemaakt met Public-rol)
-#  10. Smoke-test 09-portal-up
+# Mode: --mode={k3d|kind|aks}  (default k3d; ook DEPLOYMENT_MODE env)
+#
+# Stappen voor mode=k3d/kind:
+#   1. cluster aanmaken (k3d) — overgeslagen voor kind/aks
+#   2. /etc/hosts patchen voor *.${PLATFORM_DOMAIN}
+#   3. bootstrap (helm charts + operators) — mode-aware
+#   4. uwv-ca-bundle ConfigMap
+#   5. deploy-platform (manifests, mode-aware kustomize overlays)
+#   6. Portal image build + import in cluster
+#   7. Live-only Keycloak realm patches
+#   8. Bootstrap Airflow/Superset Admin-rol
+#   9. Smoke test
+#
+# Voor mode=aks: zie scripts/azure/aks-bootstrap.sh + aks-deploy.sh; full-deploy
+# verwijst daarheen omdat AKS extra cloud-only stappen heeft (DNS upsert,
+# public-ingresses, CoreDNS-custom). Run aldaar in plaats van hier.
 #
 # Idempotent — re-run is veilig, alle stappen skippen bij "already done".
 #
 # Usage:
-#   ./scripts/full-deploy.sh
-# of:
+#   ./scripts/full-deploy.sh                  # default mode=k3d
+#   ./scripts/full-deploy.sh --mode=kind
 #   ./scripts/full-deploy.sh --skip-cluster   # cluster bestaat al
 #   ./scripts/full-deploy.sh --skip-bootstrap # helm-installs overslaan
 
@@ -31,35 +31,51 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Mode handling.
+# shellcheck source=lib/mode.sh
+source "${ROOT}/scripts/lib/mode.sh"
+parse_mode_args "$@"
+
 SKIP_CLUSTER=0
 SKIP_BOOTSTRAP=0
-for arg in "$@"; do
+for arg in "${REMAINING_ARGS[@]}"; do
   case "$arg" in
     --skip-cluster)   SKIP_CLUSTER=1 ;;
     --skip-bootstrap) SKIP_BOOTSTRAP=1 ;;
   esac
 done
 
-log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m  ✓\033[0m  %s\n' "$*"; }
-warn() { printf '\033[1;33m  !!\033[0m  %s\n' "$*"; }
 fail() { printf '\033[1;31m  FAIL\033[0m %s\n' "$*" >&2; exit 1; }
 
-# ---------------------------------------------------------------------- 1
-log "1/10  k3d cluster aanmaken"
-if [[ $SKIP_CLUSTER -eq 1 ]]; then
-  warn "skip (--skip-cluster)"
-else
-  make cluster
-  ok "cluster up"
+if [[ "${IS_CLOUD}" == "yes" ]]; then
+  fail "mode=${DEPLOYMENT_MODE}: gebruik 'make aks-all' (of scripts/azure/aks-bootstrap.sh + aks-deploy.sh).
+        full-deploy.sh dekt alleen k3d/kind — AKS heeft extra cloud-only stappen."
 fi
 
+# ---------------------------------------------------------------------- 1
+log "1/10  cluster aanmaken (mode=${DEPLOYMENT_MODE})"
+if [[ $SKIP_CLUSTER -eq 1 ]]; then
+  warn "skip (--skip-cluster)"
+elif [[ "${DEPLOYMENT_MODE}" == "k3d" ]]; then
+  make cluster
+  ok "k3d cluster up"
+else
+  warn "mode=${DEPLOYMENT_MODE}: cluster moet handmatig bestaan (geen 'make cluster')"
+fi
+require_context
+
 # ---------------------------------------------------------------------- 2
-log "2/10  /etc/hosts patchen"
-HOSTS_LINE="127.0.0.1 platform.uwv-platform.local keycloak.uwv-platform.local superset.uwv-platform.local airflow.uwv-platform.local trino.uwv-platform.local nifi.uwv-platform.local minio.uwv-platform.local minio-console.uwv-platform.local openmetadata.uwv-platform.local grafana.uwv-platform.local prometheus.uwv-platform.local opensearch.uwv-platform.local"
-if grep -q "platform.uwv-platform.local" /etc/hosts && \
-   grep -q "minio-console.uwv-platform.local" /etc/hosts && \
-   grep -q "grafana.uwv-platform.local" /etc/hosts; then
+log "2/10  /etc/hosts patchen voor *.${PLATFORM_DOMAIN}"
+HOST_SUBDOMAINS=(platform keycloak superset airflow trino nifi minio minio-console \
+                 openmetadata grafana prometheus opensearch spark jupyter)
+HOSTS_LINE="127.0.0.1"
+for sub in "${HOST_SUBDOMAINS[@]}"; do
+  HOSTS_LINE="${HOSTS_LINE} ${sub}.${PLATFORM_DOMAIN}"
+done
+# Spot-check: if the first and last entries are present we assume the line is good.
+if grep -q "platform.${PLATFORM_DOMAIN}" /etc/hosts && \
+   grep -q "jupyter.${PLATFORM_DOMAIN}" /etc/hosts; then
   ok "alle hostnames al in /etc/hosts"
 else
   log "sudo nodig om /etc/hosts te bewerken"
@@ -68,11 +84,12 @@ else
 fi
 
 # ---------------------------------------------------------------------- 3
-log "3/10  bootstrap (Helm charts + Stackable operators)"
+log "3/10  bootstrap (Helm charts + Stackable operators) — mode=${DEPLOYMENT_MODE}"
 if [[ $SKIP_BOOTSTRAP -eq 1 ]]; then
   warn "skip (--skip-bootstrap)"
 else
-  make bootstrap || warn "bootstrap meldde fouten — check output; ga door"
+  bash "$ROOT/scripts/bootstrap.sh" --mode="${DEPLOYMENT_MODE}" \
+    || warn "bootstrap meldde fouten — check output; ga door"
   ok "bootstrap done"
 fi
 
@@ -98,15 +115,16 @@ log "5/10  CoreDNS-patch: skip pre-deploy (Service bestaat nog niet)"
 warn "post-deploy stap doet de echte patch zodra keycloak-external bestaat"
 
 # ---------------------------------------------------------------------- 6
-log "6/10  deploy-platform (alle K8s manifests)"
-make deploy-platform || warn "deploy-platform meldde fouten — check output"
+log "6/10  deploy-platform (alle K8s manifests, mode=${DEPLOYMENT_MODE})"
+bash "$ROOT/scripts/deploy-platform.sh" --mode="${DEPLOYMENT_MODE}" \
+  || warn "deploy-platform meldde fouten — check output"
 ok "platform manifests applied"
 
-# CoreDNS hosts-override voor keycloak.uwv-platform.local zodat in-cluster
+# CoreDNS hosts-override voor keycloak.${PLATFORM_DOMAIN} zodat in-cluster
 # pods (MinIO/Trino/Superset/Airflow/NiFi/OpenMetadata) Keycloak's externe
 # URL kunnen resolveren. De keycloak-external Service in ingress-nginx NS
 # (selector-based, robuust tegen pod-restart) is de target.
-log "CoreDNS NodeHosts patch (in-cluster keycloak.uwv-platform.local)"
+log "CoreDNS NodeHosts patch (in-cluster keycloak.${PLATFORM_DOMAIN})"
 KC_SVC_IP=""
 for i in {1..30}; do
   KC_SVC_IP=$(kubectl -n ingress-nginx get svc keycloak-external -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
@@ -117,12 +135,13 @@ if [[ -z "$KC_SVC_IP" || "$KC_SVC_IP" == "None" ]]; then
   warn "keycloak-external Service nog niet beschikbaar; CoreDNS-patch overgeslagen"
 else
   kubectl -n kube-system get cm coredns -o yaml > /tmp/coredns.yaml
-  python3 <<EOF
-import yaml
+  KCSVC="$KC_SVC_IP" DOMAIN="$PLATFORM_DOMAIN" python3 <<'EOF'
+import os, yaml
 d = yaml.safe_load(open('/tmp/coredns.yaml'))
 hosts = d.get('data', {}).get('NodeHosts', '') or ''
-lines = [l for l in hosts.splitlines() if 'keycloak.uwv-platform.local' not in l and l.strip()]
-lines.append('${KC_SVC_IP} keycloak.uwv-platform.local')
+fqdn = f"keycloak.{os.environ['DOMAIN']}"
+lines = [l for l in hosts.splitlines() if fqdn not in l and l.strip()]
+lines.append(f"{os.environ['KCSVC']} {fqdn}")
 d['data']['NodeHosts'] = '\n'.join(lines) + '\n'
 yaml.safe_dump(d, open('/tmp/coredns.yaml', 'w'))
 EOF
@@ -141,9 +160,12 @@ EOF
 fi
 
 # ---------------------------------------------------------------------- 7
-log "7/10  Portal Docker-image bouwen + in k3d laden"
+log "7/10  Portal Docker-image bouwen + in cluster laden (mode=${DEPLOYMENT_MODE})"
 docker build -f portal/Dockerfile -t uwv-platform/portal:dev . >/dev/null
-k3d image import uwv-platform/portal:dev -c uwv-platform >/dev/null
+case "${DEPLOYMENT_MODE}" in
+  k3d)  k3d image import uwv-platform/portal:dev -c "${CLUSTER_NAME:-uwv-platform}" >/dev/null ;;
+  kind) kind load docker-image uwv-platform/portal:dev --name "${CLUSTER_NAME:-kind}" >/dev/null ;;
+esac
 kubectl -n uwv-platform rollout restart deployment portal >/dev/null 2>&1 || true
 ok "portal-image gebouwd + geïmporteerd"
 
@@ -163,9 +185,13 @@ done
 if [[ -z "$TOKEN" ]]; then
   warn "Keycloak niet bereikbaar; sla realm-patches over"
 else
+  # Export domain/port for the inner bash heredoc.
+  export DOMAIN="$PLATFORM_DOMAIN" PORT="$PLATFORM_PORT"
   # bash -c via single-quoted string + escapes — anders interpoleert de
   # outer shell de inner $TOKEN/$ADM en faalt het patch-script silent.
   kubectl -n uwv-auth exec keycloak-0 -c keycloak -- bash -c "
+DOMAIN='${PLATFORM_DOMAIN}'
+PORT='${PLATFORM_PORT}'
 T=\$(curl -fsS -d 'client_id=admin-cli' -d 'username=kcadmin' -d 'password=uwv-dev-only-CHANGE-ME-2026' -d 'grant_type=password' http://localhost:8080/realms/master/protocol/openid-connect/token | sed 's/.*access_token\":\"\\([^\"]*\\)\".*/\\1/')
 KC=http://localhost:8080
 A='Authorization: Bearer '\"\$T\"
@@ -175,7 +201,7 @@ A='Authorization: Bearer '\"\$T\"
 for u in platform.admin wajong.arbeidsdeskundige data.engineer; do
   KCUID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/users?username=\$u\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
   [ -z \"\$KCUID\" ] && continue
-  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/\$KCUID\" -d \"{\\\"username\\\":\\\"\$u\\\",\\\"email\\\":\\\"\$u@uwv-platform.local\\\",\\\"emailVerified\\\":true,\\\"enabled\\\":true,\\\"requiredActions\\\":[]}\" -o /dev/null
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/\$KCUID\" -d \"{\\\"username\\\":\\\"\$u\\\",\\\"email\\\":\\\"\$u@\$DOMAIN\\\",\\\"emailVerified\\\":true,\\\"enabled\\\":true,\\\"requiredActions\\\":[]}\" -o /dev/null
   curl -sS -X DELETE -H \"\$A\" \"\$KC/admin/realms/uwv/attack-detection/brute-force/users/\$KCUID\" -o /dev/null
 done
 
@@ -213,7 +239,7 @@ if [ -n \"\$OM_CID\" ]; then
   # andere top-level fields naar default (1 redirectUri, publicClient=true).
   # Resultaat was 'Invalid parameter: redirect_uri' bij login. Idempotent
   # herstellen door volledige client-shape door te geven.
-  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/clients/\$OM_CID\" -d '{\"publicClient\":false,\"standardFlowEnabled\":true,\"implicitFlowEnabled\":false,\"redirectUris\":[\"https://openmetadata.uwv-platform.local:8443/*\",\"https://openmetadata.uwv-platform.local/*\",\"http://openmetadata.uwv-platform.local:8443/*\",\"http://openmetadata.uwv-platform.local/*\"],\"attributes\":{\"access.token.lifespan\":\"86400\",\"client.session.max.lifespan\":\"86400\",\"client.session.idle.timeout\":\"28800\",\"use.refresh.tokens\":\"true\",\"post.logout.redirect.uris\":\"+\"}}' -o /dev/null
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/clients/\$OM_CID\" -d \"{\\\"publicClient\\\":false,\\\"standardFlowEnabled\\\":true,\\\"implicitFlowEnabled\\\":false,\\\"redirectUris\\\":[\\\"https://openmetadata.\$DOMAIN:\$PORT/*\\\",\\\"https://openmetadata.\$DOMAIN/*\\\",\\\"http://openmetadata.\$DOMAIN:\$PORT/*\\\",\\\"http://openmetadata.\$DOMAIN/*\\\"],\\\"attributes\\\":{\\\"access.token.lifespan\\\":\\\"86400\\\",\\\"client.session.max.lifespan\\\":\\\"86400\\\",\\\"client.session.idle.timeout\\\":\\\"28800\\\",\\\"use.refresh.tokens\\\":\\\"true\\\",\\\"post.logout.redirect.uris\\\":\\\"+\\\"}}\" -o /dev/null
 fi
 
 # 4. Unmanaged-attribute-policy enablen — Keycloak 24+ heeft Declarative
@@ -231,7 +257,7 @@ for u in wia.beoordelaar platform.admin; do
   KCUID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/users?username=\$u\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
   [ -z \"\$KCUID\" ] && continue
   curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/\$KCUID\" \\
-    -d \"{\\\"username\\\":\\\"\$u\\\",\\\"email\\\":\\\"\$u@uwv-platform.local\\\",\\\"emailVerified\\\":true,\\\"enabled\\\":true,\\\"attributes\\\":{\\\"policy\\\":[\\\"consoleAdmin\\\"]}}\" -o /dev/null
+    -d \"{\\\"username\\\":\\\"\$u\\\",\\\"email\\\":\\\"\$u@\$DOMAIN\\\",\\\"emailVerified\\\":true,\\\"enabled\\\":true,\\\"attributes\\\":{\\\"policy\\\":[\\\"consoleAdmin\\\"]}}\" -o /dev/null
 done
 " 2>&1 | tail -3
   ok "Keycloak runtime patches applied"
@@ -249,7 +275,7 @@ done
 if [[ "$STATE" = "true" ]]; then
   for u in wia.beoordelaar platform.admin; do
     kubectl -n uwv-platform exec uwv-airflow-webserver-default-0 -c airflow -- \
-      airflow users add-role -e $u@uwv-platform.local -r Admin 2>/dev/null | tail -1 | grep -v "does not exist" || true
+      airflow users add-role -e "$u@${PLATFORM_DOMAIN}" -r Admin 2>/dev/null | tail -1 | grep -v "does not exist" || true
   done
   ok "Airflow Admin-rol toegekend aan demo-users (na hun eerste login)"
 else
@@ -280,6 +306,6 @@ log "10/10 smoke test 09-portal-up"
 bash tests/smoke/09-portal-up.sh || warn "smoke meldt fouten"
 
 echo
-ok "Alles klaar. Open: https://platform.uwv-platform.local:8443/"
+ok "Alles klaar. Open: https://platform.${PLATFORM_DOMAIN}:${PLATFORM_PORT}/"
 echo "Login: wia.beoordelaar / uwv-dev-only-CHANGE-ME-Wia2026"
 echo "Of:    platform.admin   / uwv-dev-only-CHANGE-ME-Admin2026"

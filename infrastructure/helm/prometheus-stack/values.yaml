@@ -29,7 +29,7 @@ prometheus:
     storageSpec:
       volumeClaimTemplate:
         spec:
-          storageClassName: local-path
+          # storageClassName is set per-mode in values-{k3d,kind,aks}.yaml.
           accessModes: [ReadWriteOnce]
           resources:
             requests:
@@ -44,7 +44,7 @@ grafana:
   adminPassword: "uwv-dev-only-CHANGE-ME-2026"
   persistence:
     enabled: true
-    storageClassName: local-path
+    # storageClassName is set per-mode in values-{k3d,kind,aks}.yaml.
     size: 2Gi
   resources:
     requests:
@@ -57,11 +57,7 @@ grafana:
     ingressClassName: nginx
     annotations:
       cert-manager.io/cluster-issuer: uwv-platform-issuer
-    hosts:
-      - grafana.uwv-platform.local
-    tls:
-      - hosts: [grafana.uwv-platform.local]
-        secretName: grafana-tls
+    # hosts + tls hosts are set per-mode in values-{k3d,kind,aks}.yaml.
 
 # Operator
 prometheusOperator:

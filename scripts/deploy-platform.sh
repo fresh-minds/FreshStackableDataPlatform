@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
 # Deploy alle platform-manifests onder platform/ (fasen 2-9).
 #
-# STUB voor fase 1 — wordt in fase 2 verder ingevuld zodra
-# platform/00-namespaces / 01-secrets / etc. bestaan.
+# Mode-aware: per component wordt platform/<comp>/overlays/<mode>/ gebruikt
+# als die bestaat, anders platform/<comp>/ (legacy flat layout).
+# Local-only post-steps (CoreDNS hosts-rewrite voor *.${PLATFORM_DOMAIN})
+# draaien alleen op k3d/kind. Op AKS doet scripts/azure/aks-deploy.sh die.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+# Mode handling.
+# shellcheck source=lib/mode.sh
+source "${ROOT}/scripts/lib/mode.sh"
+parse_mode_args "$@"
+require_context
 
 # Trino catalog templates renderen voor we 09-trino aanraken.
 log "Rendering Trino catalogs (TABLE_FORMAT=${TABLE_FORMAT:-from-config})"
@@ -42,14 +48,25 @@ LAYERS=(
   "platform/15-portal"
   "platform/16-jupyter"
 )
+# NB: 17-multica and 18-om-access-bridge have separate deploy flows
+# (`make bootstrap-multica-host`, `make deploy-om-bridge`) because they
+# need extra setup (host-only DNS, OM JWT seeding). Their AKS overlays
+# in platform-overlays/aks/ are picked up by those flows when MODE=aks.
 
 for layer in "${LAYERS[@]}"; do
-  if [[ -d "$ROOT/$layer" ]] && find "$ROOT/$layer" -maxdepth 2 -name '*.yaml' | grep -q .; then
-    log "Apply $layer"
-    kubectl apply -k "$ROOT/$layer" 2>/dev/null \
-      || kubectl apply -f "$ROOT/$layer/" --recursive
-  else
+  if [[ ! -d "$ROOT/$layer" ]]; then
     log "$layer — leeg, skip (wordt in latere fase ingevuld)"
+    continue
+  fi
+  # Prefer mode-specific overlay; fall back to flat layout for components
+  # that haven't been restructured yet.
+  target="$(kustomize_overlay "$layer")"
+  if find "$target" -maxdepth 2 -name '*.yaml' 2>/dev/null | grep -q .; then
+    log "Apply $layer (mode=$DEPLOYMENT_MODE, kustomize=${target#$ROOT/})"
+    kubectl apply -k "$target" 2>/dev/null \
+      || kubectl apply -f "$target/" --recursive
+  else
+    log "$layer — leeg, skip"
   fi
 done
 
@@ -106,29 +123,37 @@ else
   printf '\033[1;33m!!\033[0m secret-provisioner-tls-ca nog niet aanwezig (Stackable operators staan nog niet TLS uit te delen?). Re-run deploy-platform later.\n'
 fi
 
-log "CoreDNS-override voor *.uwv-platform.local"
-KC_SVC_IP=""
-for i in {1..30}; do
-  KC_SVC_IP=$(kubectl -n ingress-nginx get svc keycloak-external -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
-  [[ -n "$KC_SVC_IP" && "$KC_SVC_IP" != "None" ]] && break
-  sleep 2
-done
-if [[ -z "$KC_SVC_IP" || "$KC_SVC_IP" == "None" ]]; then
-  printf '\033[1;33m!!\033[0m keycloak-external Service nog niet beschikbaar; CoreDNS-override overgeslagen\n'
-else
-  kubectl -n kube-system create configmap coredns-custom --from-literal="uwv-platform.server=uwv-platform.local:53 {
+if [[ "${IS_LOCAL}" == "yes" ]]; then
+  log "CoreDNS-override voor *.${PLATFORM_DOMAIN} (mode=${DEPLOYMENT_MODE})"
+  KC_SVC_IP=""
+  for i in {1..30}; do
+    KC_SVC_IP=$(kubectl -n ingress-nginx get svc keycloak-external -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+    [[ -n "$KC_SVC_IP" && "$KC_SVC_IP" != "None" ]] && break
+    sleep 2
+  done
+  if [[ -z "$KC_SVC_IP" || "$KC_SVC_IP" == "None" ]]; then
+    printf '\033[1;33m!!\033[0m keycloak-external Service nog niet beschikbaar; CoreDNS-override overgeslagen\n'
+  else
+    # k3d/kind: rewrite *.${PLATFORM_DOMAIN} naar de keycloak-external ClusterIP
+    # zodat in-cluster OIDC-discovery van MinIO/Trino/Superset/Airflow/NiFi/
+    # OpenMetadata werkt zonder /etc/hosts loopback.
+    coredns_zone=$(printf '%s' "$PLATFORM_DOMAIN" | sed 's/\./\\./g')
+    kubectl -n kube-system create configmap coredns-custom --from-literal="${PLATFORM_DOMAIN}.server=${PLATFORM_DOMAIN}:53 {
     errors
     cache 30
-    template IN A uwv-platform.local {
-        match .*\\.uwv-platform\\.local
+    template IN A ${PLATFORM_DOMAIN} {
+        match .*\\.${coredns_zone}
         answer \"{{ .Name }} 60 IN A ${KC_SVC_IP}\"
         fallthrough
     }
 }
 " --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  kubectl -n kube-system rollout restart deployment coredns >/dev/null
-  kubectl -n kube-system rollout status deployment coredns --timeout=60s >/dev/null
-  printf '\033[1;32mOK\033[0m CoreDNS routet *.uwv-platform.local → %s (keycloak-external Service)\n' "$KC_SVC_IP"
+    kubectl -n kube-system rollout restart deployment coredns >/dev/null
+    kubectl -n kube-system rollout status deployment coredns --timeout=60s >/dev/null
+    printf '\033[1;32mOK\033[0m CoreDNS routet *.%s → %s (keycloak-external Service)\n' "$PLATFORM_DOMAIN" "$KC_SVC_IP"
+  fi
+else
+  log "CoreDNS-override skipped (mode=${DEPLOYMENT_MODE}, handled by aks-deploy.sh)"
 fi
 
 # MinIO laadt OIDC-config alleen bij startup. Als de pod bootte vóór dat
@@ -169,7 +194,7 @@ if echo "$EXISTS" | grep -q "\"clientId\":\"jupyter\""; then
 else
   curl -sS -X POST -H "$A" -H "Content-Type: application/json" \
     "$KC/admin/realms/uwv/clients" \
-    -d "{\"clientId\":\"jupyter\",\"name\":\"UWV Lab (Jupyter)\",\"enabled\":true,\"protocol\":\"openid-connect\",\"publicClient\":false,\"secret\":\"uwv-dev-only-CHANGE-ME-jupyter-secret\",\"standardFlowEnabled\":true,\"directAccessGrantsEnabled\":false,\"serviceAccountsEnabled\":false,\"redirectUris\":[\"https://jupyter.uwv-platform.local:8443/hub/oauth_callback\",\"https://jupyter.uwv-platform.local/hub/oauth_callback\"],\"webOrigins\":[\"https://jupyter.uwv-platform.local:8443\",\"https://jupyter.uwv-platform.local\"],\"defaultClientScopes\":[\"web-origins\",\"profile\",\"roles\",\"email\"],\"fullScopeAllowed\":true}" \
+    -d "{\"clientId\":\"jupyter\",\"name\":\"UWV Lab (Jupyter)\",\"enabled\":true,\"protocol\":\"openid-connect\",\"publicClient\":false,\"secret\":\"uwv-dev-only-CHANGE-ME-jupyter-secret\",\"standardFlowEnabled\":true,\"directAccessGrantsEnabled\":false,\"serviceAccountsEnabled\":false,\"redirectUris\":[\"https://jupyter.'"${PLATFORM_DOMAIN}"':'"${PLATFORM_PORT}"'/hub/oauth_callback\",\"https://jupyter.'"${PLATFORM_DOMAIN}"'/hub/oauth_callback\"],\"webOrigins\":[\"https://jupyter.'"${PLATFORM_DOMAIN}"':'"${PLATFORM_PORT}"'\",\"https://jupyter.'"${PLATFORM_DOMAIN}"'\"],\"defaultClientScopes\":[\"web-origins\",\"profile\",\"roles\",\"email\"],\"fullScopeAllowed\":true}" \
     -o /dev/null -w "jupyter client created (status %{http_code})\n"
 fi
 echo "Keycloak runtime patches OK"

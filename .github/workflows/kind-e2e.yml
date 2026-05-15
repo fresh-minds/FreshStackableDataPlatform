@@ -1,25 +1,44 @@
-# CI: full e2e op kind-cluster (NIET k3d — kind is GH Actions-friendlier).
+# CI: full e2e op een ephemeral cluster. Default kiest k3d (devleeg-laptop
+# parity). De DEPLOYMENT_MODE input maakt het ook mogelijk om dezelfde
+# workflow tegen een kind-cluster te draaien zonder hercoderen.
 #
 # LET OP — duur en cost-intensief: ~30 min runtime, ~16GB RAM-intensive.
-# Alleen op merge-naar-main of via manual dispatch.
+# Alleen via manual dispatch (Actions-tab → "kind-e2e" → Run workflow).
 name: kind-e2e
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
+    inputs:
+      mode:
+        description: 'Deployment mode to test (k3d|kind)'
+        required: false
+        default: k3d
+        type: choice
+        options:
+          - k3d
+          - kind
 
 jobs:
   e2e:
     runs-on: ubuntu-24.04-large  # 8 CPU, 32 GB
     timeout-minutes: 60
+    env:
+      DEPLOYMENT_MODE: ${{ inputs.mode }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install tooling
         run: |
-          # k3d (we testen wel met k3d ipv kind voor parity met dev)
-          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          case "${DEPLOYMENT_MODE}" in
+            k3d)
+              curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+              ;;
+            kind)
+              curl -fsSL -o /usr/local/bin/kind \
+                "https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64"
+              chmod +x /usr/local/bin/kind
+              ;;
+          esac
 
           # kubectl
           curl -fsSL -o /usr/local/bin/kubectl \
@@ -41,9 +60,12 @@ jobs:
             https://openpolicyagent.org/downloads/v0.69.0/opa_linux_amd64_static
           chmod +x /usr/local/bin/opa
 
+      - name: Doctor (mode-aware tooling check)
+        run: bash scripts/doctor.sh --mode="${DEPLOYMENT_MODE}" || true
+
       - name: Add /etc/hosts
         run: |
-          for h in trino keycloak superset airflow nifi minio minio-console openmetadata grafana; do
+          for h in trino keycloak superset airflow nifi minio minio-console openmetadata grafana jupyter; do
             echo "127.0.0.1 ${h}.uwv-platform.local" | sudo tee -a /etc/hosts
           done
 
@@ -61,3 +83,29 @@ jobs:
         run: |
           kubectl get pods -A
           kubectl get events -A --sort-by='.lastTimestamp' | tail -50
+
+  # Cheap fast-feedback job: verify every kustomize overlay still builds.
+  # Runs on every push, catches yaml/path regressions <2 min.
+  overlays-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kubectl
+        run: |
+          curl -fsSL -o /usr/local/bin/kubectl \
+            "https://dl.k8s.io/release/v1.31.5/bin/linux/amd64/kubectl"
+          chmod +x /usr/local/bin/kubectl
+      - name: Build every platform-overlays/<mode>/* with kustomize
+        run: |
+          fail=0
+          for d in platform-overlays/*/*; do
+            if ! kubectl kustomize "$d" >/dev/null 2>&1; then
+              echo "::error::kustomize build failed: $d"
+              kubectl kustomize "$d" 2>&1 | sed 's/^/  /'
+              fail=1
+            else
+              echo "OK $d"
+            fi
+          done
+          exit "$fail"

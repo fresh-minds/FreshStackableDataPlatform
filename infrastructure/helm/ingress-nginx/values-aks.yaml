@@ -1,4 +1,4 @@
-# ingress-nginx override for AKS.
+# ingress-nginx — AKS-specific overrides.
 #
 # Base values use hostNetwork=true + service.type=ClusterIP because k3d's
 # serverlb routes host:80/443 straight to node ports. AKS has no such
@@ -11,11 +11,10 @@
 controller:
   hostNetwork: false
   dnsPolicy: ClusterFirst
+  kind: Deployment
   service:
     type: LoadBalancer
     annotations:
-      # AKS resolves these to the existing Public IP resource and binds the
-      # cluster's outbound LB to it.
       service.beta.kubernetes.io/azure-pip-name: uwv-platform-ingress-pip
       service.beta.kubernetes.io/azure-load-balancer-resource-group: MC_dev-stackable-rg_uwv-platform-aks_westeurope
       # Force LB health probe to TCP. Default for AKS Standard LB on a 443

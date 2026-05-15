@@ -37,7 +37,14 @@ data:
     c.JupyterHub.authenticator_class = GenericOAuthenticator
 
     KEYCLOAK_INTERNAL = "http://keycloak.uwv-auth.svc.cluster.local"
-    KEYCLOAK_PUBLIC = "https://keycloak.uwv-platform.local:8443"
+    # KEYCLOAK_PUBLIC is the browser-visible URL. It differs per deployment
+    # mode (k3d/kind use :8443 on .uwv-platform.local; aks uses standard 443
+    # on the public domain) — driven by the KEYCLOAK_PUBLIC_URL env var set
+    # in deployment-hub.yaml + overlays/<mode>/.
+    KEYCLOAK_PUBLIC = os.environ.get(
+        "KEYCLOAK_PUBLIC_URL",
+        "https://keycloak.uwv-platform.local:8443",
+    )
     REALM_PATH = "/realms/uwv/protocol/openid-connect"
 
     c.GenericOAuthenticator.client_id = os.environ["OAUTH_CLIENT_ID"]
@@ -158,7 +165,10 @@ data:
         "HMS_URI": "thrift://uwv-hive-metastore.uwv-platform.svc.cluster.local:9083",
         "KAFKA_BOOTSTRAP_SERVERS": "uwv-kafka-broker-default-bootstrap.uwv-platform.svc.cluster.local:9093",
         "OPENMETADATA_HOST": "http://openmetadata.uwv-meta.svc.cluster.local:8585",
-        "OPENMETADATA_PUBLIC_URL": "https://openmetadata.uwv-platform.local:8443",
+        "OPENMETADATA_PUBLIC_URL": os.environ.get(
+            "OPENMETADATA_PUBLIC_URL",
+            "https://openmetadata.uwv-platform.local:8443",
+        ),
         "UWV_CA_BUNDLE": "/etc/uwv-ca/ca.crt",
         "JUPYTER_ENABLE_LAB": "yes",
         "GIT_AUTHOR_NAME_FROM_KEYCLOAK": "1",

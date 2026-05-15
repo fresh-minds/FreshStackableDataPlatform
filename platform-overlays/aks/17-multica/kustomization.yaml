@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/17-multica
+patches:
+  - target:
+      kind: Ingress
+      name: multica
+    patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: multica.eu-sovereigndataplatform.com
+      - op: replace
+        path: /spec/rules/0/host
+        value: multica.eu-sovereigndataplatform.com
+  - path: configmap-oauth2-proxy-aks.yaml
+    target:
+      kind: ConfigMap
+      name: multica-oauth2-proxy-config

@@ -1,4 +1,4 @@
-# OpenSearch override for AKS.
+# OpenSearch — AKS-specific overrides.
 persistence:
   storageClass: "managed-csi"
   size: 10Gi

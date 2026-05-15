@@ -35,10 +35,22 @@ platform:
   # mirrored: alleen vanaf interne registry (air-gapped).
   image_pull: public
 
-# DNS-suffix voor Listener-operator. Verwacht in /etc/hosts:
+# DNS-suffix voor Listener-operator + ingresses.
+#
+# Mode-aware (zie scripts/lib/mode.sh — DEPLOYMENT_MODE / --mode):
+#   k3d / kind  -> uwv-platform.local  (port :8443 via serverlb/portmap)
+#   aks         -> eu-sovereigndataplatform.com  (port 443, public DNS)
+#
+# Overridable per invocation via PLATFORM_DOMAIN env var. Het veld `suffix`
+# hieronder is de lokale default (k3d/kind); voor AKS wordt het overschreven.
+# Voor lokaal verwacht in /etc/hosts:
 #   127.0.0.1 trino.uwv-platform.local keycloak.uwv-platform.local ...
 dns:
   suffix: uwv-platform.local
+  modes:
+    k3d:  uwv-platform.local
+    kind: uwv-platform.local
+    aks:  eu-sovereigndataplatform.com
 
 # Persistentie-pads in MinIO buckets.
 buckets:

@@ -155,7 +155,11 @@ deploy-om-bridge: om-bridge-image ## Deploy de OM→Keycloak access-bridge (ADR-
 	  OM_JWT="$$(kubectl -n uwv-meta get secret openmetadata-admin -o jsonpath='{.data.jwtToken}' | base64 -d)"; \
 	  kubectl -n uwv-platform patch secret om-access-bridge-secret --type=json -p="[{\"op\":\"add\",\"path\":\"/data/OM_ADMIN_TOKEN\",\"value\":\"$$(printf %s "$$OM_JWT" | base64)\"}]"; \
 	fi
-	kubectl apply -k platform/18-om-access-bridge/
+	@if [ -d "platform-overlays/$(MODE)/18-om-access-bridge" ]; then \
+	  kubectl apply -k "platform-overlays/$(MODE)/18-om-access-bridge"; \
+	else \
+	  kubectl apply -k platform/18-om-access-bridge/; \
+	fi
 	kubectl -n uwv-platform rollout status deploy/om-access-bridge --timeout=120s
 	@echo "[deploy-om-bridge] Idempotent setup van Keycloak-client + OM-subscription"
 	bash scripts/setup-om-bridge-keycloak.sh

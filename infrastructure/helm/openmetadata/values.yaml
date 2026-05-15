@@ -62,20 +62,11 @@ openmetadata:
     authentication:
       clientType: confidential
       provider: custom-oidc
-      # Default = lokale k3d-cluster (uwv-platform.local). De AKS-deploy
-      # overschrijft deze waarden in scripts/bootstrap.sh via
-      # `helm upgrade --reuse-values --set authentication.*=...` zodra
-      # HELM_OVERRIDES_DIR gezet is door scripts/azure/aks-bootstrap.sh —
-      # daar pinnen we de publieke *.eu-sovereigndataplatform.com URLs.
-      # Op k3d resolveert keycloak.uwv-platform.local via CoreDNS naar de
-      # `keycloak-external` Service (ingress-nginx ns) en is de TLS-cert
-      # vertrouwd via uwv-ca-bundle (zie extraInitContainers verderop).
-      publicKeys:
-        - http://openmetadata.uwv-meta.svc.cluster.local:8585/api/v1/system/config/jwks
-        - https://keycloak.uwv-platform.local:8443/realms/uwv/protocol/openid-connect/certs
-      authority: https://keycloak.uwv-platform.local:8443/realms/uwv
+      # Authority / callbackUrl / publicKeys / discoveryUri zijn mode-specifiek
+      # — zie values-{k3d,kind,aks}.yaml. Op k3d/kind wijzen ze naar
+      # keycloak.uwv-platform.local:8443 (via CoreDNS hosts-override); op AKS
+      # wijzen ze naar de publieke keycloak.${PLATFORM_DOMAIN} (Let's Encrypt).
       clientId: openmetadata
-      callbackUrl: https://openmetadata.uwv-platform.local:8443/callback
       responseType: code
       jwtPrincipalClaims:
         - preferred_username
@@ -93,19 +84,12 @@ openmetadata:
         clientSecret:
           secretRef: openmetadata-oidc-client
           secretKey: clientSecret
-        # Discovery via externe URL → discovery-doc bevat dan consistent
-        # https://keycloak.uwv-platform.local:8443/... endpoints, zodat
-        # auth-redirect (browser) én token-exchange (server) dezelfde
-        # issuer-claim respecteren. uwv-ca-bundle moet dus in de pod's
-        # Java truststore zitten (zie extraInitContainers verderop).
-        discoveryUri: https://keycloak.uwv-platform.local:8443/realms/uwv/.well-known/openid-configuration
+        # discoveryUri / callbackUrl / serverUrl zijn mode-specifiek.
         scope: "openid email profile"
         useNonce: true
         preferredJwsAlgorithm: RS256
         responseType: code
         disablePkce: false
-        callbackUrl: https://openmetadata.uwv-platform.local:8443/callback
-        serverUrl: https://openmetadata.uwv-platform.local:8443
         clientAuthenticationMethod: client_secret_post
         tenant: ""
         maxClockSkew: ""
@@ -121,7 +105,7 @@ openmetadata:
       initialAdmins:
         - data.steward
         - platform.admin
-      principalDomain: uwv-platform.local
+      # principalDomain is mode-specifiek (zie values-{k3d,kind,aks}.yaml).
       enforcePrincipalDomain: false
       enableSecureSocketConnection: false
 
@@ -205,24 +189,15 @@ resources:
 
 replicaCount: 1
 
-# Ingress
+# Ingress — mode-agnostic shell; hosts + tls hosts zijn per-mode (zie
+# values-{k3d,kind,aks}.yaml).
 ingress:
   enabled: true
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
-  hosts:
-    - host: openmetadata.uwv-platform.local
-      paths:
-        - path: /
-          pathType: ImplementationSpecific
-  tls:
-    - hosts:
-        - openmetadata.uwv-platform.local
-      secretName: openmetadata-tls
 
-# Persistentie van logs/configs
+# Persistentie van logs/configs — storageClass per-mode in values-{k3d,kind,aks}.yaml.
 persistence:
   enabled: true
-  storageClass: local-path
   size: 5Gi

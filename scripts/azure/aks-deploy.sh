@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Deploy platform manifests on the AKS cluster.
-# Thin wrapper around scripts/deploy-platform.sh with AKS-specific post-steps:
+# Thin wrapper around scripts/deploy-platform.sh --mode=aks with AKS-specific
+# post-steps:
 #  - CoreDNS hosts-override (`coredns-custom` ConfigMap) zodat
 #    keycloak.uwv-platform.local in-cluster routeert naar de keycloak-external
 #    Service in ingress-nginx (zie platform/02-authentication/keycloak-external-svc.yaml).
+#  - Public DNS upsert (CNAME → apex) for every *.${PLATFORM_DOMAIN} subdomain.
 #  - MinIO restart zodat de OIDC-discovery slaagt na de DNS-fix (Console toont
 #    anders geen Keycloak SSO knop).
 set -euo pipefail
@@ -11,18 +13,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-log()   { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-warn()  { printf '\033[1;33m!!\033[0m %s\n' "$*"; }
-error() { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
+# Force mode=aks regardless of caller args.
+export DEPLOYMENT_MODE=aks
+# shellcheck source=../lib/mode.sh
+source "$ROOT/scripts/lib/mode.sh"
+parse_mode_args
+require_context
 
-ctx="$(kubectl config current-context 2>/dev/null || true)"
-case "$ctx" in
-  uwv-platform-aks|*aks*) ;;
-  *) error "kubectl context is '$ctx', not the AKS cluster. Run: make aks-context" ;;
-esac
-log "kubectl context: $ctx"
-
-bash "$ROOT/scripts/deploy-platform.sh"
+bash "$ROOT/scripts/deploy-platform.sh" --mode=aks
 
 # ---- AKS-only: ensure public-domain DNS records exist ----
 # Every *.eu-sovereigndataplatform.com subdomain needs a CNAME → apex (which

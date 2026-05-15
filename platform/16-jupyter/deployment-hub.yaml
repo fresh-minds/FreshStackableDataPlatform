@@ -87,6 +87,12 @@ spec:
                   key: client-secret
             - name: OAUTH_CALLBACK_URL
               value: "https://jupyter.uwv-platform.local:8443/hub/oauth_callback"
+            # Public URLs visible to the browser; mode-specific (overlays/aks
+            # rewrites these to .eu-sovereigndataplatform.com without :8443).
+            - name: KEYCLOAK_PUBLIC_URL
+              value: "https://keycloak.uwv-platform.local:8443"
+            - name: OPENMETADATA_PUBLIC_URL
+              value: "https://openmetadata.uwv-platform.local:8443"
             - name: CONFIGPROXY_AUTH_TOKEN
               valueFrom:
                 secretKeyRef:

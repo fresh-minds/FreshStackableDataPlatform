@@ -1,0 +1,32 @@
+# PostgreSQL — AKS-specific overrides.
+#
+# Changes vs base values.yaml:
+#  - storageClass: managed-csi (AKS default Standard SSD CSI; local-path
+#                  doesn't exist on AKS).
+#  - subPath: postgresql-data (avoids AKS managed disk's lost+found tripping
+#             Bitnami's "is volume empty?" check on the data dir).
+#  - image.debug=true: surface init-script errors that otherwise fail silent.
+#  - primary.initdb.scripts cleared: the in-line scripts in the base values
+#             block reliably hung the container's init phase on AKS;
+#             databases are created by a follow-up Job in
+#             infrastructure/azure/postgres-create-databases.yaml.
+
+image:
+  debug: true
+
+primary:
+  persistence:
+    storageClass: "managed-csi"
+    size: 8Gi
+    subPath: "postgresql-data"
+
+  # Drop the in-line database-creation SQL from the base values; the Bitnami
+  # init flow on AKS errors at "user uwvplatform does not exist" because the
+  # init script runs before user creation completes on a fresh PVC. A separate
+  # post-install Job (postgres-create-databases.yaml) handles database creation
+  # after postgres is reachable.
+  # Helm deep-merges maps, so we must null the specific key to remove it from
+  # the base values rather than emptying the parent map.
+  initdb:
+    scripts:
+      00-uwv-databases.sql: null

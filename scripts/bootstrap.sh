@@ -101,7 +101,7 @@ log "Install cert-manager ${CERT_MANAGER_VERSION}"
 helm upgrade --install cert-manager jetstack/cert-manager \
   --namespace cert-manager --create-namespace \
   --version "${CERT_MANAGER_VERSION}" \
-  --values "${ROOT}/infrastructure/helm/cert-manager/values.yaml" \
+  $(chart_value_args cert-manager) \
   --force-conflicts \
   --wait --timeout 5m
 
@@ -550,7 +550,7 @@ log "Install Vector ${VECTOR_VERSION} (Agent-mode op alle nodes)"
 helm upgrade --install vector vector/vector \
   --namespace uwv-monitoring \
   --version "${VECTOR_VERSION}" \
-  --values "${ROOT}/infrastructure/helm/vector/values.yaml" \
+  $(chart_value_args vector) \
   --wait --timeout 5m \
   || warn "Vector install faalde — log-aggregatie inactief, niet kritisch voor portal."
 

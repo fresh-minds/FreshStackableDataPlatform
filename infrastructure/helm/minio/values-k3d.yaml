@@ -1,0 +1,8 @@
+# MinIO — k3d-specific overrides.
+persistence:
+  storageClass: "local-path"
+  size: 30Gi
+
+# Mode-specific TLS dnsName for the in-cluster cert (other SANs are in base).
+# The ingress hostname (minio.${PLATFORM_DOMAIN}) is parameterized in
+# platform-level overlays — this file only configures the chart's TLS cert.

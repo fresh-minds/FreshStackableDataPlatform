@@ -1,0 +1,9 @@
+# PostgreSQL — k3d-specific overrides.
+# Layered on top of values.yaml via scripts/lib/mode.sh chart_value_args.
+
+primary:
+  persistence:
+    storageClass: "local-path"
+
+  # k3d boots cleanly with the in-line database-creation SQL; no need to
+  # null it out (see values-aks.yaml for the AKS-only quirk).
