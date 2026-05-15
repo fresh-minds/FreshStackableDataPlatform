@@ -16,8 +16,10 @@ export type ComponentId =
   | 'superset'
   | 'openmetadata'
   | 'dbt-docs'
+  | 'jupyter'
   | 'prometheus'
-  | 'opensearch';
+  | 'opensearch'
+  | 'multica';
 
 // Legacy "layer" — fijne granulariteit voor de oude card-tag.
 export type ComponentLayer =
@@ -31,7 +33,8 @@ export type ComponentLayer =
   | 'orchestration'
   | 'bi'
   | 'governance'
-  | 'observability';
+  | 'observability'
+  | 'ai-agents';
 
 // Reference-architecture lanes (Monte-Carlo-stijl).
 // Hier groeperen we componenten in de plek die ze in de pipeline innemen.
@@ -44,7 +47,8 @@ export type ComponentStage =
   | 'discovery'
   | 'pipeline'
   | 'observability'
-  | 'identity';
+  | 'identity'
+  | 'agents';
 
 export interface PlatformComponent {
   id: ComponentId;
@@ -131,7 +135,11 @@ export const components: PlatformComponent[] = [
     short: 'Streaming + batch jobs die Delta-tabellen op MinIO schrijven.',
     purpose: 'Zware data-bewerkingen — opschonen, joinen, aggregeren — in stream of batch.',
     icon: '/icons/brand/spark.svg',
-    url: null,
+    // Wijst naar de live driver-UI van de `streaming-bronze` SparkApplication
+    // (via een eigen Service+Ingress, zie platform/08-spark/ingress.yaml).
+    // Op de Executors-tab vind je stderr/stdout per pod = "spark cluster logs".
+    // 503 als de driver niet draait.
+    url: 'https://spark.uwv-platform.local:8443',
     prometheusJob: 'spark',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
@@ -227,8 +235,26 @@ export const components: PlatformComponent[] = [
     short: 'Modellen, tests, sources en lineage van de dbt-projectdefinities.',
     purpose: 'Wat doen onze dbt-modellen, welke tests draaien er, en hoe vloeit data van staging naar marts?',
     icon: '/icons/brand/dbt.svg',
-    url: '/dbt-docs/',
+    url: '/dbt-docs.html',
     rolesUsing: ['data_engineer', 'data_steward', 'platform_admin'],
+  },
+  {
+    id: 'jupyter',
+    name: 'UWV Lab (Jupyter)',
+    layer: 'compute',
+    stage: 'consumption',
+    short: 'Notebook-werkomgeving — Python/SQL op bronze/silver/gold/sensitive, met Git-integratie.',
+    purpose: 'Interactief data verkennen en analyseren — Trino, Delta, MinIO, OpenMetadata vanuit één Python-kernel; werk versioneren met Git.',
+    icon: '/icons/brand/jupyter.svg',
+    url: 'https://jupyter.uwv-platform.local:8443',
+    rolesUsing: [
+      'researcher',
+      'data_engineer',
+      'data_steward',
+      'wajong_arbeidsdeskundige',
+      'fez_analist',
+      'platform_admin',
+    ],
   },
   {
     id: 'airflow',
@@ -251,7 +277,7 @@ export const components: PlatformComponent[] = [
     purpose: 'Metrics verzamelen en alerteren als iets stuk dreigt te gaan.',
     icon: '/icons/brand/prometheus.svg',
     url: 'https://prometheus.uwv-platform.local:8443',
-    prometheusJob: 'prometheus',
+    prometheusJob: 'prometheus-kube-prometheus-prometheus',
     rolesUsing: ['platform_admin'],
   },
   {
@@ -267,6 +293,21 @@ export const components: PlatformComponent[] = [
     url: 'https://opensearch.uwv-platform.local:8443',
     prometheusJob: 'opensearch',
     rolesUsing: ['platform_admin', 'data_steward'],
+  },
+  {
+    id: 'multica',
+    name: 'Multica',
+    layer: 'ai-agents',
+    stage: 'agents',
+    // Dev-loop-lane: coördineert coding agents (Claude Code/Codex/Copilot CLI/…)
+    // die op de laptop van de developer draaien — de server houdt taken,
+    // voortgang en skills bij. Niet hetzelfde als Nanitics (runtime).
+    short: 'Coördinatie van coding agents (Claude Code, Codex, Copilot CLI, …) — taken, voortgang, skills.',
+    purpose: 'Taken toewijzen aan coding agents; voortgang volgen. Agents draaien op je laptop.',
+    icon: '/icons/brand/multica.svg',
+    url: 'https://multica.uwv-platform.local:8443',
+    prometheusJob: 'multica-backend',
+    rolesUsing: ['platform_admin', 'data_engineer'],
   },
 ];
 
@@ -285,27 +326,40 @@ export function componentsByStage(stage: ComponentStage): PlatformComponent[] {
 }
 
 // Stage-meta voor lane-headers in het reference-diagram en gegroepeerde
-// kaarten. Volgorde hier bepaalt de kolom-volgorde van de hoofd-pipeline.
+// kaarten. Volgorde hier bepaalt de volgorde van de swim-lanes.
+export type StageCategory = 'discovery' | 'pipeline' | 'observability' | 'identity' | 'agents';
+
 export interface StageMeta {
   id: ComponentStage;
   title: string;
   blurb: string;
   icon: string;
-  // 'pipeline-step' = grote middenkolom; 'overlay' = boven/onder banner;
-  // 'side' = zij-kolom (sources, identity); 'output' = eindbestemming.
+  // Legacy field used by the older diagram. 'pipeline-step' = main flow;
+  // 'overlay' = cross-cutting (discovery / pipeline / observability /
+  // agents); 'side' = sources / identity; 'output' = consumption.
   kind: 'pipeline-step' | 'overlay' | 'side' | 'output';
+  // For the swim-lane diagram: tints the lane background and eyebrow with
+  // the matching --cat-* token. Pipeline-step / output / sources lanes
+  // stay neutral.
+  category?: StageCategory;
+  // Mono tags shown next to the lane title (BATCH / STREAM / etc.).
+  tags?: string[];
 }
 
 export const stages: StageMeta[] = [
-  { id: 'sources',        title: 'Bronnen',                  blurb: 'Synthetische UWV-bronsystemen — batches en streams.',                  icon: '/icons/stage/sources.svg',        kind: 'side' },
-  { id: 'ingestion',      title: 'Ingestie',                 blurb: 'Data binnenhalen en op een event-bus zetten.',                          icon: '/icons/stage/ingestion.svg',      kind: 'pipeline-step' },
-  { id: 'storage',        title: 'Opslag & Verwerking',      blurb: 'Lakehouse met zones en een tabel-catalog.',                              icon: '/icons/stage/storage.svg',        kind: 'pipeline-step' },
-  { id: 'transformation', title: 'Transformatie & Modellen', blurb: 'Opschonen, joinen, modelleren — met policy-checks per query.',          icon: '/icons/stage/transformation.svg', kind: 'pipeline-step' },
-  { id: 'consumption',    title: 'BI / Analytics',           blurb: 'Eindgebruikers consumeren via dashboards en SQL.',                       icon: '/icons/stage/consumption.svg',    kind: 'output' },
-  { id: 'discovery',      title: 'Data Discovery',           blurb: 'Catalog, lineage en data-kwaliteit — wat hebben we eigenlijk?',         icon: '/icons/stage/discovery.svg',      kind: 'overlay' },
-  { id: 'pipeline',       title: 'Pipeline-orkestratie',     blurb: 'Wat draait wanneer, in welke volgorde, met welke afhankelijkheid.',     icon: '/icons/stage/pipeline.svg',       kind: 'overlay' },
-  { id: 'observability',  title: 'Observability',            blurb: 'Metrics, logs en alerts om de gezondheid van het platform te zien.',    icon: '/icons/stage/observability.svg',  kind: 'overlay' },
-  { id: 'identity',       title: 'Identiteit & Toegang',     blurb: 'SSO regelt wie wat mag — elk onderdeel checkt het token.',              icon: '/icons/stage/identity.svg',       kind: 'side' },
+  { id: 'sources',        title: 'Bronnen',                  blurb: 'Synthetische UWV-bronsystemen — batches en streams.',                  icon: '/icons/stage/sources.svg',        kind: 'side',          tags: ['BATCH', 'STREAM'] },
+  { id: 'ingestion',      title: 'Ingestie',                 blurb: 'Data binnenhalen en op een event-bus zetten.',                          icon: '/icons/stage/ingestion.svg',      kind: 'pipeline-step', tags: ['BATCH', 'STREAM'] },
+  { id: 'storage',        title: 'Opslag & Verwerking',      blurb: 'Lakehouse met zones en een tabel-catalog.',                              icon: '/icons/stage/storage.svg',        kind: 'pipeline-step', tags: ['LAKEHOUSE'] },
+  { id: 'transformation', title: 'Transformatie & Modellen', blurb: 'Opschonen, joinen, modelleren — met policy-checks per query.',          icon: '/icons/stage/transformation.svg', kind: 'pipeline-step', tags: ['BATCH', 'POLICY'] },
+  { id: 'consumption',    title: 'BI / Analytics',           blurb: 'Eindgebruikers consumeren via dashboards en SQL.',                       icon: '/icons/stage/consumption.svg',    kind: 'output',        tags: ['QUERY'] },
+  { id: 'discovery',      title: 'Data Discovery',           blurb: 'Catalog, lineage en data-kwaliteit — wat hebben we eigenlijk?',         icon: '/icons/stage/discovery.svg',      kind: 'overlay',       category: 'discovery' },
+  { id: 'pipeline',       title: 'Pipeline-orkestratie',     blurb: 'Wat draait wanneer, in welke volgorde, met welke afhankelijkheid.',     icon: '/icons/stage/pipeline.svg',       kind: 'overlay',       category: 'pipeline' },
+  { id: 'observability',  title: 'Observability',            blurb: 'Metrics, logs en alerts om de gezondheid van het platform te zien.',    icon: '/icons/stage/observability.svg',  kind: 'overlay',       category: 'observability' },
+  { id: 'identity',       title: 'Identiteit & Toegang',     blurb: 'SSO regelt wie wat mag — elk onderdeel checkt het token.',              icon: '/icons/stage/identity.svg',       kind: 'side',          category: 'identity' },
+  // Coding agents lane: coördineert agents die op de laptop van de developer
+  // draaien (Multica). De voormalige runtime-agent lane (Nanitics) is uit het
+  // platform gehaald en bewaard op de feature/nanitics branch.
+  { id: 'agents',         title: 'Agents & AI-tooling',      blurb: 'Coördinatie van coding agents (Multica) en gerelateerde dev-loop tooling.', icon: '/icons/stage/agents.svg',         kind: 'overlay',       category: 'agents' },
 ];
 
 export function stageById(id: ComponentStage): StageMeta | undefined {

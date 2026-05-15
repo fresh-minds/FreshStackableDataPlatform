@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/07-nifi
+patches:
+  - target:
+      kind: Ingress
+      name: nifi
+    patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: nifi.eu-sovereigndataplatform.com
+      - op: replace
+        path: /spec/rules/0/host
+        value: nifi.eu-sovereigndataplatform.com
+  - target:
+      group: nifi.stackable.tech
+      kind: NifiCluster
+      name: uwv-nifi
+    patch: |-
+      - op: replace
+        path: /spec/clusterConfig/hostHeaderCheck/additionalAllowedHosts/0
+        value: "nifi.eu-sovereigndataplatform.com"

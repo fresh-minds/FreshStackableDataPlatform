@@ -1,0 +1,32 @@
+# OpenMetadata — kind-specific overrides. Same shape as k3d (both local).
+
+openmetadata:
+  config:
+    authentication:
+      authority: https://keycloak.uwv-platform.local:8443/realms/uwv
+      callbackUrl: https://openmetadata.uwv-platform.local:8443/callback
+      publicKeys:
+        - http://openmetadata.uwv-meta.svc.cluster.local:8585/api/v1/system/config/jwks
+        - https://keycloak.uwv-platform.local:8443/realms/uwv/protocol/openid-connect/certs
+
+      oidcConfiguration:
+        discoveryUri: https://keycloak.uwv-platform.local:8443/realms/uwv/.well-known/openid-configuration
+        callbackUrl: https://openmetadata.uwv-platform.local:8443/callback
+        serverUrl: https://openmetadata.uwv-platform.local:8443
+
+    authorizer:
+      principalDomain: uwv-platform.local
+
+ingress:
+  hosts:
+    - host: openmetadata.uwv-platform.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls:
+    - hosts:
+        - openmetadata.uwv-platform.local
+      secretName: openmetadata-tls
+
+persistence:
+  storageClass: standard

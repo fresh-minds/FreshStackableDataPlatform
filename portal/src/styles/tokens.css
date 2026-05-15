@@ -1,0 +1,228 @@
+/* ============================================================
+   UWV Platform Portal — design tokens
+   ============================================================
+   Single source of truth for colors, spacing, radii, typography.
+   Components reference these via var(--token-name); never put
+   literal hex / rgb / px values into component CSS.
+
+   Theme switching: data-theme="dark" (default + pre-paint) or
+   data-theme="light". Both are wired by Layout.astro — its
+   inline pre-paint script in <head> sets data-theme before body
+   paint to avoid flash-of-wrong-theme.
+
+   Legacy aliases (--c-*) at the bottom keep existing component
+   CSS working until each component is migrated. When the last
+   `grep -r 'var(--c-NAME)' src/` returns empty, delete that
+   alias.
+============================================================ */
+
+/* ──────────────────────────────────────────────────────────
+   Dark surface — for technical / ops surfaces. Currently also
+   serves as the default theme (kept from existing app behavior)
+   until a separate technical surface is introduced.
+   ────────────────────────────────────────────────────────── */
+:root,
+[data-theme="dark"] {
+  /* Backgrounds */
+  --bg:          #14130E;
+  --bg-elev:     #1B1A14;
+  --bg-sunken:   #0E0D08;
+
+  /* Ink — five steps, warm */
+  --ink-1:       #F2EFE0;
+  --ink-2:       #C7C4B5;
+  --ink-3:       #8A8676;
+  --ink-4:       #5E5A4D;
+  --ink-5:       #3A372E;
+
+  /* Lines */
+  --line:        #2A2820;
+  --line-soft:   #1F1D17;
+
+  /* Brand — same accent across themes (preserved UWV orange) */
+  --accent:      oklch(0.55 0.14 50);
+  --accent-soft: oklch(0.32 0.07 60);
+  --accent-ink:  #FFFFFF;
+
+  /* Status */
+  --status-ok:   oklch(0.6 0.13 145);
+  --status-warn: oklch(0.7 0.15 75);
+  --status-down: oklch(0.55 0.2 25);
+
+  /* Card chrome — line is enough on dark, no visible drop shadow */
+  --card-shadow-hover: none;
+
+  color-scheme: dark;
+}
+
+/* ──────────────────────────────────────────────────────────
+   Light surface — warm off-white (editorial / public pages)
+   ────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  /* Backgrounds */
+  --bg:          #FAFAF7;
+  --bg-elev:     #FFFFFF;
+  --bg-sunken:   #F2F1EB;
+
+  /* Ink — five steps, warm */
+  --ink-1:       #15140F;
+  --ink-2:       #3F3D35;
+  --ink-3:       #6B6759;
+  --ink-4:       #9B9787;
+  --ink-5:       #D4D0C2;
+
+  /* Lines */
+  --line:        #E6E3D6;
+  --line-soft:   #EFEDE2;
+
+  /* Brand */
+  --accent:      oklch(0.55 0.14 50);
+  --accent-soft: oklch(0.95 0.04 60);
+  --accent-ink:  #FFFFFF;
+
+  /* Status */
+  --status-ok:   oklch(0.6 0.13 145);
+  --status-warn: oklch(0.7 0.15 75);
+  --status-down: oklch(0.55 0.2 25);
+
+  /* Card chrome */
+  --card-shadow-hover: 0 1px 2px rgba(20, 18, 10, 0.04);
+
+  color-scheme: light;
+}
+
+/* ──────────────────────────────────────────────────────────
+   Theme-independent tokens
+   ────────────────────────────────────────────────────────── */
+:root {
+  /* Category hues — for swim-lane labels in the architecture diagram.
+     Same OKLCH lightness/chroma; only the hue changes. The -soft and
+     -line variants are tuned for the light surface (lightness 0.97 /
+     0.88) — when used on dark surfaces they'll need a [data-theme]
+     override, added when the dark-surface architecture diagram lands. */
+  --cat-discovery:          oklch(0.55 0.18 305);
+  --cat-discovery-soft:     oklch(0.97 0.025 305);
+  --cat-discovery-line:     oklch(0.88 0.05 305);
+
+  --cat-pipeline:           oklch(0.55 0.18 260);
+  --cat-pipeline-soft:      oklch(0.97 0.025 260);
+  --cat-pipeline-line:      oklch(0.88 0.05 260);
+
+  --cat-observability:      oklch(0.58 0.16 70);
+  --cat-observability-soft: oklch(0.97 0.025 70);
+  --cat-observability-line: oklch(0.88 0.05 70);
+
+  --cat-identity:           oklch(0.55 0.18 25);
+  --cat-identity-soft:      oklch(0.97 0.025 25);
+  --cat-identity-line:      oklch(0.88 0.05 25);
+
+  /* Coding-agents lane (Multica + dev-loop tooling). Teal-cyan to keep
+     it visibly outside the data-flow categories above. */
+  --cat-agents:             oklch(0.58 0.16 195);
+  --cat-agents-soft:        oklch(0.97 0.025 195);
+  --cat-agents-line:        oklch(0.88 0.05 195);
+
+  /* Paper surface — Academy certificate. Mirrors the warm-light palette
+     but with a stronger line color so a printed cert reads as paper.
+     The standalone SVG download in learn/cert/index.astro bakes these
+     exact hex values; if you change them here, update both. */
+  --paper-bg:      #FDFDF8;
+  --paper-line:    #D0C8B0;
+  --paper-ink-1:   #1A1206;
+  --paper-ink-2:   #5B4520;
+  --paper-ink-3:   #8A7D62;
+  --paper-accent:  #8B5A00;
+
+  /* Spacing — 4 px base scale */
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:  10px;
+  --space-4:  14px;
+  --space-5:  18px;
+  --space-6:  22px;
+  --space-7:  28px;
+  --space-8:  32px;
+  --space-9:  40px;
+  --space-10: 48px;
+  --space-11: 60px;
+  --space-12: 80px;
+
+  --max-w:        1280px;
+  --page-padx:    32px;
+
+  /* Radii */
+  --radius-sm:    6px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+  --radius-xl:   20px;
+  --radius-pill: 999px;
+
+  /* Typography — font stacks. @font-face declarations come from
+     @fontsource-variable/* packages, imported in Layout.astro. */
+  --font-sans:  'Inter Variable', ui-sans-serif, system-ui, -apple-system,
+                'Segoe UI', Roboto, sans-serif;
+  --font-mono:  'JetBrains Mono Variable', ui-monospace, SFMono-Regular,
+                Menlo, monospace;
+  --font-serif: ui-serif, Georgia, 'Times New Roman', serif;
+
+  /* Sizes */
+  --text-display:  56px;  /* hero h1 */
+  --text-h1:       32px;
+  --text-h2:       22px;
+  --text-h3:       18px;
+  --text-body-lg:  16px;
+  --text-body:     14.5px;
+  --text-meta:     13px;
+  --text-eyebrow:  11px;
+  --text-micro:    10px;
+
+  /* Weights */
+  --weight-regular:  400;
+  --weight-book:     450;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* Line heights */
+  --leading-display: 1.05;
+  --leading-heading: 1.2;
+  --leading-tight:   1.4;
+  --leading-body:    1.55;
+
+  /* Letter spacing */
+  --tracking-display: -0.025em;
+  --tracking-tight:   -0.02em;
+  --tracking-normal:   0;
+  --tracking-eyebrow:  0.08em;
+}
+
+/* ============================================================
+   Legacy --c-* aliases. Auto-cascade through theme overrides
+   via var() at use-site, so they're defined once on :root.
+   --c-link has no equivalent in the new system → defined per
+   theme. Delete an alias when its last reference is gone.
+============================================================ */
+:root {
+  --c-bg:       var(--bg);
+  --c-panel:    var(--bg-elev);
+  --c-panel-2:  var(--bg-sunken);
+  --c-border:   var(--line);
+  --c-text:     var(--ink-1);
+  --c-muted:    var(--ink-3);
+  --c-accent:   var(--accent);
+  --c-accent-2: var(--accent);
+  --c-ok:       var(--status-ok);
+  --c-warn:     var(--status-warn);
+  --c-bad:      var(--status-down);
+
+  --radius:     var(--radius-md);
+}
+
+:root,
+[data-theme="dark"] {
+  --c-link: #79c0ff;   /* legacy GitHub-style blue, no new equivalent */
+}
+
+[data-theme="light"] {
+  --c-link: #0969da;
+}

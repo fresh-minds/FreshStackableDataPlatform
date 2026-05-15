@@ -40,6 +40,8 @@ ACTIVE_USE_CASES: list[dict] = [
      "description": "Data quality dagrapport polisadministratie."},
     {"id": "uc09", "name": "reint_effect", "owner": "divisie_ag",
      "description": "Re-integratie-effect (sandbox, gepseudonimiseerd)."},
+    {"id": "uc11", "name": "klantreis", "owner": "divisie_klantcontact",
+     "description": "Integrale Klantreis — event-stream + fase-reconstructie."},
     {"id": "uc_klant_tev", "name": "klanttevredenheid", "owner": "divisie_klantcontact",
      "description": "Klanttevredenheid per kanaal × maand (CSV-batch demo)."},
 ]

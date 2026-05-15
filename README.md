@@ -23,6 +23,7 @@ Een Kubernetes-native lakehouse + analytics-stack:
 - **Transformatie**: dbt-trino, format-agnostisch via macro `table_format()`.
 - **Orchestratie**: Apache Airflow.
 - **BI**: Apache Superset.
+- **Notebooks**: JupyterHub + KubeSpawner (UWV Lab) — Python/SQL op alle data-lagen, Git-integratie. Zie [`platform/16-jupyter/`](platform/16-jupyter/).
 - **Catalog/governance/lineage/DQ**: OpenMetadata.
 - **AuthN**: Keycloak (OIDC).
 - **Logs/metrics/tracing**: Vector + Prometheus + OpenTelemetry; OpenSearch single-node gedeeld voor logs en OM-search.
@@ -32,36 +33,85 @@ Spark, Hive, Trino, Airflow, Superset, OPA, ZooKeeper, secret-/listener-operator
 
 ---
 
-## Snelstart (k3d)
+## Snelstart
+
+Het platform draait in drie deployment-modes; alle Make-targets accepteren
+`MODE={k3d|kind|aks}` (default `k3d`). De mode bepaalt:
+
+| Aspect | k3d (default) | kind | aks |
+|---|---|---|---|
+| Cluster type | k3d serverlb + local-path | kind extraPortMappings | AKS managed-csi + LB |
+| Domain | `uwv-platform.local:8443` | `uwv-platform.local:8443` | `eu-sovereigndataplatform.com` |
+| Storage class | `local-path` | `standard` | `managed-csi` |
+| Ingress controller | DaemonSet + hostNetwork | DaemonSet + hostNetwork | Deployment + LoadBalancer |
+| Helm values | `…/values.yaml` + `values-k3d.yaml` | `…/values-kind.yaml` | `…/values-aks.yaml` |
+| Platform overlays | base (flat) | base (flat) | `platform-overlays/aks/<comp>/` |
+
+### Mode 1 — k3d (developer laptop)
 
 Voorvereisten:
 
 - Docker Desktop met ≥ 8 GB RAM en ≥ 4 CPU's beschikbaar voor containers.
-- `k3d` ≥ 5.6
-- `kubectl` ≥ 1.29
-- `helm` ≥ 3.14
-- `stackablectl` ≥ 25.x
-- `make`
+- `k3d` ≥ 5.6, `kubectl` ≥ 1.29, `helm` ≥ 3.14, `stackablectl` ≥ 25.x, `make`.
 
 ```bash
-# 1. Clone en cd naar de repo
-cd UDP_Stackable
+# 1. Doctor — controleert tooling + /etc/hosts + kubectl context
+make doctor MODE=k3d
 
-# 2. Voeg DNS-injectie toe aan /etc/hosts (vereist sudo)
+# 2. /etc/hosts injectie (vereist sudo, eenmalig)
 echo "127.0.0.1 trino.uwv-platform.local keycloak.uwv-platform.local \
   superset.uwv-platform.local airflow.uwv-platform.local nifi.uwv-platform.local \
-  minio.uwv-platform.local openmetadata.uwv-platform.local" | sudo tee -a /etc/hosts
+  minio.uwv-platform.local openmetadata.uwv-platform.local \
+  jupyter.uwv-platform.local platform.uwv-platform.local" | sudo tee -a /etc/hosts
 
-# 3. Cluster + platform deployen (~15-30 min op de eerste run)
-make cluster        # k3d cluster create
-make bootstrap      # cert-manager, MinIO, Postgres, Keycloak, Stackable operators
-make deploy-platform # Trino, Spark, Kafka, NiFi, Airflow, Superset, OpenMetadata
-make seed           # synthetische data laden (10k cliënten)
-make test           # smoke tests
+# 3. End-to-end deploy (~15-30 min)
+make deploy MODE=k3d   # cluster + bootstrap + platform + portal + smoke
 
-# 4. Stop en cleanup
-make clean          # k3d cluster delete
+# Of stap voor stap:
+make cluster MODE=k3d
+make bootstrap MODE=k3d
+make deploy-platform MODE=k3d
+make seed
+make test
+
+# 4. Cleanup
+make clean
 ```
+
+### Mode 2 — kind (CI / GitHub Actions)
+
+```bash
+# kind cluster met de juiste extraPortMappings (80/443 → host) en
+# ingress-ready label (matcht infrastructure/helm/ingress-nginx/values-kind.yaml).
+kind create cluster --name uwv-platform --config infrastructure/k3d/kind-cluster.yaml
+
+make doctor MODE=kind
+make bootstrap MODE=kind
+make deploy-platform MODE=kind
+```
+
+### Mode 3 — aks (Azure productie)
+
+```bash
+# Vereist: az login, terraform, SP-secret in scripts/azure/env.sh
+make doctor MODE=aks
+make aks-up           # terraform: AKS + VNet + LB + DNS-zone
+make aks-context      # kubeconfig
+make aks-all          # bootstrap + deploy + smoke
+
+# Of in CI: gebruik de aks-deploy.yml workflow (handmatige dispatch).
+```
+
+### Mode mismatch-bescherming
+
+`scripts/bootstrap.sh` en `scripts/deploy-platform.sh` weigeren te draaien als
+de kubectl-context niet matcht met `--mode`. Een typische foutmelding:
+
+```
+FAIL mode=aks but kubectl context 'k3d-uwv-platform' is not an AKS cluster.
+Run 'make aks-context'.
+```
+
 
 ---
 

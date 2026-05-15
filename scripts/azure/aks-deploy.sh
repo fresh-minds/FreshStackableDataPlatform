@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Deploy platform manifests on the AKS cluster.
-# Thin wrapper around scripts/deploy-platform.sh with AKS-specific post-steps:
+# Thin wrapper around scripts/deploy-platform.sh --mode=aks with AKS-specific
+# post-steps:
 #  - CoreDNS hosts-override (`coredns-custom` ConfigMap) zodat
 #    keycloak.uwv-platform.local in-cluster routeert naar de keycloak-external
 #    Service in ingress-nginx (zie platform/02-authentication/keycloak-external-svc.yaml).
+#  - Public DNS upsert (CNAME → apex) for every *.${PLATFORM_DOMAIN} subdomain.
 #  - MinIO restart zodat de OIDC-discovery slaagt na de DNS-fix (Console toont
 #    anders geen Keycloak SSO knop).
 set -euo pipefail
@@ -11,18 +13,47 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-log()   { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-warn()  { printf '\033[1;33m!!\033[0m %s\n' "$*"; }
-error() { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
+# Force mode=aks regardless of caller args.
+export DEPLOYMENT_MODE=aks
+# shellcheck source=../lib/mode.sh
+source "$ROOT/scripts/lib/mode.sh"
+parse_mode_args
+require_context
 
-ctx="$(kubectl config current-context 2>/dev/null || true)"
-case "$ctx" in
-  uwv-platform-aks|*aks*) ;;
-  *) error "kubectl context is '$ctx', not the AKS cluster. Run: make aks-context" ;;
-esac
-log "kubectl context: $ctx"
+bash "$ROOT/scripts/deploy-platform.sh" --mode=aks
 
-bash "$ROOT/scripts/deploy-platform.sh"
+# ---- AKS-only: ensure public-domain DNS records exist ----
+# Every *.eu-sovereigndataplatform.com subdomain needs a CNAME → apex (which
+# is an A record at the ingress static IP, set up by terraform/aks-up).
+# Idempotent — `az network dns record-set cname set-record` is upsert.
+# Skipped if `az` cli or the DNS zone resource group isn't available
+# (e.g. running outside the platform Azure tenant).
+DNS_RG="${PUBLIC_DNS_RG:-ai-trial-rg}"
+DNS_ZONE="${PUBLIC_DNS_ZONE:-eu-sovereigndataplatform.com}"
+if command -v az >/dev/null 2>&1 && az network dns zone show -g "$DNS_RG" -n "$DNS_ZONE" >/dev/null 2>&1; then
+  log "AKS-post: ensure CNAMEs for all 13 public subdomains in $DNS_RG/$DNS_ZONE"
+  for sub in platform www keycloak airflow grafana prometheus minio minio-api \
+             superset dbt-docs openmetadata opensearch nifi trino; do
+    az network dns record-set cname set-record \
+      -g "$DNS_RG" -z "$DNS_ZONE" \
+      --record-set-name "$sub" \
+      --cname "$DNS_ZONE" \
+      --ttl 3600 \
+      --output none 2>/dev/null || warn "  could not upsert CNAME $sub.$DNS_ZONE"
+  done
+else
+  warn "skip DNS CNAME upsert (az missing or $DNS_RG/$DNS_ZONE not accessible)"
+fi
+
+# ---- AKS-only: public-domain ingresses ----
+# Adds Cert + Ingress pairs for every *.eu-sovereigndataplatform.com
+# subdomain (platform, keycloak, airflow, grafana, prometheus, minio,
+# minio-api, superset, dbt-docs, openmetadata, opensearch, nifi, trino).
+# cert-manager solves DNS-01 via the azuredns ClusterIssuer.
+if [[ -f "$ROOT/infrastructure/azure/public-ingresses.yaml" ]]; then
+  log "AKS-post: applying public-ingresses.yaml"
+  kubectl apply -f "$ROOT/infrastructure/azure/public-ingresses.yaml" >/dev/null
+fi
 
 # ---- AKS-only post-deploy: CoreDNS hosts-override ----
 # AKS CoreDNS gebruikt een 'coredns-custom' ConfigMap met *.override files
@@ -98,15 +129,17 @@ for c in superset airflow nifi openmetadata minio; do
   done
 done
 
-# 2b. Lange access-tokens + geen-refresh voor de openmetadata client.
-# Pac4j (OM 1.5) probeert id_token te refreshen; bij Keycloak-pod-restart
-# zijn in-memory sessies weg en faalt de refresh met 'Session not active'.
-# Met use.refresh.tokens=false gaat OM bij token-expiry naar Keycloak's
-# SSO-cookie ipv refresh-token, en met access.token.lifespan=86400 hoeft
-# dat ook niet binnen een werkdag.
+# 2b. Lange access-tokens voor de openmetadata client.
+# access.token.lifespan=86400 (24h) zodat een werkdag zonder re-auth
+# doorgaat. use.refresh.tokens=true is verplicht voor OM 1.12+
+# (Pac4j slaat het refresh-token op in z'n session; bij /api/v1/auth/login
+# raadpleegt het die en faalt loggedInUser met 401 'No refresh token
+# found against session' als refresh-tokens uit staan).
 OM_CID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/clients?clientId=openmetadata\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
 if [ -n \"\$OM_CID\" ]; then
-  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/clients/\$OM_CID\" -d '{\"attributes\":{\"access.token.lifespan\":\"86400\",\"client.session.max.lifespan\":\"86400\",\"client.session.idle.timeout\":\"28800\",\"use.refresh.tokens\":\"false\"}}' -o /dev/null
+  # Idempotent: stuur volledige client-shape — alleen 'attributes' meegeven
+  # reset andere fields (redirectUris, publicClient, flows) naar defaults.
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/clients/\$OM_CID\" -d '{\"publicClient\":false,\"standardFlowEnabled\":true,\"implicitFlowEnabled\":false,\"redirectUris\":[\"https://openmetadata.uwv-platform.local:8443/*\",\"https://openmetadata.uwv-platform.local/*\",\"http://openmetadata.uwv-platform.local:8443/*\",\"http://openmetadata.uwv-platform.local/*\"],\"attributes\":{\"access.token.lifespan\":\"86400\",\"client.session.max.lifespan\":\"86400\",\"client.session.idle.timeout\":\"28800\",\"use.refresh.tokens\":\"true\",\"post.logout.redirect.uris\":\"+\"}}' -o /dev/null
 fi
 
 # 3. Unmanaged attribute policy enablen — Keycloak 24+ heeft Declarative
@@ -137,6 +170,52 @@ for u in platform.admin wajong.arbeidsdeskundige data.engineer; do
 done
 " >/dev/null 2>&1
     log "  Keycloak realm-patches toegepast"
+
+    # ---- Add .cloud redirect URIs to OIDC clients ----
+    # The base realm-uwv.json registers only *.uwv-platform.local/* as valid
+    # redirect URIs. On AKS, ingress-nginx rewrites Location: .local Keycloak
+    # -> .cloud Keycloak (via proxy-redirect-from/-to in the cloud-ingresses
+    # manifest), so the browser ends up at .cloud — but Keycloak then rejects
+    # the .cloud redirect_uri parameter unless it's in the allowed list. Add
+    # the .cloud variants here, idempotent (skip if already present).
+    log "AKS-post: add .cloud redirect URIs to OIDC clients"
+    kubectl -n uwv-auth exec "$KCPOD" -c keycloak -- bash -c "
+T=\$(curl -fsS -d 'client_id=admin-cli' -d 'username=kcadmin' -d 'password=uwv-dev-only-CHANGE-ME-2026' -d 'grant_type=password' http://localhost:8080/realms/master/protocol/openid-connect/token | sed 's/.*access_token\":\"\\([^\"]*\\)\".*/\\1/')
+A=\"Authorization: Bearer \$T\"
+KC=http://localhost:8080
+
+patch_uris() {
+  local c=\$1; shift
+  local CID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/clients?clientId=\$c\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
+  [ -z \"\$CID\" ] && return
+  local CUR=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/clients/\$CID\" | grep -oE '\"redirectUris\":\\[[^]]*\\]' | head -1 | sed -E 's/.*\\[(.*)\\]/\\1/')
+  declare -A SEEN
+  local OUT=()
+  IFS=, read -ra ITEMS <<< \"\$CUR\"
+  for u in \"\${ITEMS[@]}\"; do u=\$(echo \"\$u\" | tr -d '\"'); SEEN[\$u]=1; OUT+=(\"\\\"\$u\\\"\"); done
+  for u in \"\$@\"; do [ -z \"\${SEEN[\$u]:-}\" ] && OUT+=(\"\\\"\$u\\\"\") && SEEN[\$u]=1; done
+  local NEW=\"[\$(IFS=,; echo \"\${OUT[*]}\")]\"
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/clients/\$CID\" -d \"{\\\"redirectUris\\\":\$NEW}\" -o /dev/null
+}
+
+patch_uris superset 'https://superset.uwv-platform.cloud/*' 'https://superset.uwv-platform.cloud:8443/*'
+patch_uris airflow 'https://airflow.uwv-platform.cloud/*' 'https://airflow.uwv-platform.cloud:8443/*'
+patch_uris openmetadata 'https://openmetadata.uwv-platform.cloud/*' 'https://openmetadata.uwv-platform.cloud:8443/*'
+patch_uris nifi 'https://nifi.uwv-platform.cloud/*' 'https://nifi.uwv-platform.cloud:8443/*'
+patch_uris minio 'https://minio-console.uwv-platform.cloud:8443/oauth_callback' 'https://minio-console.uwv-platform.cloud:8443/*'
+patch_uris portal 'https://platform.uwv-platform.cloud:8443/oauth2/callback' 'https://platform.uwv-platform.cloud/oauth2/callback'
+
+# Also register the eu-sovereigndataplatform.com redirects (current public
+# DNS — the .cloud variants above are kept for backward compat).
+patch_uris superset 'https://superset.eu-sovereigndataplatform.com/*'
+patch_uris airflow 'https://airflow.eu-sovereigndataplatform.com/*' 'https://airflow.eu-sovereigndataplatform.com/oauth-authorized/keycloak'
+patch_uris openmetadata 'https://openmetadata.eu-sovereigndataplatform.com/*' 'https://openmetadata.eu-sovereigndataplatform.com/callback'
+patch_uris nifi 'https://nifi.eu-sovereigndataplatform.com/*'
+patch_uris trino 'https://trino.eu-sovereigndataplatform.com/*' 'https://trino.eu-sovereigndataplatform.com/oauth2/callback'
+patch_uris minio 'https://minio.eu-sovereigndataplatform.com/oauth_callback' 'https://minio.eu-sovereigndataplatform.com/*'
+patch_uris portal 'https://platform.eu-sovereigndataplatform.com/oauth2/callback' 'https://eu-sovereigndataplatform.com/oauth2/callback'
+" >/dev/null 2>&1 || warn "  redirect-URI patch failed (browse Keycloak admin to fix manually)"
+    log "  .cloud + .eu-sovereigndataplatform.com redirect URIs added (idempotent)"
   fi
 fi
 

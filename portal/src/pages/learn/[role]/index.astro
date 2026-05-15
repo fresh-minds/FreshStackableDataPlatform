@@ -1,0 +1,78 @@
+---
+import LearnLayout from '../../../layouts/LearnLayout.astro';
+import ModuleStep from '../../../components/learn/ModuleStep.astro';
+import { getCollection } from 'astro:content';
+import { roles, roleById, type RoleId } from '../../../data/roles';
+import { trackFor, levels, moduleKey } from '../../../data/learn-tracks';
+
+export async function getStaticPaths() {
+  return roles.map((r) => ({ params: { role: r.id } }));
+}
+
+const { role } = Astro.params as { role: RoleId };
+const meta = roleById(role);
+const track = trackFor(role);
+
+if (!meta || !track) {
+  return Astro.redirect('/learn/');
+}
+
+const all = await getCollection('learn', ({ data }) => data.role === role);
+all.sort((a, b) => {
+  const lvl = levels.findIndex((l) => l.id === a.data.level)
+            - levels.findIndex((l) => l.id === b.data.level);
+  return lvl !== 0 ? lvl : a.data.order - b.data.order;
+});
+
+const byLevel = new Map(levels.map((l) => [l.id, all.filter((m) => m.data.level === l.id)]));
+---
+<LearnLayout title={`${meta.displayName} · Academy`} width="prose">
+  <p class="learn-crumbs">
+    <a href="/learn/">Academy</a>
+    <span class="sep">/</span>
+    <span>{meta.displayName}</span>
+  </p>
+
+  <h1>{meta.displayName}</h1>
+  <p class="lead">{track.oneLiner}</p>
+
+  <p class="muted">
+    Domein: <strong>{meta.domain}</strong>.
+    Categorie: <strong>{meta.category === 'tech' ? 'platform-team' : 'eindgebruiker'}</strong>.
+    Achtergrond: <a href={`/${meta.handleidingPath}`}>rol-handleiding</a>.
+  </p>
+
+  {levels.map((lvl) => {
+    const items = byLevel.get(lvl.id) ?? [];
+    if (items.length === 0) return null;
+    return (
+      <section class="level-section">
+        <h2>{lvl.title}</h2>
+        <p class="muted">{lvl.blurb}</p>
+        <ol class="module-list" start="1">
+          {items.map((m) => (
+            <ModuleStep
+              href={`/learn/${role}/${m.slug.split('/').pop()}/`}
+              title={m.data.title}
+              level={m.data.level}
+              duration={m.data.duration}
+              moduleKey={moduleKey(role, m.data.level, m.data.order)}
+              certifies={m.data.certifies}
+            />
+          ))}
+        </ol>
+      </section>
+    );
+  })}
+</LearnLayout>
+
+<style>
+  .lead { font-size: 1.05rem; color: var(--c-text); margin: .25rem 0 1rem; }
+  .level-section { margin-top: 2rem; }
+  .level-section h2 { border-bottom: 1px solid var(--c-border); padding-bottom: .35rem; }
+</style>
+
+<script>
+  import { bootstrap } from '../../../scripts/learn-progress';
+  bootstrap();
+</script>

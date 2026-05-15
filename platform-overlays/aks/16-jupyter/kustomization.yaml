@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/16-jupyter
+patches:
+  - target:
+      kind: Ingress
+      name: jupyter
+    patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: jupyter.eu-sovereigndataplatform.com
+      - op: replace
+        path: /spec/rules/0/host
+        value: jupyter.eu-sovereigndataplatform.com
+  - target:
+      kind: Deployment
+      name: jupyterhub
+    patch: |-
+      # env list order (see deployment-hub.yaml): OAUTH_CLIENT_ID,
+      # OAUTH_CLIENT_SECRET, OAUTH_CALLBACK_URL, KEYCLOAK_PUBLIC_URL,
+      # OPENMETADATA_PUBLIC_URL, CONFIGPROXY_AUTH_TOKEN, ...
+      - op: replace
+        path: /spec/template/spec/containers/0/env/2/value
+        value: "https://jupyter.eu-sovereigndataplatform.com/hub/oauth_callback"
+      - op: replace
+        path: /spec/template/spec/containers/0/env/3/value
+        value: "https://keycloak.eu-sovereigndataplatform.com"
+      - op: replace
+        path: /spec/template/spec/containers/0/env/4/value
+        value: "https://openmetadata.eu-sovereigndataplatform.com"

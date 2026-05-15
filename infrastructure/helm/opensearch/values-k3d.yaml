@@ -1,0 +1,4 @@
+# OpenSearch — k3d-specific overrides.
+persistence:
+  storageClass: local-path
+  size: 10Gi

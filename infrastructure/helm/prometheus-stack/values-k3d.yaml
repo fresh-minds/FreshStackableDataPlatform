@@ -1,0 +1,18 @@
+# kube-prometheus-stack — k3d-specific overrides.
+prometheus:
+  prometheusSpec:
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+
+grafana:
+  persistence:
+    storageClassName: local-path
+
+  ingress:
+    hosts:
+      - grafana.uwv-platform.local
+    tls:
+      - hosts: [grafana.uwv-platform.local]
+        secretName: grafana-tls

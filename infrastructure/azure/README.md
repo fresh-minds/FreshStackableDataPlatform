@@ -2,22 +2,34 @@
 
 Provisioning + deployment of the UWV reference platform on Azure Kubernetes Service.
 
-> The k3d profile (`make cluster`, `make bootstrap`, `make deploy-platform`) remains
-> the primary local dev path. The AKS path here mirrors that flow but on real Azure.
+> Mode selection: the platform now runs uniformly across k3d/kind/AKS via the
+> `MODE` Make variable (or `--mode`/`DEPLOYMENT_MODE`). All chart values and
+> platform manifests are layered automatically — see [docs/deployment-modes.md](../../docs/deployment-modes.md).
+> The AKS path is `make deploy MODE=aks` (or `make aks-all` for the full
+> terraform + cluster + smoke flow).
 
 ## Layout
 
 ```
 infrastructure/azure/
 ├── terraform/             # IaC for the AKS cluster (uses existing RG)
-└── helm-overrides/        # AKS-specific helm value overrides (storage class, etc.)
+├── letsencrypt-issuer.yaml  # cert-manager ClusterIssuer for *.eu-sovereigndataplatform.com
+├── postgres-create-databases.yaml  # post-bootstrap Job (DB creation workaround)
+└── public-ingresses.yaml  # platform-landing Deployment + LE-issued public ingresses
+                           # (the rest is now handled by platform-overlays/aks/)
+
+# AKS-specific helm values live alongside the chart bases now:
+infrastructure/helm/<chart>/values-aks.yaml
+
+# AKS-specific kustomize overlays:
+platform-overlays/aks/<comp>/kustomization.yaml
 
 scripts/azure/
 ├── env.sh.example         # template for sourcing service-principal creds
 ├── aks-up.sh              # terraform init + apply
 ├── aks-context.sh         # az aks get-credentials
-├── aks-bootstrap.sh       # bootstrap helm charts on the AKS cluster
-├── aks-deploy.sh          # apply platform manifests on the AKS cluster
+├── aks-bootstrap.sh       # thin wrapper → scripts/bootstrap.sh --mode=aks
+├── aks-deploy.sh          # thin wrapper → scripts/deploy-platform.sh --mode=aks + AKS post-steps
 ├── aks-stop.sh            # az aks stop  (deallocate nodes — cost-saving, reversible)
 ├── aks-start.sh           # az aks start (resume a stopped cluster)
 └── aks-down.sh            # terraform destroy (full teardown — zero ongoing cost)
@@ -101,8 +113,8 @@ created is gone.
 4. **Bitnami pulled `bitnami/*` from Docker Hub mid-2025.** All charts that
    pin `image.repository: bitnami/<x>` 404 on pull. The legacy mirror
    `docker.io/bitnamilegacy/*` still serves the old tags. Helm overrides in
-   `helm-overrides/postgres-values-aks.yaml` and `keycloak-values-aks.yaml`
-   redirect there.
+   `infrastructure/helm/postgresql/values-aks.yaml` and
+   `infrastructure/helm/keycloak/values-aks.yaml` redirect there.
 5. **AKS managed disks have a `lost+found` directory at the root.** Bitnami's
    "is this volume empty?" check sees it and goes down the persisted-data path
    even on a brand-new PVC, with side effects in the init flow. Fix: pin

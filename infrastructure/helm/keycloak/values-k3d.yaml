@@ -1,0 +1,17 @@
+# Keycloak — k3d-specific overrides.
+# k3d's serverlb listens on host port 8443 → in-cluster ingress controller :443.
+# KC_HOSTNAME must include the :8443 suffix so Keycloak-emitted URLs (login HTML,
+# form actions, redirect, cookie domain) match what the browser sees.
+
+extraEnvVars:
+  - name: KC_HOSTNAME
+    value: "https://keycloak.uwv-platform.local:8443"
+  - name: KC_HOSTNAME_STRICT
+    value: "false"
+  - name: KC_HOSTNAME_STRICT_BACKCHANNEL
+    value: "false"
+  - name: KC_PROXY_HEADERS
+    value: "xforwarded"
+
+ingress:
+  hostname: keycloak.uwv-platform.local

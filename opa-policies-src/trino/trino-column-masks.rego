@@ -51,5 +51,26 @@ columnMask := {"expression": "date_trunc('year', geboortedatum)"} if {
 	count(user_roles) == 1 # alleen als data_steward de enige rol is
 }
 
+# --- UC-11 — event_label sanitization voor non-medische rollen --------
+# Klantreis-labels kunnen medische info bevatten (bv. "WIA-aanvraag, AO 80%").
+# Voor crm_medewerker / ww_handhaver / data_steward redigeren we het label tot
+# een generiek "WIA-procedure"-label.
+columnMask := {"expression": "concat(domein, '.', event_type)"} if {
+	column_lower == "event_label"
+	resource_schema_lower == "uc11_klantreis"
+	not any_role_has_capability("can_see_medical")
+	not any_role_has_capability("break_glass")
+}
+
+# UC-11 — source_ref_id (orig. primary key) gemaskeerd voor non-supervisor.
+columnMask := {"expression": "'***'"} if {
+	column_lower == "source_ref_id"
+	resource_schema_lower == "uc11_klantreis"
+	not any_role_has_capability("can_see_pii")
+	not "crm_medewerker" in user_roles
+}
+
 # --- helpers ----------------------------------------------------------
 column_lower := lower(input.action.resource.column.columnName)
+
+resource_schema_lower := lower(input.action.resource.column.schemaName)

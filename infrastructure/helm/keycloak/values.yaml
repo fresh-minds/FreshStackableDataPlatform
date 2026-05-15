@@ -60,28 +60,18 @@ extraVolumeMounts:
     readOnly: true
 
 # Hostname / proxy voor ingress-nginx vóór Keycloak.
-# In k3d luistert de host op port 8443 (zie infrastructure/k3d/k3d-cluster.yaml)
-# — Keycloak moet weten dat hij op die niet-standaard poort staat zodat
-# zelf-gegenereerde URLs (bv. tijdens login-flow) ook :8443 bevatten.
+# KC_HOSTNAME en ingress.hostname zijn mode-specifiek (zie
+# values-{k3d,kind,aks}.yaml). Op k3d/kind moet KC_HOSTNAME :8443 bevatten
+# (serverlb port-mapping); op AKS staat het op de standaard 443.
 proxy: edge
-extraEnvVars:
-  - name: KC_HOSTNAME
-    value: "https://keycloak.uwv-platform.local:8443"
-  - name: KC_HOSTNAME_STRICT
-    value: "false"
-  - name: KC_HOSTNAME_STRICT_BACKCHANNEL
-    value: "false"
-  - name: KC_PROXY_HEADERS
-    value: "xforwarded"
 
-# Ingress
+# Ingress — mode-agnostic shell; hostname is set per-mode.
 ingress:
   enabled: true
   ingressClassName: nginx
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
     nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
-  hostname: keycloak.uwv-platform.local
   tls: true
   selfSigned: false  # cert-manager doet de cert
 
@@ -91,6 +81,10 @@ service:
   ports:
     http: 80
 
-# Geen Bitnami metrics-endpoint nodig in dev
+# Prometheus-metrics aan: Quarkus-based Keycloak exposeert /metrics op de
+# HTTP-poort en de Bitnami-chart maakt automatisch een ServiceMonitor aan
+# (job=keycloak) die de portal-status-dot voedt.
 metrics:
-  enabled: false
+  enabled: true
+  serviceMonitor:
+    enabled: true

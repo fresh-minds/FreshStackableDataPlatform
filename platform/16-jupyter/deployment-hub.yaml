@@ -1,0 +1,175 @@
+# UWV Lab — JupyterHub Deployment.
+#
+# One pod runs both the Hub (port 8081) and configurable-http-proxy (port
+# 8000) — the simplest topology and the one used by Z2JH's default chart in
+# scaled-down mode.
+#
+# The image is upstream `quay.io/jupyterhub/k8s-hub` — comes with
+# oauthenticator and kubespawner preinstalled.
+#
+# Singleuser image (the per-user notebook container) is built locally and
+# imported into k3d via `make jupyter-image`. Its name is passed via env so
+# we can swap profiles without editing the ConfigMap.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jupyterhub
+  namespace: uwv-platform
+  labels:
+    app.kubernetes.io/name: jupyterhub
+    app.kubernetes.io/component: hub
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # SQLite — only one writer at a time
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: jupyterhub
+      app.kubernetes.io/component: hub
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: jupyterhub
+        app.kubernetes.io/component: hub
+      annotations:
+        checksum/config: "see ConfigMap jupyterhub-config"
+    spec:
+      # Workaround for k3d inter-node networking: in this scaled-down cluster
+      # the local-path-provisioner pins the Hub-DB PV to whichever node it
+      # provisions on, and the control-plane node has flaky pod-to-pod
+      # routing on this k3d build. Prefer agent nodes for scheduling so the
+      # bound PV stays on agent storage.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+      serviceAccountName: jupyterhub
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      # k3d's local-path-provisioner doesn't honor fsGroup, so a tiny init
+      # container chowns the mount before the Hub starts.
+      initContainers:
+        - name: state-perms
+          image: busybox:1.36
+          command: ["sh", "-c", "chown -R 1000:1000 /srv/jupyterhub && chmod 0775 /srv/jupyterhub"]
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+          volumeMounts:
+            - name: state
+              mountPath: /srv/jupyterhub
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits:   { cpu: 100m, memory: 32Mi }
+      containers:
+        - name: hub
+          image: quay.io/jupyterhub/k8s-hub:4.0.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - "jupyterhub"
+            - "--config=/etc/jupyterhub/jupyterhub_config.py"
+            - "--upgrade-db"
+          env:
+            - name: OAUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: jupyterhub-oidc
+                  key: client-id
+            - name: OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jupyterhub-oidc
+                  key: client-secret
+            - name: OAUTH_CALLBACK_URL
+              value: "https://jupyter.uwv-platform.local:8443/hub/oauth_callback"
+            # Public URLs visible to the browser; mode-specific (overlays/aks
+            # rewrites these to .eu-sovereigndataplatform.com without :8443).
+            - name: KEYCLOAK_PUBLIC_URL
+              value: "https://keycloak.uwv-platform.local:8443"
+            - name: OPENMETADATA_PUBLIC_URL
+              value: "https://openmetadata.uwv-platform.local:8443"
+            - name: CONFIGPROXY_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: jupyterhub-oidc
+                  key: configproxy-token
+            - name: JUPYTERHUB_CRYPT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: jupyterhub-oidc
+                  key: crypt-key
+            - name: SINGLEUSER_IMAGE
+              value: "uwv-platform/jupyter-kernel:dev"
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: hub
+              containerPort: 8081
+          readinessProbe:
+            httpGet:
+              path: /hub/health
+              port: hub
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /hub/health
+              port: hub
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits:   { cpu: 1, memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: config
+              mountPath: /etc/jupyterhub
+              readOnly: true
+            - name: state
+              mountPath: /srv/jupyterhub
+        - name: proxy
+          image: quay.io/jupyterhub/configurable-http-proxy:4.6.2
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: CONFIGPROXY_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: jupyterhub-oidc
+                  key: configproxy-token
+          command:
+            - "configurable-http-proxy"
+            - "--ip=0.0.0.0"
+            - "--port=8000"
+            - "--api-ip=127.0.0.1"
+            - "--api-port=8001"
+            - "--default-target=http://127.0.0.1:8081"
+            - "--error-target=http://127.0.0.1:8081/hub/error"
+          ports:
+            - name: public
+              containerPort: 8000
+          readinessProbe:
+            tcpSocket: { port: public }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+      volumes:
+        - name: config
+          configMap:
+            name: jupyterhub-config
+        - name: state
+          persistentVolumeClaim:
+            claimName: jupyterhub-db

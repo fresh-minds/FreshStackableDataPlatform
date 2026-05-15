@@ -296,6 +296,19 @@
       "realmRoles": [
         "proactief_dienstverlener"
       ]
+    },
+    {
+      "username": "service-account-om-access-bridge",
+      "enabled": true,
+      "emailVerified": false,
+      "serviceAccountClientId": "om-access-bridge",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users",
+          "view-realm"
+        ]
+      }
     }
   ],
   "clients": [
@@ -482,7 +495,7 @@
         "access.token.lifespan": "86400",
         "client.session.max.lifespan": "86400",
         "client.session.idle.timeout": "28800",
-        "use.refresh.tokens": "false"
+        "use.refresh.tokens": "true"
       }
     },
     {
@@ -540,6 +553,137 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "portal-backend",
+      "name": "UDP Academy Backend (service account)",
+      "description": "Service-account voor de Academy-backend; schrijft voortgang naar user-attribute udp_progress.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-portal-backend-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": [
+        "profile",
+        "roles"
+      ],
+      "fullScopeAllowed": false,
+      "attributes": {
+        "use.refresh.tokens": "false"
+      }
+    },
+    {
+      "clientId": "om-access-bridge",
+      "name": "OpenMetadata Access Bridge (service account)",
+      "description": "Service-account voor de om-access-bridge; kent realm-roles 'data_access:<catalog>.<schema>' toe na approval in OpenMetadata. Zie ADR-0008.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-om-access-bridge-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": [
+        "profile",
+        "roles"
+      ],
+      "fullScopeAllowed": false,
+      "attributes": {
+        "use.refresh.tokens": "false"
+      }
+    },
+    {
+      "clientId": "jupyter",
+      "name": "UWV Lab (Jupyter)",
+      "description": "OIDC-client voor JupyterHub OAuthenticator op https://jupyter.uwv-platform.local — per-user notebook-pods met identiteit gekoppeld aan OPA-policy.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-jupyter-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://jupyter.uwv-platform.local:8443/hub/oauth_callback",
+        "https://jupyter.uwv-platform.local/hub/oauth_callback"
+      ],
+      "webOrigins": [
+        "https://jupyter.uwv-platform.local:8443",
+        "https://jupyter.uwv-platform.local"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "https://jupyter.uwv-platform.local:8443/*##https://jupyter.uwv-platform.local/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "multica",
+      "name": "UWV Platform — Multica",
+      "description": "OIDC-client voor de oauth2-proxy voor https://multica.uwv-platform.local — gates de Next.js bundle (front-door SSO). Multica's eigen email-code login draait nog op API-niveau.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-multica-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://multica.uwv-platform.local:8443/oauth2/callback",
+        "https://multica.uwv-platform.local/oauth2/callback"
+      ],
+      "webOrigins": [
+        "https://multica.uwv-platform.local:8443",
+        "https://multica.uwv-platform.local"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "https://multica.uwv-platform.local:8443/*##https://multica.uwv-platform.local/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "username-as-email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "username",
+            "claim.name": "email",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "audience-multica",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "multica",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "clientScopes": [
@@ -567,6 +711,57 @@
           }
         }
       ]
+    },
+    {
+      "name": "profile",
+      "description": "OpenID Connect built-in scope: profile",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "username",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "email",
+      "description": "OpenID Connect built-in scope: email",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "email",
+            "claim.name": "email",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
     }
-  ]
+  ],
+  "defaultDefaultClientScopes": ["profile", "email", "roles"]
 }

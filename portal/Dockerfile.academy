@@ -1,0 +1,28 @@
+# UDP Academy backend — FastAPI service voor /api/learn/*.
+# Schrijft voortgang naar Keycloak user-attributes en draait auto-checks.
+# In compose draait deze zonder Keycloak; alleen /api/learn/check/_ping werkt.
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN pip install --no-cache-dir \
+    'fastapi==0.115.*' \
+    'uvicorn[standard]==0.32.*' \
+    'requests==2.32.*'
+
+# Houd dezelfde module-pad zodat de K8s-deployment dezelfde import-string
+# kan gebruiken: portal.scripts.learn-backend:app
+COPY scripts/learn-backend.py /app/portal/scripts/learn_backend.py
+RUN mkdir -p /app/portal && touch /app/portal/__init__.py /app/portal/scripts/__init__.py
+
+EXPOSE 8088
+
+# Module-naam: het bestand bevat een dash; we hebben het bij COPY hernoemd
+# naar `learn_backend.py` zodat Python het kan importeren.
+CMD ["uvicorn", "portal.scripts.learn_backend:app", "--host", "0.0.0.0", "--port", "8088"]

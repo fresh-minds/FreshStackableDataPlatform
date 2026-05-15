@@ -34,9 +34,17 @@ else
 fi
 
 # --- 2. opa test ------------------------------------------------------
+# Data wordt gewrapped onder data.configmap[<name>][<ns>] zodat `opa test`
+# dezelfde paden ziet als de Stackable OpaCluster in productie.
 if command -v opa >/dev/null 2>&1; then
-  log "opa test $SRC_REGO/ + data/uwv_role_mappings.json"
-  opa test "$SRC_REGO/" "$SRC_DATA/uwv_role_mappings.json" -v \
+  log "Render wrapped test-data → /tmp/uwv-opa-test-data.json"
+  python3 "$ROOT/scripts/opa-test-data-wrap.py" \
+    --src "$SRC_DATA/uwv_role_mappings.json" \
+    --dst /tmp/uwv-opa-test-data.json \
+    || fail "Wrapper-render gefaald"
+
+  log "opa test $SRC_REGO/ + /tmp/uwv-opa-test-data.json"
+  opa test "$SRC_REGO/" /tmp/uwv-opa-test-data.json -v \
     || fail "opa test gefaald — fix de tests voor je verder gaat"
 fi
 

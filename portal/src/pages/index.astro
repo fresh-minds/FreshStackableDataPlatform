@@ -1,161 +1,285 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import ReferenceArchitecture from '../components/ReferenceArchitecture.astro';
+import Button from '../components/primitives/Button.astro';
+import Eyebrow from '../components/primitives/Eyebrow.astro';
+import StatusDot from '../components/primitives/StatusDot.astro';
 import { roles } from '../data/roles';
-import { components, stages } from '../data/components';
+import { components } from '../data/components';
+import { DOCS_URL } from '../data/external-links';
+
+// Components surfaced in the hero status card. These are the ones a
+// platform user is most likely to spot a regression on.
+const statusHighlightIds = ['keycloak', 'nifi', 'kafka', 'trino', 'superset', 'prometheus'];
+const statusHighlights = statusHighlightIds
+  .map((id) => components.find((c) => c.id === id))
+  .filter((c): c is NonNullable<typeof c> => Boolean(c));
 ---
 <Layout title="Home">
-  <section class="panel hero">
-    <h1>UWV Reference Data Platform</h1>
-    <p>
-      Eén plek om <strong>te zien hoe het platform werkt</strong> en om naar
-      de tools te springen die bij <strong>jouw rol</strong> horen. Alle
-      componenten zijn open source; toegang en data-zichtbaarheid worden
-      bepaald door OPA-policies en Keycloak-rollen.
-    </p>
-    <p class="cta">
-      <a class="btn" href="/architecture/">→ Architectuurkaart bekijken</a>
-      <a class="btn btn-primary" href="/me/">→ Naar mijn werkplek</a>
-    </p>
-    <p class="note">
-      Synthetische data, illustratieve referentie. Geen productie-UWV-systeem.
-    </p>
-  </section>
+  <!-- ═══════════ Hero ═══════════ -->
+  <section class="hero">
+    <div class="hero-lead">
+      <Eyebrow rule>Reference implementation · v1</Eyebrow>
+      <h1 class="hero-title">
+        Eén platform voor data&thinsp;—
+        <em>elf rollen, één bron van waarheid.</em>
+      </h1>
+      <p class="hero-body">
+        Het launchpad voor het UWV-referentieplatform. Log in en spring
+        direct door naar de tool die bij <strong>jouw rol</strong>
+        hoort — Trino, Superset, OpenMetadata, dbt docs. Toegang en
+        data-zichtbaarheid komen uit OPA-policies en Keycloak-rollen;
+        de architectuur en achtergrond staan in de documentatie.
+      </p>
 
-  <section class="panel">
-    <h2>Hoe het platform in elkaar zit</h2>
-    <p class="muted">
-      Klik op een component om de UI te openen. Voor een uitgebreide uitleg:
-      <a href="/architecture/">→ architectuurkaart</a>.
-    </p>
-    <ReferenceArchitecture />
-  </section>
-
-  <section class="panel">
-    <h2>De {stages.length} lagen op een rij</h2>
-    <div class="stage-grid">
-      {stages.map((s) => (
-        <a class="stage-card" href={`/architecture/#${s.id}`} data-stage={s.id}>
-          <img src={s.icon} alt="" width="32" height="32" />
-          <strong>{s.title}</strong>
-          <span>{s.blurb}</span>
-        </a>
-      ))}
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Twee manieren om te navigeren</h2>
-    <div class="grid-2">
-      <div>
-        <h3>1. Architectuur</h3>
-        <p>
-          Klikbare landkaart van alle <strong>{components.length} componenten</strong>:
-          ingestion (NiFi → Kafka), opslag (MinIO + Hive),
-          transformatie (Spark + Trino + OPA), BI (Superset), governance (OpenMetadata),
-          observability (Prometheus + OpenSearch). Hover voor uitleg, klik
-          om de UI te openen, kleur-stip toont live status.
-        </p>
+      <div class="hero-cta">
+        <Button href="/me/" variant="accent">Naar mijn werkplek</Button>
+        <Button href={DOCS_URL} target="_blank" rel="noopener noreferrer">Documentatie ↗</Button>
+        <Button href="/dbt-docs.html" target="_blank" rel="noopener noreferrer">dbt docs</Button>
       </div>
-      <div>
-        <h3>2. Rol</h3>
+
+      <p class="hero-note mono">
+        <StatusDot status="warn" />
+        Synthetische data · illustratieve referentie · geen productie-UWV-systeem
+      </p>
+    </div>
+
+    <aside class="hero-status" aria-label="Platform-status">
+      <header class="hero-status-head">
+        <Eyebrow rule>Status · live</Eyebrow>
+        <span class="mono hero-status-meta">refresh 30s</span>
+      </header>
+      <ul class="hero-status-list" role="list">
+        {statusHighlights.map((c) => (
+          <li class="hero-status-row">
+            <span class="mono hero-status-job">{c.prometheusJob ?? c.id}</span>
+            <span class="hero-status-name">{c.name}</span>
+            <StatusDot job={c.prometheusJob ?? c.id} />
+          </li>
+        ))}
+      </ul>
+      <footer class="hero-status-foot mono">
+        <span><span class="hero-status-count" data-status-count>{statusHighlights.length}</span> services</span>
+      </footer>
+    </aside>
+  </section>
+
+  <!-- ═══════════ Two ways to navigate ═══════════ -->
+  <section class="section">
+    <header class="section-head">
+      <Eyebrow>01 · Navigatie</Eyebrow>
+      <h2>Twee manieren om hier door te bewegen</h2>
+    </header>
+    <div class="duo">
+      <article class="duo-card">
+        <Eyebrow>Documentatie</Eyebrow>
+        <h3>Wat zit er <em>achter</em> de tegels?</h3>
         <p>
-          Log in via Keycloak en je ziet alleen de tools die <strong>jouw rol</strong>
-          mag gebruiken, met shortcuts naar de werkstromen uit je rol-handleiding.
-          {roles.length} rollen beschikbaar — van <em>WIA-beoordelaar</em> tot
-          <em>platform-admin</em>.
+          Voor elk van de <strong>{components.length} componenten</strong> —
+          ingestion (NiFi → Kafka), opslag (MinIO + Hive), transformatie
+          (Spark + Trino + OPA), BI (Superset), governance (OpenMetadata),
+          observability (Prometheus + OpenSearch) — staat de
+          verantwoordelijkheid, de configuratie en de architectuurkeuze
+          uitgelegd in de documentatie-site. Inclusief use-cases, rollen,
+          ADR's en compliance-mapping.
         </p>
-      </div>
+        <Button href={DOCS_URL} target="_blank" rel="noopener noreferrer">Open documentatie ↗</Button>
+      </article>
+      <article class="duo-card">
+        <Eyebrow>Rol</Eyebrow>
+        <h3>Wat mag <em>jij</em> zien?</h3>
+        <p>
+          Log in via Keycloak en je ziet alleen de tools die bij jouw rol
+          horen, met shortcuts naar je eigen werkstromen. Van
+          <em>WIA-beoordelaar</em> tot <em>platform-admin</em>: één plek,
+          {roles.length} rollen, één bron van waarheid.
+        </p>
+        <Button href="/me/">Open mijn werkplek</Button>
+      </article>
     </div>
   </section>
 
-  <section class="panel">
-    <h2>Rollen op dit platform</h2>
-    <div class="grid-3">
-      {roles.map((r) => (
-        <a class="role-card" href={`/me/?role=${r.id}`}>
-          <strong>{r.displayName}</strong>
-          <span>{r.domain}</span>
-          <span class="cat">{r.category === 'tech' ? 'tech' : 'business'}</span>
-        </a>
-      ))}
-    </div>
-    <p class="note">
-      Klikken op een rol opent „Mijn werkplek” in <em>demo-modus</em> (zonder login).
-      Echte rol komt uit je Keycloak-token na SSO.
-    </p>
-  </section>
 </Layout>
 
+<script>
+  import { startStatusRefresh } from '../scripts/status';
+  startStatusRefresh();
+</script>
+
 <style>
-  .hero h1 { margin-bottom: .75rem; }
-  .cta { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: 1rem; }
-  .btn {
-    display: inline-block; padding: .55rem 1rem; border-radius: var(--radius);
-    background: var(--c-panel-2); color: var(--c-text); border: 1px solid var(--c-border);
-  }
-  .btn:hover { border-color: var(--c-accent); text-decoration: none; }
-  .btn-primary { background: var(--c-accent); color: #1a1206; border-color: var(--c-accent); font-weight: 600; }
-  .note { font-size: .8rem; color: var(--c-muted); margin-top: 1rem; }
-  .muted { color: var(--c-muted); font-size: .85rem; }
-
-  .stage-grid {
+  /* ─── Hero ─── */
+  .hero {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: .75rem;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    gap: var(--space-9);
+    align-items: start;
+    padding: var(--space-9) 0 var(--space-10);
   }
-  .stage-card {
-    display: flex; flex-direction: column; gap: .25rem;
-    padding: .85rem 1rem;
-    background: var(--c-panel-2);
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius);
-    color: var(--c-text);
-    transition: border-color .15s, transform .15s;
+  .hero-lead { min-width: 0; }
+  .hero-title {
+    font-size: var(--text-display);
+    line-height: var(--leading-display);
+    letter-spacing: var(--tracking-display);
+    font-weight: var(--weight-medium);
+    color: var(--ink-1);
+    margin: var(--space-4) 0 var(--space-5);
+    text-wrap: balance;
+    border: 0;
+    padding: 0;
   }
-  .stage-card:hover { border-color: var(--c-accent); transform: translateY(-1px); text-decoration: none; }
-  .stage-card img { opacity: .8; margin-bottom: .15rem; }
-  .stage-card strong { font-size: .95rem; }
-  .stage-card span { font-size: .8rem; color: var(--c-muted); line-height: 1.35; }
+  .hero-title em {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-weight: var(--weight-regular);
+    color: var(--ink-3);
+  }
+  .hero-body {
+    font-size: var(--text-body-lg);
+    color: var(--ink-2);
+    line-height: var(--leading-body);
+    max-width: 56ch;
+    margin: 0 0 var(--space-6);
+    text-wrap: pretty;
+  }
+  .hero-body strong { color: var(--ink-1); font-weight: var(--weight-semibold); }
+  .hero-cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-bottom: var(--space-5);
+  }
+  .hero-note {
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+  }
 
-  .role-card {
-    display: flex; flex-direction: column; gap: .15rem;
-    padding: .75rem .9rem;
-    background: var(--c-panel-2);
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius);
-    color: var(--c-text);
-    position: relative;
+  /* Hero status card */
+  .hero-status {
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: var(--space-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    position: sticky;
+    top: 80px;
   }
-  .role-card:hover { border-color: var(--c-accent); text-decoration: none; }
-  .role-card span { font-size: .8rem; color: var(--c-muted); }
-  .role-card .cat {
-    position: absolute; top: .55rem; right: .65rem;
-    font-size: .65rem; text-transform: uppercase; letter-spacing: .05em;
-    background: var(--c-panel); padding: .1rem .4rem; border-radius: 999px;
+  .hero-status-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .hero-status-meta { color: var(--ink-3); font-size: var(--text-eyebrow); }
+  .hero-status-list { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--space-2); }
+  .hero-status-row {
+    display: grid;
+    grid-template-columns: 14ch 1fr auto;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: var(--text-meta);
+  }
+  .hero-status-row:last-child { border-bottom: 0; }
+  .hero-status-job {
+    color: var(--ink-3);
+    font-size: var(--text-eyebrow);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+  }
+  .hero-status-name { color: var(--ink-1); }
+  .hero-status-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--ink-3);
+    font-size: var(--text-eyebrow);
+  }
+  .hero-status-count { color: var(--ink-1); font-weight: var(--weight-semibold); }
+
+  /* ─── Sections ─── */
+  .section {
+    padding: var(--space-8) 0;
+    border-top: 1px solid var(--line);
+  }
+  .section-head { margin-bottom: var(--space-6); max-width: 640px; }
+  .section-head h2 {
+    font-size: var(--text-h2);
+    font-weight: var(--weight-medium);
+    letter-spacing: var(--tracking-tight);
+    color: var(--ink-1);
+    margin: var(--space-3) 0 var(--space-3);
+    border: 0;
+    padding: 0;
+  }
+  .section-lead {
+    color: var(--ink-2);
+    font-size: var(--text-body-lg);
+    line-height: var(--leading-body);
+    margin: 0;
+    text-wrap: pretty;
+  }
+  .section-lead em {
+    font-family: var(--font-serif);
+    font-style: italic;
+    color: var(--ink-3);
+    font-weight: var(--weight-regular);
+  }
+
+  /* ─── Two-card duo ─── */
+  .duo {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: var(--space-4);
+  }
+  .duo-card {
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: var(--space-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .duo-card h3 {
+    font-size: var(--text-h3);
+    font-weight: var(--weight-medium);
+    letter-spacing: var(--tracking-tight);
+    margin: 0;
+    color: var(--ink-1);
+  }
+  .duo-card h3 em {
+    font-family: var(--font-serif);
+    font-style: italic;
+    color: var(--ink-3);
+    font-weight: var(--weight-regular);
+  }
+  .duo-card p {
+    color: var(--ink-2);
+    line-height: var(--leading-body);
+    margin: 0;
+    text-wrap: pretty;
+  }
+  .duo-card p strong { color: var(--ink-1); font-weight: var(--weight-semibold); }
+  .duo-card p em {
+    font-family: var(--font-serif);
+    font-style: italic;
+    color: var(--ink-3);
+    font-weight: var(--weight-regular);
+  }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 960px) {
+    .hero { grid-template-columns: 1fr; }
+    .hero-status { position: static; }
+    .hero-title { font-size: 40px; }
+  }
+  @media (max-width: 560px) {
+    .hero-title { font-size: 32px; }
   }
 </style>
-
-<script>
-  // Status-dots ook op homepage actief zetten — zelfde patroon als
-  // /architecture, alleen draaien we het hier ook 1× bij load.
-  async function refreshStatus() {
-    const els = document.querySelectorAll<HTMLElement>('[data-status-job]');
-    for (const el of els) {
-      const job = el.dataset.statusJob!;
-      try {
-        const r = await fetch(`/api/status/up?job=${encodeURIComponent(job)}`, {
-          credentials: 'include',
-        });
-        if (!r.ok) { el.classList.add('warn'); continue; }
-        const j = await r.json();
-        el.classList.remove('ok', 'warn', 'bad');
-        if (j?.up === 1) el.classList.add('ok');
-        else if (j?.up === 0) el.classList.add('bad');
-        else el.classList.add('warn');
-      } catch { el.classList.add('warn'); }
-    }
-  }
-  refreshStatus();
-  setInterval(refreshStatus, 30_000);
-</script>

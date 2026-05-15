@@ -99,21 +99,47 @@ def _om_ingest_task(
     )
 
 
+def _om_enrich_task() -> KubernetesPodOperator:
+    """KPO die `enrich_from_dbt_meta.py` draait — past dbt-meta toe als
+    OM-tags / glossary-links / owner / tier / domain / dataProduct /
+    custom-properties.
+
+    Hergebruikt de OM-ingestion-image (heeft Python 3.10 + boto3 + requests +
+    pyyaml standaard). Script + mapping zitten in dezelfde /config-mount."""
+    return KubernetesPodOperator(
+        task_id="enrich_om_from_dbt_meta",
+        namespace="uwv-platform",
+        image=OM_INGESTION_IMAGE,
+        cmds=["bash", "-c"],
+        arguments=["python /config/enrich_from_dbt_meta.py"],
+        env_vars=_om_env_vars(),
+        volumes=[ca_volume(), om_config_volume()],
+        volume_mounts=[ca_mount(), om_config_mount()],
+        container_resources=SMALL_POD_RESOURCES,
+        is_delete_operator_pod=True,
+        get_logs=True,
+    )
+
+
 def build_om_ingest_dag() -> DAG:
     """Run alle OM-ingests sequentieel — service first, dan lineage/profiler/dbt.
 
     Volgorde:
       1. Trino service + tabellen   (services/trino-service.yaml)
       2. Trino lineage              (services/trino-lineage.yaml)
-      3. Trino profiler             (services/trino-profiler.yaml)
+      3. Trino profiler + auto-PII  (services/trino-profiler.yaml)
       4. Superset dashboards        (services/superset-service.yaml)
       5. Airflow pipelines          (services/airflow-service.yaml)
       6. Kafka topics               (services/kafka-service.yaml)
-      7. dbt artifacts (lineage)    (services/dbt-workflow.yaml)
+      7. MinIO buckets (storage)    (services/minio-storage.yaml)
+      8. dbt artifacts (lineage)    (services/dbt-workflow.yaml)
+      9. dbt-meta enricher          (enrich_from_dbt_meta.py)
 
     dbt LAATST omdat het tabellen + columns nodig heeft die door Trino-ingest
     worden aangemaakt; Trino-lineage/profiler na de basis-catalog om
-    duplicate-table errors te vermijden.
+    duplicate-table errors te vermijden. Enricher als sluitstuk: tabellen +
+    dbt-models bestaan op dit punt, dus mapping van meta → tags/glossary/
+    owner/tier/domain/dataProduct kan PATCHen zonder 404's.
     """
     with DAG(
         dag_id="governance_om_ingest",
@@ -155,13 +181,18 @@ def build_om_ingest_dag() -> DAG:
             task_id="ingest_kafka",
             workflow_yaml="/config/kafka-service.yaml",
         )
+        ingest_minio = _om_ingest_task(
+            task_id="ingest_minio_storage",
+            workflow_yaml="/config/minio-storage.yaml",
+        )
         ingest_dbt = _om_ingest_task(
             task_id="ingest_dbt_artifacts",
             workflow_yaml="/config/dbt-workflow.yaml",
         )
+        enrich = _om_enrich_task()
 
         # Sequentieel: catalog eerst, dan derivatives, dan side-services,
-        # dan dbt-lineage als afsluiter (heeft de tabellen nodig).
+        # dan dbt-lineage, dan enricher (PATCH /tables met dbt-meta-mapping).
         (
             ingest_trino
             >> ingest_trino_lineage
@@ -169,6 +200,8 @@ def build_om_ingest_dag() -> DAG:
             >> ingest_superset
             >> ingest_airflow
             >> ingest_kafka
+            >> ingest_minio
             >> ingest_dbt
+            >> enrich
         )
     return dag

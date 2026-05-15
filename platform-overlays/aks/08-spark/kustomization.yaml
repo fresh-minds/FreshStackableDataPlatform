@@ -1,0 +1,18 @@
+# AKS overlay for platform/08-spark.
+# Patches the ingress hostname to the public domain. Spark UI itself stays
+# k3d-shaped (it's on port 4040 in-cluster either way).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/08-spark
+patches:
+  - target:
+      kind: Ingress
+      name: spark
+    patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: spark.eu-sovereigndataplatform.com
+      - op: replace
+        path: /spec/rules/0/host
+        value: spark.eu-sovereigndataplatform.com

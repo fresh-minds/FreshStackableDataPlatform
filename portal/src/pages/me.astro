@@ -1,10 +1,14 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import ReferenceArchitecture from '../components/ReferenceArchitecture.astro';
-import { roles, type RoleId } from '../data/roles';
+import Eyebrow from '../components/primitives/Eyebrow.astro';
+import Button from '../components/primitives/Button.astro';
+import Tag from '../components/primitives/Tag.astro';
+import { roles } from '../data/roles';
 import { components, stages } from '../data/components';
 import { shortcuts } from '../data/role-shortcuts';
 import roleMappings from '../data/role-mappings.generated.json';
+import { DOCS_URL } from '../data/external-links';
 
 // Bouw een client-side payload zodat de pagina puur statisch kan zijn:
 // alle 11 rollen + componenten + shortcuts in één JSON, en de browser
@@ -22,88 +26,144 @@ const payload = {
 };
 ---
 <Layout title="Mijn werkplek">
-  <section class="panel" id="role-picker" hidden>
-    <h1>Kies een rol om te bekijken</h1>
-    <p>
-      Je bent niet ingelogd via Keycloak — dit is de demo-modus. Kies hieronder
-      een rol om te zien wat die persoon op het platform mag doen. In
-      productie wordt deze pagina automatisch ingevuld na SSO.
-    </p>
-    <div class="grid-3" id="picker-grid"></div>
+  <!-- ═══════════ Role picker (demo / not logged in) ═══════════ -->
+  <section class="me-picker" id="role-picker" hidden>
+    <header class="me-hero">
+      <Eyebrow rule>Demo · niet ingelogd</Eyebrow>
+      <h1>Kies een rol om <em>door hun bril</em> te kijken.</h1>
+      <p class="me-hero-body">
+        Je bent niet ingelogd via Keycloak — dit is de demo-modus. Kies
+        hieronder een rol om te zien wat die persoon op het platform mag
+        doen. In productie wordt deze pagina automatisch ingevuld na SSO.
+      </p>
+    </header>
+    <div class="role-picker-grid" id="picker-grid"></div>
   </section>
 
-  <section class="panel" id="role-view" hidden>
-    <header class="role-head">
-      <div>
-        <h1 id="rh-name">…</h1>
-        <p id="rh-purpose" class="muted"></p>
-      </div>
-      <div class="role-meta">
-        <span class="badge" id="rh-domain">…</span>
-        <span class="badge" id="rh-category">…</span>
+  <!-- ═══════════ Role view ═══════════ -->
+  <section class="me-view" id="role-view" hidden>
+    <header class="me-hero">
+      <Eyebrow rule><span id="rh-eyebrow">Mijn werkplek</span></Eyebrow>
+      <h1 id="rh-name">…</h1>
+      <p class="me-hero-body" id="rh-purpose"></p>
+      <div class="me-hero-meta">
+        <Tag variant="mono" id="rh-domain-tag"><span id="rh-domain">…</span></Tag>
+        <Tag variant="mono" tone="accent" id="rh-cat-tag"><span id="rh-category">…</span></Tag>
       </div>
     </header>
-
-    <h2>Wat mag jij zien?</h2>
-    <ul class="caps" id="caps-list"></ul>
-
-    <h2>Snel naar je werk</h2>
-    <div class="grid-2" id="shortcut-grid"></div>
   </section>
 
-  <section class="panel" id="role-arch" hidden>
-    <h2>Jouw plek in het platform</h2>
-    <p class="muted">
-      De componenten waar jij toegang toe hebt zijn opgelicht. De rest doet
-      zijn werk op de achtergrond.
-    </p>
+  <section class="me-section" id="role-caps" hidden>
+    <header class="me-section-head">
+      <Eyebrow>Capabilities</Eyebrow>
+      <h2>Wat mag jij zien?</h2>
+    </header>
+    <ul class="caps" id="caps-list"></ul>
+  </section>
+
+  <section class="me-section" id="role-shortcuts-section" hidden>
+    <header class="me-section-head">
+      <Eyebrow>Shortcuts</Eyebrow>
+      <h2>Snel naar je werk</h2>
+    </header>
+    <div class="shortcut-grid" id="shortcut-grid"></div>
+  </section>
+
+  <section class="me-section" id="role-upload" hidden>
+    <header class="me-section-head">
+      <Eyebrow>Data aanleveren</Eyebrow>
+      <h2>Handmatige CSV-upload</h2>
+      <p>Upload een CSV-bestand naar de bronze-laag en start de bronze → silver → gold pipeline.</p>
+    </header>
+    <a href="/csv-upload/" class="upload-cta-card">
+      <span class="upload-cta-icon" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </span>
+      <span class="upload-cta-body">
+        <strong class="upload-cta-title">CSV uploaden</strong>
+        <span class="upload-cta-hint">Stap-voor-stap: MinIO → Airflow trigger → Trino</span>
+      </span>
+      <span class="upload-cta-arrow" aria-hidden="true">→</span>
+    </a>
+  </section>
+
+  <section class="me-section" id="role-arch" hidden>
+    <header class="me-section-head">
+      <Eyebrow>Diagram</Eyebrow>
+      <h2>Jouw plek in het platform</h2>
+      <p>De componenten waar jij toegang toe hebt zijn opgelicht. De rest doet zijn werk op de achtergrond.</p>
+    </header>
     <div data-arch-host>
       <ReferenceArchitecture />
     </div>
   </section>
 
-  <section class="panel" id="role-tools" hidden>
-    <h2>Jouw tools</h2>
-    <p class="muted">
-      Gegroepeerd per laag. Klik om te openen — SSO regelt dat je niet opnieuw
-      hoeft in te loggen.
-    </p>
+  <section class="me-section" id="role-tools" hidden>
+    <header class="me-section-head">
+      <Eyebrow>Tools</Eyebrow>
+      <h2>Jouw tools</h2>
+      <p>Gegroepeerd per laag. Klik om te openen — SSO regelt dat je niet opnieuw hoeft in te loggen.</p>
+    </header>
     <div id="tool-stages"></div>
 
     <details class="other-tools">
       <summary>Tools die je <em>niet</em> gebruikt — voor referentie</summary>
-      <p class="muted">Toegang is geblokkeerd door OPA en Keycloak.</p>
+      <p class="me-section-note">Toegang is geblokkeerd door OPA en Keycloak.</p>
       <div id="other-stages"></div>
     </details>
   </section>
 
-  <section class="panel" id="role-help" hidden>
-    <h2>Hulp en uitleg</h2>
-    <ul>
+  <section class="me-section" id="role-access-request" hidden>
+    <header class="me-section-head">
+      <Eyebrow>Toegang</Eyebrow>
+      <h2>Andere data nodig?</h2>
+      <p>
+        Vul één formulier in. Wij maken de Task in OpenMetadata aan en
+        sturen 'm naar de owner van de dataset. Na approval krijg je
+        automatisch de rol <code>data_access:&lt;catalog&gt;.&lt;schema&gt;</code>
+        toegekend.
+      </p>
+    </header>
+    <div class="help-cta">
+      <Button href="/access-request">Vraag toegang aan</Button>
+    </div>
+  </section>
+
+  <section class="me-section" id="role-help" hidden>
+    <header class="me-section-head">
+      <Eyebrow>Hulp</Eyebrow>
+      <h2>Hulp en uitleg</h2>
+    </header>
+    <ul class="help-list">
       <li>
         <a id="help-handleiding" href="#">Lees jouw rol-handleiding</a>
-        — workflows, foutmeldingen, escalatie.
+        <span> — workflows, foutmeldingen, escalatie.</span>
       </li>
-      <li><a href="/architecture/">Bekijk de architectuurkaart</a></li>
+      <li><a href={DOCS_URL} target="_blank" rel="noopener noreferrer">Open de platform-documentatie ↗</a></li>
       <li>Mail <a href="mailto:data.steward@uwv-platform.local">data.steward@uwv-platform.local</a> bij vragen over data</li>
       <li>Bel platform-admin bij vermoede inbreuk (niet via mail)</li>
     </ul>
-
-    <p>
-      <a class="link-pick" href="/me/">← andere rol kiezen</a>
-    </p>
+    <div class="help-cta">
+      <Button href="/me/">Andere rol kiezen</Button>
+    </div>
   </section>
 
   <script type="application/json" id="me-data" set:html={JSON.stringify(payload)} />
 
   <script>
+    import { startStatusRefresh, refreshStatus } from '../scripts/status';
+
     interface RoleMeta { id: string; displayName: string; domain: string; category: string; handleidingPath: string; }
     interface Component {
       id: string; name: string; layer: string; stage: string;
       short: string; purpose: string; icon: string;
       url: string | null; prometheusJob?: string; rolesUsing: string[];
     }
-    interface StageMeta { id: string; title: string; blurb: string; icon: string; kind: string; }
+    interface StageMeta { id: string; title: string; blurb: string; icon: string; kind: string; category?: string; }
     interface Shortcut { title: string; hint: string; component: string; href: string; }
     interface Capability {
       catalogs: string[]; schemas: string[] | null; purposes: string[];
@@ -136,8 +196,10 @@ const payload = {
     function pickerHtml(): string {
       return data.roles.map((r) => `
         <a class="role-card" href="?role=${r.id}">
-          <strong>${escape(r.displayName)}</strong>
-          <span>${escape(r.domain)}</span>
+          <span class="eyebrow">${escape(r.id)}</span>
+          <strong class="role-card-title">${escape(r.displayName)}</strong>
+          <span class="role-card-domain">${escape(r.domain)}</span>
+          <span class="tag tag--mono ${r.category === 'tech' ? 'tag--accent' : ''}">${r.category === 'tech' ? 'platform' : 'eindgebruiker'}</span>
         </a>
       `).join('');
     }
@@ -146,36 +208,43 @@ const payload = {
       const grid = document.getElementById('picker-grid')!;
       grid.innerHTML = pickerHtml();
       document.getElementById('role-picker')!.hidden = false;
-      ['role-view','role-arch','role-tools','role-help'].forEach((id) => {
+      ['role-view','role-caps','role-shortcuts-section','role-upload','role-arch','role-tools','role-access-request','role-help'].forEach((id) => {
         document.getElementById(id)!.hidden = true;
       });
     }
 
+    /** Mirrors ComponentCard.astro structure — keep them in sync. */
     function renderToolCard(c: Component, emph: boolean): string {
       const isExternal = !!c.url && c.url.startsWith('http');
       const linkAttrs = c.url
         ? `href="${escape(c.url)}"${isExternal ? ' target="_blank" rel="noopener noreferrer"' : ''}`
         : 'href="#" onclick="return false;"';
-      const title = `${escape(c.name)}${isExternal ? ' ↗' : ''}`;
       const status = c.prometheusJob
-        ? `<span class="badge" data-status-job="${escape(c.prometheusJob)}"><span class="dot"></span></span>`
+        ? `<span class="status-dot status-dot--md" data-status-job="${escape(c.prometheusJob)}"></span>`
         : '';
       return `
-        <a class="comp ${emph ? 'comp-emph' : ''}" ${linkAttrs} data-component="${escape(c.id)}">
-          <header>
-            <img class="comp-icon" src="${escape(c.icon)}" alt="" width="36" height="36" />
+        <article class="comp ${emph ? 'comp-emph' : ''}" data-component="${escape(c.id)}">
+          <header class="comp-head">
+            <span class="comp-icon-wrap">
+              <img class="comp-icon" src="${escape(c.icon)}" alt="" width="24" height="24" />
+            </span>
             <div class="comp-title">
-              <h3>${title}</h3>
-              <span class="comp-stage">${escape(c.stage)}</span>
+              <span class="eyebrow">${escape(c.layer)}</span>
+              <h3>
+                <a ${linkAttrs}>${escape(c.name)}${isExternal ? '<span class="comp-ext"> ↗</span>' : ''}</a>
+              </h3>
             </div>
             ${status}
           </header>
-          <p class="purpose">${escape(c.purpose)}</p>
-          <p class="short">${escape(c.short)}</p>
-          <footer><span class="layer">${escape(c.layer)}</span></footer>
-        </a>`;
+          <p class="comp-purpose">${escape(c.purpose)}</p>
+          <p class="comp-short">${escape(c.short)}</p>
+          <footer class="comp-foot">
+            <span class="tag tag--mono">${escape(c.stage)}</span>
+          </footer>
+        </article>`;
     }
 
+    /** Mirrors StageSection.astro structure — keep in sync. */
     function renderStageGroup(
       stage: StageMeta,
       stageComps: Component[],
@@ -183,16 +252,15 @@ const payload = {
     ): string {
       if (stageComps.length === 0) return '';
       const cards = stageComps.map((c) => renderToolCard(c, emphasizeIds.has(c.id))).join('');
+      const catCls = stage.category ? `stage-section--cat-${stage.category}` : '';
       return `
-        <section class="stage-section" data-stage="${escape(stage.id)}">
+        <section class="stage-section ${catCls}" data-stage="${escape(stage.id)}">
           <header class="stage-section-head">
-            <img class="stage-section-icon" src="${escape(stage.icon)}" alt="" width="28" height="28" />
-            <div>
-              <h3>${escape(stage.title)}</h3>
-              <p>${escape(stage.blurb)}</p>
-            </div>
+            <span class="eyebrow eyebrow--rule">${escape(stage.id)}</span>
+            <h3>${escape(stage.title)}</h3>
+            <p>${escape(stage.blurb)}</p>
           </header>
-          <div class="grid-3">${cards}</div>
+          <div class="stage-section-grid">${cards}</div>
         </section>`;
     }
 
@@ -204,11 +272,12 @@ const payload = {
         return;
       }
 
-      ['role-view','role-arch','role-tools','role-help'].forEach((id) => {
+      ['role-view','role-caps','role-shortcuts-section','role-upload','role-arch','role-tools','role-access-request','role-help'].forEach((id) => {
         document.getElementById(id)!.hidden = false;
       });
       document.getElementById('role-picker')!.hidden = true;
 
+      document.getElementById('rh-eyebrow')!.textContent = `${role.id} · ${role.category === 'tech' ? 'platform-team' : 'eindgebruiker'}`;
       document.getElementById('rh-name')!.textContent = role.displayName;
       document.getElementById('rh-purpose')!.textContent = cap._role_purpose ?? '';
       document.getElementById('rh-domain')!.textContent = role.domain;
@@ -220,34 +289,35 @@ const payload = {
 
       // ─── Capabilities ───
       const caps: string[] = [];
-      caps.push(`Catalogs: ${cap.catalogs.map((c) => `<code>${c}</code>`).join(', ')}`);
-      if (cap.schemas) caps.push(`Schemas: ${cap.schemas.map((s) => `<code>${s}</code>`).join(', ')}`);
-      caps.push(`Doelbinding(en): ${cap.purposes.map((p) => `<code>${p}</code>`).join(', ')}`);
-      caps.push(`PII zien: ${fmtBool(cap.can_see_pii, 'ja', 'nee')}`);
-      caps.push(`Medische data: ${fmtBool(cap.can_see_medical, 'ja', 'nee')}`);
-      caps.push(`Bankrekening / IBAN: ${fmtBool(cap.can_see_bankrekening, 'ja', 'nee (gemaskeerd)')}`);
-      caps.push(`Rij-filter regio: ${fmtBool(cap.regio_filter, 'ja, alleen jouw regio', 'nee')}`);
-      if (cap.jit_required) caps.push('<span class="cap-warn">JIT-toegang vereist</span>');
-      if (cap.four_eyes_required) caps.push('<span class="cap-warn">4-eyes vereist</span>');
-      if (cap.break_glass) caps.push('<span class="cap-warn">Break-glass — alle handelingen gelogd</span>');
+      caps.push(`<span class="cap-key mono">CATALOGS</span><span class="cap-val">${cap.catalogs.map((c) => `<code>${c}</code>`).join(' ')}</span>`);
+      if (cap.schemas) caps.push(`<span class="cap-key mono">SCHEMAS</span><span class="cap-val">${cap.schemas.map((s) => `<code>${s}</code>`).join(' ')}</span>`);
+      caps.push(`<span class="cap-key mono">DOEL</span><span class="cap-val">${cap.purposes.map((p) => `<code>${p}</code>`).join(' ')}</span>`);
+      caps.push(`<span class="cap-key mono">PII</span><span class="cap-val">${fmtBool(cap.can_see_pii, 'ja', 'nee')}</span>`);
+      caps.push(`<span class="cap-key mono">MEDISCH</span><span class="cap-val">${fmtBool(cap.can_see_medical, 'ja', 'nee')}</span>`);
+      caps.push(`<span class="cap-key mono">IBAN</span><span class="cap-val">${fmtBool(cap.can_see_bankrekening, 'ja', 'nee (gemaskeerd)')}</span>`);
+      caps.push(`<span class="cap-key mono">REGIO</span><span class="cap-val">${fmtBool(cap.regio_filter, 'alleen jouw regio', 'alle')}</span>`);
+      if (cap.jit_required) caps.push(`<span class="cap-key mono">JIT</span><span class="cap-val cap-warn">vereist · break-glass procedure</span>`);
+      if (cap.four_eyes_required) caps.push(`<span class="cap-key mono">4-EYES</span><span class="cap-val cap-warn">vereist</span>`);
+      if (cap.break_glass) caps.push(`<span class="cap-key mono">AUDIT</span><span class="cap-val cap-warn">alle handelingen gelogd</span>`);
       document.getElementById('caps-list')!.innerHTML = caps.map((c) => `<li>${c}</li>`).join('');
 
       // ─── Shortcuts ───
       const sc = data.shortcuts[roleId] ?? [];
       document.getElementById('shortcut-grid')!.innerHTML = sc.length === 0
-        ? '<p class="muted">Geen shortcuts gedefinieerd voor deze rol.</p>'
+        ? '<p class="me-section-note">Geen shortcuts gedefinieerd voor deze rol.</p>'
         : sc.map((s) => {
             const comp = data.components.find((c) => c.id === s.component);
             const stage = comp?.stage ?? '';
             const icon = comp?.icon ?? '';
+            const isExternal = s.href.startsWith('http');
             return `
-              <a class="shortcut" href="${escape(s.href)}" target="_blank" rel="noopener noreferrer">
-                ${icon ? `<img src="${escape(icon)}" alt="" width="28" height="28" />` : ''}
-                <div class="shortcut-body">
-                  <strong>${escape(s.title)}</strong>
-                  <span class="hint">${escape(s.hint)}</span>
-                  <span class="badge">${escape(comp?.name ?? s.component)} · ${escape(stage)}</span>
-                </div>
+              <a class="shortcut" href="${escape(s.href)}"${isExternal ? ' target="_blank" rel="noopener noreferrer"' : ''}>
+                ${icon ? `<span class="shortcut-icon-wrap"><img src="${escape(icon)}" alt="" width="24" height="24" /></span>` : ''}
+                <span class="shortcut-body">
+                  <span class="eyebrow">${escape(comp?.name ?? s.component)} · ${escape(stage)}</span>
+                  <strong class="shortcut-title">${escape(s.title)}${isExternal ? ' <span class="shortcut-ext">↗</span>' : ''}</strong>
+                  <span class="shortcut-hint">${escape(s.hint)}</span>
+                </span>
               </a>`;
           }).join('');
 
@@ -274,7 +344,7 @@ const payload = {
         if (!stage) return '';
         const stageComps = data.components.filter((c) => c.stage === sid && !myIds.has(c.id));
         return renderStageGroup(stage, stageComps, new Set());
-      }).join('') || '<p class="muted">Je rol gebruikt alle componenten.</p>';
+      }).join('') || '<p class="me-section-note">Je rol gebruikt alle componenten.</p>';
 
       // ─── Per-rol highlight in het reference-architecture diagram ───
       const arch = document.querySelector<HTMLElement>('[data-arch-host] .ref-arch');
@@ -286,25 +356,7 @@ const payload = {
         });
       }
 
-      refreshStatus();
-    }
-
-    async function refreshStatus() {
-      const els = document.querySelectorAll<HTMLElement>('[data-status-job]');
-      for (const el of els) {
-        const job = el.dataset.statusJob!;
-        try {
-          const r = await fetch(`/api/status/up?job=${encodeURIComponent(job)}`, {
-            credentials: 'include',
-          });
-          if (!r.ok) { el.classList.add('warn'); continue; }
-          const j = await r.json();
-          el.classList.remove('ok', 'warn', 'bad');
-          if (j?.up === 1) el.classList.add('ok');
-          else if (j?.up === 0) el.classList.add('bad');
-          else el.classList.add('warn');
-        } catch { el.classList.add('warn'); }
-      }
+      void refreshStatus();
     }
 
     function init() {
@@ -318,89 +370,293 @@ const payload = {
     }
 
     init();
-    setInterval(refreshStatus, 30_000);
+    startStatusRefresh();
   </script>
 
   <style is:global>
-    /* is:global zodat de regels ook gelden voor HTML die we via JS innerHTML
-       injecteren — Astro's scoped styles werken alleen op template-content. */
-    .role-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; flex-wrap: wrap; margin-bottom: 1rem; }
-    .role-head h1 { margin-bottom: .15rem; }
-    .role-meta { display: flex; gap: .35rem; }
-    .muted { color: var(--c-muted); }
-    .caps { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: .35rem .85rem; }
-    .caps li { padding: .25rem 0; font-size: .9rem; border-bottom: 1px dashed var(--c-border); }
-    .cap-yes { color: var(--c-ok); font-weight: 600; }
-    .cap-no { color: var(--c-bad); font-weight: 600; }
-    .cap-warn { color: var(--c-accent); font-weight: 600; }
-    .role-card { display: flex; flex-direction: column; gap: .15rem; padding: .75rem .9rem; background: var(--c-panel-2); border: 1px solid var(--c-border); border-radius: var(--radius); color: var(--c-text); }
-    .role-card:hover { border-color: var(--c-accent); text-decoration: none; }
-    .role-card span { font-size: .8rem; color: var(--c-muted); }
+    /* ─── Hero ─── */
+    .me-hero { padding: var(--space-7) 0; max-width: 880px; }
+    .me-hero h1 {
+      font-size: 44px;
+      line-height: var(--leading-display);
+      letter-spacing: var(--tracking-display);
+      font-weight: var(--weight-medium);
+      color: var(--ink-1);
+      margin: var(--space-3) 0 var(--space-4);
+      border: 0;
+      padding: 0;
+      text-wrap: balance;
+    }
+    .me-hero h1 em {
+      font-family: var(--font-serif);
+      font-style: italic;
+      color: var(--ink-3);
+      font-weight: var(--weight-regular);
+    }
+    .me-hero-body {
+      font-size: var(--text-body-lg);
+      color: var(--ink-2);
+      line-height: var(--leading-body);
+      max-width: 56ch;
+      margin: 0 0 var(--space-4);
+      text-wrap: pretty;
+    }
+    .me-hero-meta {
+      display: inline-flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+    }
 
-    /* ─── Shortcuts (met icoon) ─── */
+    /* ─── Sections ─── */
+    .me-section {
+      padding: var(--space-7) 0;
+      border-top: 1px solid var(--line);
+    }
+    .me-section-head { margin-bottom: var(--space-5); max-width: 640px; }
+    .me-section-head h2 {
+      font-size: var(--text-h2);
+      font-weight: var(--weight-medium);
+      letter-spacing: var(--tracking-tight);
+      color: var(--ink-1);
+      margin: var(--space-3) 0 var(--space-2);
+      border: 0;
+      padding: 0;
+    }
+    .me-section-head p {
+      color: var(--ink-3);
+      font-size: var(--text-meta);
+      margin: 0;
+      text-wrap: pretty;
+    }
+    .me-section-note {
+      color: var(--ink-3);
+      font-size: var(--text-meta);
+      margin: 0;
+    }
+
+    /* ─── Capabilities table ─── */
+    .caps {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0;
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+    .caps li {
+      display: grid;
+      grid-template-columns: 14ch 1fr;
+      gap: var(--space-4);
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--line-soft);
+      font-size: var(--text-meta);
+      align-items: center;
+    }
+    .caps li:last-child { border-bottom: 0; }
+    .cap-key {
+      color: var(--ink-3);
+      font-size: var(--text-eyebrow);
+      letter-spacing: var(--tracking-eyebrow);
+    }
+    .cap-val { color: var(--ink-1); }
+    .cap-val code {
+      background: var(--bg-sunken);
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      margin-right: 4px;
+    }
+    .cap-yes  { color: var(--status-ok); font-weight: var(--weight-semibold); }
+    .cap-no   { color: var(--ink-3); }
+    .cap-warn { color: var(--accent); font-weight: var(--weight-semibold); }
+
+    /* ─── Shortcuts ─── */
+    .shortcut-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: var(--space-3);
+    }
     .shortcut {
       display: grid;
-      grid-template-columns: auto 1fr;
-      gap: .65rem;
-      padding: .85rem 1rem;
-      background: var(--c-panel-2);
-      border: 1px solid var(--c-border);
-      border-radius: var(--radius);
-      color: var(--c-text);
-      align-items: center;
+      grid-template-columns: 36px 1fr;
+      gap: var(--space-3);
+      padding: var(--space-4);
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      color: var(--ink-1);
+      align-items: start;
+      transition: border-color .15s, transform .15s, box-shadow .15s;
     }
-    .shortcut:hover { border-color: var(--c-accent); text-decoration: none; }
-    .shortcut img { display: block; }
-    .shortcut-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
-    .shortcut .hint { color: var(--c-muted); font-size: .82rem; }
-    .shortcut .badge { align-self: flex-start; margin-top: .25rem; }
-
-    /* ─── Stage-secties (klonen van StageSection.astro voor client-side render) ─── */
-    .stage-section { margin-top: 1.25rem; }
-    .stage-section-head {
+    .shortcut:hover {
+      border-color: var(--ink-4);
+      transform: translateY(-1px);
+      box-shadow: var(--card-shadow-hover);
+      text-decoration: none;
+    }
+    .shortcut-icon-wrap {
+      width: 36px;
+      height: 36px;
+      background: var(--bg-sunken);
+      border-radius: var(--radius-sm);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .shortcut-icon-wrap img { display: block; }
+    .shortcut-body {
       display: flex;
-      gap: .75rem;
-      align-items: flex-start;
-      padding: .5rem .25rem .75rem;
-      border-bottom: 1px solid var(--c-border);
-      margin-bottom: .85rem;
+      flex-direction: column;
+      gap: var(--space-1);
+      min-width: 0;
     }
-    .stage-section-icon { display: block; flex-shrink: 0; opacity: .85; margin-top: .15rem; }
-    .stage-section-head h3 { margin: 0 0 .15rem; font-size: 1.05rem; }
-    .stage-section-head p { margin: 0; color: var(--c-muted); font-size: .85rem; }
+    .shortcut-title {
+      font-size: var(--text-meta);
+      font-weight: var(--weight-medium);
+      color: var(--ink-1);
+    }
+    .shortcut-ext {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--ink-3);
+    }
+    .shortcut-hint {
+      color: var(--ink-3);
+      font-size: var(--text-meta);
+      line-height: 1.4;
+    }
 
-    /* ─── Component-card variant — moet matchen met ComponentCard.astro ─── */
-    .comp {
-      display: flex; flex-direction: column;
-      gap: .4rem;
-      background: var(--c-panel);
-      border: 1px solid var(--c-border);
-      border-radius: var(--radius);
-      padding: .85rem 1rem;
-      color: var(--c-text);
-      transition: border-color .15s, transform .15s;
+    /* ─── Help list ─── */
+    .help-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
     }
-    .comp:hover { border-color: var(--c-accent); text-decoration: none; transform: translateY(-1px); }
-    .comp-emph { border-color: var(--c-accent); }
-    .comp header {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
+    .help-list li {
+      padding: var(--space-3) 0;
+      border-bottom: 1px solid var(--line-soft);
+      color: var(--ink-2);
+      font-size: var(--text-meta);
+    }
+    .help-list li:last-child { border-bottom: 0; }
+    .help-list a { color: var(--ink-1); }
+    .help-list a:hover { color: var(--ink-1); text-decoration: underline; }
+    .help-cta { margin-top: var(--space-4); }
+
+    /* ─── Upload CTA card ─── */
+    .upload-cta-card {
+      display: flex;
       align-items: center;
-      gap: .65rem;
+      gap: var(--space-4);
+      padding: var(--space-5);
+      background: var(--bg-elev);
+      border: 1.5px dashed color-mix(in srgb, var(--accent) 60%, transparent);
+      border-radius: var(--radius-md);
+      color: var(--ink-1);
+      max-width: 560px;
+      transition: border-color .15s, transform .15s, box-shadow .15s;
     }
-    .comp-icon { display: block; flex-shrink: 0; }
-    .comp-title { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
-    .comp h3 { margin: 0; font-size: .98rem; line-height: 1.2; }
-    .comp-stage { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--c-muted); }
-    .purpose { margin: .25rem 0 0; color: var(--c-text); font-size: .85rem; line-height: 1.4; }
-    .short { margin: 0; color: var(--c-muted); font-size: .78rem; line-height: 1.4; flex: 1; }
-    .comp footer { font-size: .68rem; color: var(--c-muted); text-transform: uppercase; letter-spacing: .05em; margin-top: .35rem; }
-    .layer { background: var(--c-panel-2); padding: .12rem .5rem; border-radius: 999px; }
+    .upload-cta-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+      box-shadow: var(--card-shadow-hover);
+      text-decoration: none;
+    }
+    .upload-cta-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-sm);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+    .upload-cta-body {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+      flex: 1;
+      min-width: 0;
+    }
+    .upload-cta-title {
+      font-size: var(--text-body);
+      font-weight: var(--weight-medium);
+      color: var(--ink-1);
+    }
+    .upload-cta-hint {
+      font-size: var(--text-meta);
+      color: var(--ink-3);
+    }
+    .upload-cta-arrow {
+      font-size: 20px;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
 
-    .other-tools { margin-top: 1.5rem; }
-    .other-tools summary { cursor: pointer; color: var(--c-muted); padding: .5rem 0; }
-    .other-tools summary:hover { color: var(--c-text); }
+    /* ─── Other-tools details ─── */
+    .other-tools { margin-top: var(--space-7); }
+    .other-tools summary {
+      cursor: pointer;
+      color: var(--ink-3);
+      font-size: var(--text-meta);
+      padding: var(--space-2) 0;
+      list-style: none;
+    }
+    .other-tools summary::-webkit-details-marker { display: none; }
+    .other-tools summary::before {
+      content: '▸ ';
+      font-family: var(--font-mono);
+      font-size: 11px;
+      transition: transform 0.15s;
+      display: inline-block;
+      margin-right: var(--space-1);
+    }
+    .other-tools[open] summary::before { transform: rotate(90deg); }
+    .other-tools summary:hover { color: var(--ink-1); }
+    .other-tools summary em { font-style: italic; color: var(--ink-1); }
 
-    .badge .dot { display: inline-block; width: .55em; height: .55em; border-radius: 50%; background: var(--c-muted); margin-right: .35em; vertical-align: middle; }
+    /* ─── Picker grid ─── */
+    .role-picker-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: var(--space-3);
+    }
+    .role-card {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      padding: var(--space-4);
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      color: var(--ink-1);
+      align-items: flex-start;
+      transition: border-color .15s, transform .15s, box-shadow .15s;
+    }
+    .role-card:hover {
+      border-color: var(--ink-4);
+      transform: translateY(-1px);
+      box-shadow: var(--card-shadow-hover);
+      text-decoration: none;
+    }
+    .role-card-title {
+      font-size: var(--text-meta);
+      font-weight: var(--weight-medium);
+    }
+    .role-card-domain {
+      color: var(--ink-3);
+      font-size: var(--text-meta);
+      flex: 1;
+    }
   </style>
 </Layout>

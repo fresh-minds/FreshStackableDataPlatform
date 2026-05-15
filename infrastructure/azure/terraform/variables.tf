@@ -77,3 +77,47 @@ variable "tags" {
     purpose     = "reference-implementation"
   }
 }
+
+# ---- VPN Gateway (Point-to-Site) ----
+
+variable "vpn_gateway_enabled" {
+  description = "Provision the VPN Gateway + supporting VNet. Set false to skip VPN entirely (saves ~€28/month)."
+  type        = bool
+  default     = true
+}
+
+variable "vpn_vnet_address_space" {
+  description = "Address space of the VPN VNet (must NOT overlap with AKS auto-VNet, default 10.224.0.0/12)."
+  type        = list(string)
+  default     = ["10.1.0.0/16"]
+}
+
+variable "vpn_gateway_subnet_prefix" {
+  description = "GatewaySubnet CIDR (must be /27 or larger). Subnet name MUST be 'GatewaySubnet' (Azure requirement)."
+  type        = string
+  default     = "10.1.255.0/27"
+}
+
+variable "vpn_client_address_pool" {
+  description = "CIDR pool for VPN client IPs (kept separate from VNet space; routed through the tunnel)."
+  type        = list(string)
+  default     = ["172.16.0.0/24"]
+}
+
+variable "vpn_gateway_sku" {
+  description = <<-DESC
+    VPN Gateway SKU. Azure deprecations make this less negotiable than it sounds:
+      - 'Basic' was retired (no new deployments).
+      - 'VpnGw1'..'VpnGw5' (non-AZ) are no longer accepted for new gateways.
+    The minimum usable SKU is now 'VpnGw1AZ' (~€240-260/mo, supports SSTP/IKEv2/OpenVPN,
+    zone-redundant). Higher SKUs add throughput and tunnels, not features for our case.
+  DESC
+  type        = string
+  default     = "VpnGw1AZ"
+}
+
+variable "vpn_client_cert_export_dir" {
+  description = "Local directory where the generated client cert/key + Windows .pfx is written. Gitignored."
+  type        = string
+  default     = "../vpn-client"
+}

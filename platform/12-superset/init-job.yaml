@@ -284,6 +284,8 @@ data:
             ("uc06_lastprognose", "mart_uc06_uitkeringslast_5y"),
             ("uc06_lastprognose", "mart_uc06_scenario_results"),
             ("uc07_dq_polisadm", "mart_uc07_dq_dagrapport"),
+            ("uc11_klantreis", "mart_uc11_klantreis_events"),
+            ("uc11_klantreis", "mart_uc11_klantreis_phases"),
             ("dq_overview", "mart_dq_overview"),
             ("dq_overview", "mart_dq_violations"),
         ]
@@ -302,8 +304,88 @@ data:
         # een directe INSERT in Superset's Postgres-metadata.
         sync_columns_postgres()
 
+        # Break-glass: zorg dat platform.admin (Keycloak realm-rol
+        # `platform_admin`) ook in Superset de Admin-rol heeft. Werkt
+        # samen met AUTH_ROLES_MAPPING: dat synct bij login, deze fallback
+        # synct bij elke deploy/restart — zodat de gebruiker na een
+        # volledige cluster-shutdown direct weer admin-rechten heeft, ook
+        # als z'n Keycloak-token om wat voor reden dan ook de realm-rol
+        # niet correct overbracht.
+        ensure_admin_role_in_db([
+            "platform.admin",
+        ])
+
         log("Init voltooid.")
         return 0
+
+
+    def ensure_admin_role_in_db(usernames):
+        """Zet de Admin-rol op een lijst usernames in Superset's Postgres.
+
+        Idempotent en run-on-every-deploy: lost het probleem op dat een
+        Keycloak-user die via OIDC inlogt soms op `Public` blijft staan
+        ondanks AUTH_ROLES_MAPPING (kan gebeuren als de eerste login
+        plaatsvond vóór de mapping-config, of als realm_access ontbrak
+        in een specifieke token). Werkt ook als de user nog nooit heeft
+        ingelogd — dan slaat het script die over en is de volgende
+        OIDC-login alsnog de bron van waarheid.
+        """
+        import os, urllib.parse  # noqa: PLC0415
+        try:
+            import psycopg2  # noqa: PLC0415
+        except ImportError:
+            log("  psycopg2 niet beschikbaar → admin-bridge skip "
+                "(AUTH_ROLES_MAPPING blijft als enige sync-pad)")
+            return
+
+        uri = os.environ.get("SUPERSET_DB_URI", "")
+        if not uri:
+            log("  geen SUPERSET_DB_URI → admin-bridge skip")
+            return
+        u = urllib.parse.urlparse(uri.replace("+psycopg2", ""))
+        try:
+            conn = psycopg2.connect(host=u.hostname, port=u.port or 5432,
+                                    user=u.username, password=u.password,
+                                    dbname=u.path.lstrip("/"))
+        except Exception as exc:
+            log(f"  admin-bridge connect failed: {exc}")
+            return
+
+        try:
+            with conn, conn.cursor() as cur:
+                cur.execute("SELECT id FROM ab_role WHERE name = 'Admin'")
+                row = cur.fetchone()
+                if row is None:
+                    log("  Admin-rol bestaat nog niet in DB → skip")
+                    return
+                admin_role_id = row[0]
+                for username in usernames:
+                    cur.execute("SELECT id FROM ab_user WHERE username = %s",
+                                (username,))
+                    row = cur.fetchone()
+                    if row is None:
+                        log(f"  user '{username}' bestaat nog niet "
+                            f"(eerste OIDC-login nog niet gedaan) → skip")
+                        continue
+                    user_id = row[0]
+                    # Vervang alle bestaande rollen door alleen Admin.
+                    # ab_user_role.id is een PK zonder DEFAULT sequence —
+                    # in tegenstelling tot ab_user/ab_role waar Flask-
+                    # AppBuilder een AUTO_INCREMENT op postgres genereert.
+                    # We fetchen daarom expliciet een nieuwe id via een
+                    # subquery (MAX+1 is veilig hier omdat de init-Job
+                    # serialized loopt).
+                    cur.execute("DELETE FROM ab_user_role WHERE user_id = %s",
+                                (user_id,))
+                    cur.execute(
+                        "INSERT INTO ab_user_role (id, user_id, role_id) "
+                        "VALUES ("
+                        "  COALESCE((SELECT MAX(id) FROM ab_user_role), 0) + 1,"
+                        "  %s, %s)",
+                        (user_id, admin_role_id))
+                    log(f"  ✓ {username} → Admin")
+        finally:
+            conn.close()
 
 
     def sync_columns_postgres():
@@ -393,6 +475,29 @@ data:
                 ("loon_jaar_lopend", "BIGINT", False),
                 ("huidige_status", "VARCHAR", False),
             ],
+            "mart_uc11_klantreis_events": [
+                ("bsn", "VARCHAR", False),
+                ("event_seq", "BIGINT", False),
+                ("event_ts", "TIMESTAMP", True),
+                ("event_date", "DATE", True),
+                ("domein", "VARCHAR", False),
+                ("event_type", "VARCHAR", False),
+                ("event_label", "VARCHAR", False),
+                ("event_status", "VARCHAR", False),
+                ("regio_code", "VARCHAR", False),
+                ("numeric_value", "DOUBLE", False),
+                ("source_ref_id", "VARCHAR", False),
+            ],
+            "mart_uc11_klantreis_phases": [
+                ("bsn", "VARCHAR", False),
+                ("fase_volgnr", "BIGINT", False),
+                ("fase", "VARCHAR", False),
+                ("trigger_event_type", "VARCHAR", False),
+                ("fase_start_ts", "TIMESTAMP", True),
+                ("fase_eind_ts", "TIMESTAMP", True),
+                ("duur_dagen", "BIGINT", False),
+                ("is_lopend", "BOOLEAN", False),
+            ],
             "mart_dq_overview": [
                 ("uc_code", "VARCHAR", False), ("uc_name", "VARCHAR", False),
                 ("n_records", "BIGINT", False), ("n_checks", "BIGINT", False),
@@ -416,6 +521,7 @@ data:
         cur.execute("SELECT id, table_name FROM tables")
         tables = {row[1]: row[0] for row in cur.fetchall()}
         total_inserted = 0
+        dttm_updates = 0
         for table_name, cols in DATASET_COLS.items():
             tid = tables.get(table_name)
             if tid is None:
@@ -432,10 +538,27 @@ data:
                 )
                 if cur.rowcount > 0:
                     total_inserted += 1
+            # main_dttm_col op de table-rij zetten zodat line-charts werken:
+            # zonder dit krijgt elke time-series chart-API een 500 met
+            # "Datetime column not provided as part table configuration".
+            # We pakken de EERSTE is_dttm-kolom uit de DATASET_COLS-spec.
+            dttm_col = next((c[0] for c in cols if c[2]), None)
+            if dttm_col:
+                cur.execute(
+                    "UPDATE tables SET main_dttm_col = %s "
+                    "WHERE id = %s AND (main_dttm_col IS NULL "
+                    "                   OR main_dttm_col NOT IN ("
+                    "    SELECT column_name FROM table_columns "
+                    "    WHERE table_id = %s AND is_dttm = true))",
+                    (dttm_col, tid, tid),
+                )
+                if cur.rowcount > 0:
+                    dttm_updates += 1
         conn.commit()
         cur.close()
         conn.close()
-        log(f"  ✓ Postgres-fallback: {total_inserted} kolom-rijen ingevoegd")
+        log(f"  ✓ Postgres-fallback: {total_inserted} kolom-rijen + "
+            f"{dttm_updates} main_dttm_col gezet")
 
 
     if __name__ == "__main__":

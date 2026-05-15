@@ -1,0 +1,59 @@
+# Service + Ingress voor de Spark driver UI.
+#
+# Stackable maakt automatisch een driver-headless service per SparkApplication-
+# submission, maar de naam bevat een random suffix (bv.
+# `streaming-bronze-e119f09e260c7271-driver-svc`) die bij elke redeploy
+# verandert. We kunnen dus geen Ingress hardcoden op die naam.
+#
+# Oplossing: een eigen ClusterIP Service die de driver-pod via labels selecteert
+# (`spark-app-name=streaming-bronze` + `spark-role=driver`). Dat blijft stabiel
+# zolang de SparkApplication zo heet.
+#
+# Wat krijg je op https://spark.uwv-platform.local:8443/ ?
+#   - Streaming queries tab — actieve queries + offset/rate-metrics
+#   - Jobs/Stages/Tasks — recent & actief
+#   - Executors tab — per executor links naar stderr/stdout (de echte logs)
+#   - SQL/DataFrame, Environment
+#
+# Caveat: alleen bereikbaar zolang de `streaming-bronze` driver draait. Geen
+# SSO — Spark UI heeft geen native auth. Acceptabel voor het lokale dev-
+# platform op 127.0.0.1; voor cloud-deploys overweeg oauth2-proxy ervoor.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark
+  namespace: uwv-platform
+spec:
+  type: ClusterIP
+  selector:
+    spark-app-name: streaming-bronze
+    spark-role: driver
+  ports:
+    - name: spark-ui
+      port: 4040
+      targetPort: 4040
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: spark
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["spark.uwv-platform.local"]
+      secretName: spark-tls
+  rules:
+    - host: spark.uwv-platform.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: spark
+                port:
+                  number: 4040

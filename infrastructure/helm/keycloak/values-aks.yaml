@@ -1,0 +1,37 @@
+# Keycloak — AKS-specific overrides.
+#
+# Bitnami mirror image (Docker Hub purged bitnami/* mid-2025).
+# Public DNS hostname on standard 443 — browsers get URLs that resolve and
+# load straight off the Azure LB; cookies are set on .eu-sovereigndataplatform.com.
+
+image:
+  repository: bitnamilegacy/keycloak
+
+postgresql:
+  image:
+    repository: bitnamilegacy/postgresql
+
+auth:
+  realm: master
+  frontendUrl: "https://keycloak.eu-sovereigndataplatform.com"
+
+extraEnvVars:
+  - name: KC_HOSTNAME
+    value: "https://keycloak.eu-sovereigndataplatform.com"
+  - name: KC_HOSTNAME_STRICT
+    value: "false"
+  - name: KC_HOSTNAME_STRICT_BACKCHANNEL
+    value: "false"
+  - name: KC_PROXY_HEADERS
+    value: "xforwarded"
+
+ingress:
+  hostname: keycloak.eu-sovereigndataplatform.com
+
+# NB: tokens issued here have iss=https://keycloak.eu-sovereigndataplatform.com/
+# regardless of whether the call came via the public domain (browser) or the
+# in-cluster keycloak Service hostname (apps' backchannel). Apps with .local
+# hardcoded as their OIDC issuer config (Superset, Airflow, OpenMetadata) —
+# their helm values need updating to expect the .com iss too (handled by
+# their respective values-aks.yaml overrides). The portal works because
+# oauth2-proxy auto-discovers the issuer URL from /.well-known/openid-configuration.

@@ -1,0 +1,12 @@
+# Hub state (SQLite) survives Hub restarts so user/spawn metadata persists.
+# Tiny — Hub state for a single-tenant demo is well under 100 MiB.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jupyterhub-db
+  namespace: uwv-platform
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 500Mi

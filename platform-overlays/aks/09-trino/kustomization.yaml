@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/09-trino
+patches:
+  - target:
+      kind: Ingress
+      name: trino
+    patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: trino.eu-sovereigndataplatform.com
+      - op: replace
+        path: /spec/rules/0/host
+        value: trino.eu-sovereigndataplatform.com

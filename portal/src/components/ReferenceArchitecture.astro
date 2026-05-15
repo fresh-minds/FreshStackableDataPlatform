@@ -1,525 +1,212 @@
 ---
-// Visuele reference-architectuur in Monte-Carlo-stijl.
-// Lanes (Discovery / Pipeline / Observability) zijn overlay-banners boven en
-// onder de hoofdketen Sources → Ingestion → Storage → Transformation → Output.
-// Identity (Keycloak) staat als losse strip rechts — conceptueel buiten de
-// pipeline maar overal aanwezig.
+// Reference architecture as horizontal swim-lanes (one row per stage).
+//   ┌── 168 px lane label ──┬─ 4-column tile grid ────────────────────────┐
+//   │ 01 · INGESTIE         │ [NiFi]   →  [Kafka]                          │
+//   ├───────────────────────┼─────────────────────────────────────────────┤
+//   │ 02 · OPSLAG           │ [MinIO]  →  [Hive]                           │
+//   ├───────────────────────┼─────────────────────────────────────────────┤
+//   │ DATA DISCOVERY        │ [OpenMetadata]   [dbt-docs]                  │  ← tinted lane
+//   └───────────────────────┴─────────────────────────────────────────────┘
 //
-// Elke component-tile is klikbaar (opent UI), heeft een live status-dot en
-// een data-component attribuut zodat /me later "mijn componenten" kan
-// highlighten.
+// Each tile preserves [data-component] for the /me/ role-highlight pass and
+// [data-status-job] for the live status refresh script (src/scripts/status.ts).
+//
+// Pipeline-step and output stages render a subtle mono "→" between adjacent
+// tiles. Category stages (discovery / pipeline / observability / identity)
+// get a soft tinted background and a colored eyebrow — these are the
+// cross-cutting layers, no arrows.
 
-import { components, stages, stageById } from '../data/components';
+import { components, stages, type StageMeta, type PlatformComponent } from '../data/components';
+import Tile from './primitives/Tile.astro';
+import Eyebrow from './primitives/Eyebrow.astro';
+import Tag from './primitives/Tag.astro';
 
-const compsByStage = (s: string) => components.filter((c) => c.stage === s);
+// Order: main pipeline first, then cross-cutting lanes. Skip 'sources'
+// because it has no components in the current data set.
+const laneOrder: ReadonlyArray<string> = [
+  'ingestion', 'storage', 'transformation', 'consumption',
+  'discovery', 'pipeline', 'observability', 'identity', 'agents',
+];
 
-const ingestion      = compsByStage('ingestion');
-const storage        = compsByStage('storage');
-const transformation = compsByStage('transformation');
-const consumption    = compsByStage('consumption');
-const discovery      = compsByStage('discovery');
-const pipeline       = compsByStage('pipeline');
-const observability  = compsByStage('observability');
-const identity       = compsByStage('identity');
+interface Lane {
+  stage: StageMeta;
+  components: PlatformComponent[];
+  isFlow: boolean;
+  step?: number; // 1-based step number for pipeline-step + output lanes
+}
 
-const sIngestion      = stageById('ingestion')!;
-const sStorage        = stageById('storage')!;
-const sTransformation = stageById('transformation')!;
-const sConsumption    = stageById('consumption')!;
-const sDiscovery      = stageById('discovery')!;
-const sPipeline       = stageById('pipeline')!;
-const sObservability  = stageById('observability')!;
-const sIdentity       = stageById('identity')!;
+const lanes: Lane[] = (() => {
+  const out: Lane[] = [];
+  let stepNum = 0;
+  for (const id of laneOrder) {
+    const stage = stages.find((s) => s.id === id);
+    if (!stage) continue;
+    const stageComps = components.filter((c) => c.stage === id);
+    if (stageComps.length === 0) continue;
+    const isFlow = stage.kind === 'pipeline-step' || stage.kind === 'output';
+    const step = isFlow ? ++stepNum : undefined;
+    out.push({ stage, components: stageComps, isFlow, step });
+  }
+  return out;
+})();
 ---
 <section class="ref-arch" aria-label="Reference architecture">
-  <!-- ═════════════════════ Top overlay: Discovery ═════════════════════ -->
-  <div class="ref-overlay overlay-top" data-stage="discovery">
-    <span class="overlay-arrow left">◂</span>
-    <div class="overlay-body">
-      <span class="overlay-label">
-        <img class="stage-icon" src={sDiscovery.icon} alt="" width="18" height="18" />
-        {sDiscovery.title}
-      </span>
-      <div class="overlay-comps">
-        {discovery.map((c) => (
-          <a class="comp-chip" href={c.url ?? '#'} target={c.url ? '_blank' : undefined}
-             rel={c.url ? 'noopener noreferrer' : undefined}
-             data-component={c.id}
-             title={c.purpose}>
-            <img src={c.icon} alt="" width="22" height="22" />
-            <span>{c.name}</span>
-            {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
-          </a>
-        ))}
-      </div>
-    </div>
-    <span class="overlay-arrow right">▸</span>
-  </div>
-
-  <!-- ═════════════════════ Hoofdrij ═════════════════════ -->
-  <div class="ref-row">
-    <!-- Sources (links) -->
-    <div class="ref-sources">
-      <span class="source-tag" data-kind="batches">
-        <img src={sIngestion.icon} alt="" width="16" height="16" />
-        Batches
-      </span>
-      <span class="source-tag" data-kind="streams">
-        <img src={sIngestion.icon} alt="" width="16" height="16" />
-        Streams
-      </span>
-    </div>
-
-    <span class="ref-arrow" aria-hidden="true">▶</span>
-
-    <!-- Pipeline-step: Ingestion -->
-    <div class="ref-stage" data-stage="ingestion">
-      <header class="stage-head">
-        <img class="stage-icon" src={sIngestion.icon} alt="" width="20" height="20" />
-        <h3>{sIngestion.title}</h3>
-      </header>
-      <p class="stage-blurb">{sIngestion.blurb}</p>
-      <div class="stage-comps">
-        {ingestion.map((c) => (
-          <a class="comp-tile" href={c.url ?? '#'} target={c.url ? '_blank' : undefined}
-             rel={c.url ? 'noopener noreferrer' : undefined}
-             data-component={c.id}
-             title={c.purpose}>
-            <img src={c.icon} alt="" width="28" height="28" />
-            <span class="tile-name">{c.name}</span>
-            {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
-          </a>
-        ))}
-        <a class="comp-tile comp-tile-action" href="/csv-upload/"
-           title="Handmatig een CSV uploaden naar bronze (batch-flow)">
-          <span class="upload-icon" aria-hidden="true">⇪</span>
-          <span class="tile-name">CSV upload</span>
-          <span class="tile-tag">batch</span>
-        </a>
-      </div>
-    </div>
-
-    <span class="ref-arrow" aria-hidden="true">▶</span>
-
-    <!-- Pipeline-step: Storage -->
-    <div class="ref-stage" data-stage="storage">
-      <header class="stage-head">
-        <img class="stage-icon" src={sStorage.icon} alt="" width="20" height="20" />
-        <h3>{sStorage.title}</h3>
-      </header>
-      <p class="stage-blurb">{sStorage.blurb}</p>
-      <div class="stage-comps">
-        {storage.map((c) => (
-          <a class="comp-tile" href={c.url ?? '#'} target={c.url && c.url.startsWith('http') ? '_blank' : undefined}
-             rel={c.url && c.url.startsWith('http') ? 'noopener noreferrer' : undefined}
-             data-component={c.id}
-             title={c.purpose}>
-            <img src={c.icon} alt="" width="28" height="28" />
-            <span class="tile-name">{c.name}</span>
-            {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
-          </a>
-        ))}
-      </div>
-    </div>
-
-    <span class="ref-arrow" aria-hidden="true">▶</span>
-
-    <!-- Pipeline-step: Transformation -->
-    <div class="ref-stage" data-stage="transformation">
-      <header class="stage-head">
-        <img class="stage-icon" src={sTransformation.icon} alt="" width="20" height="20" />
-        <h3>{sTransformation.title}</h3>
-      </header>
-      <p class="stage-blurb">{sTransformation.blurb}</p>
-      <div class="stage-comps">
-        {transformation.map((c) => (
-          <a class="comp-tile" href={c.url ?? '#'} target={c.url ? '_blank' : undefined}
-             rel={c.url ? 'noopener noreferrer' : undefined}
-             data-component={c.id}
-             title={c.purpose}>
-            <img src={c.icon} alt="" width="28" height="28" />
-            <span class="tile-name">{c.name}</span>
-            {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
-          </a>
-        ))}
-      </div>
-    </div>
-
-    <span class="ref-arrow" aria-hidden="true">▶</span>
-
-    <!-- Outputs (rechts) -->
-    <div class="ref-outputs">
-      <header class="stage-head">
-        <img class="stage-icon" src={sConsumption.icon} alt="" width="20" height="20" />
-        <h3>{sConsumption.title}</h3>
-      </header>
-      {consumption.map((c) => (
-        <a class="output-tile" href={c.url ?? '#'} target={c.url ? '_blank' : undefined}
-           rel={c.url ? 'noopener noreferrer' : undefined}
-           data-component={c.id}
-           title={c.purpose}>
-          <img src={c.icon} alt="" width="28" height="28" />
-          <div class="output-text">
-            <strong>BI / Analytics</strong>
-            <small>{c.name}</small>
+  {lanes.map((lane) => (
+    <div class={`lane lane--${lane.stage.kind} ${lane.stage.category ? `lane--cat-${lane.stage.category}` : ''}`}
+         data-stage={lane.stage.id}>
+      <header class="lane-label">
+        <Eyebrow rule={!!lane.stage.category}>
+          {lane.step !== undefined && <span class="lane-step">{String(lane.step).padStart(2, '0')}</span>}
+          <span>{lane.stage.title}</span>
+        </Eyebrow>
+        <p class="lane-blurb">{lane.stage.blurb}</p>
+        {lane.stage.tags && lane.stage.tags.length > 0 && (
+          <div class="lane-tags">
+            {lane.stage.tags.map((t) => <Tag variant="mono">{t}</Tag>)}
           </div>
-          {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
-        </a>
-      ))}
-      <div class="output-tile output-secondary" title="Trino + OPA leveren beleidsgewijze data-producten">
-        <img src="/icons/brand/trino.svg" alt="" width="28" height="28" />
-        <div class="output-text">
-          <strong>Data Products</strong>
-          <small>Trino + OPA</small>
-        </div>
+        )}
+      </header>
+
+      <div class={`lane-tiles ${lane.isFlow ? 'lane-tiles--flow' : 'lane-tiles--grid'}`}>
+        {lane.isFlow
+          ? lane.components.flatMap((c, i) => {
+              const subLabel = c.layer.toUpperCase();
+              const tile = (
+                <Tile name={c.name}
+                      subLabel={subLabel}
+                      icon={c.icon}
+                      href={c.url}
+                      statusJob={c.prometheusJob}
+                      componentId={c.id}
+                      title={c.purpose} />
+              );
+              if (i === lane.components.length - 1) return [tile];
+              return [tile, <span class="lane-arrow" aria-hidden="true">→</span>];
+            })
+          : lane.components.map((c) => (
+              <Tile name={c.name}
+                    subLabel={c.layer.toUpperCase()}
+                    icon={c.icon}
+                    href={c.url}
+                    statusJob={c.prometheusJob}
+                    componentId={c.id}
+                    title={c.purpose} />
+            ))
+        }
       </div>
     </div>
-  </div>
-
-  <!-- ═════════════════════ Bottom overlay: Pipeline ═════════════════════ -->
-  <div class="ref-overlay overlay-bottom-1" data-stage="pipeline">
-    <span class="overlay-arrow left">◂</span>
-    <div class="overlay-body">
-      <span class="overlay-label">
-        <img class="stage-icon" src={sPipeline.icon} alt="" width="18" height="18" />
-        {sPipeline.title}
-      </span>
-      <div class="overlay-comps">
-        {pipeline.map((c) => (
-          <a class="comp-chip" href={c.url ?? '#'} target={c.url ? '_blank' : undefined}
-             rel={c.url ? 'noopener noreferrer' : undefined}
-             data-component={c.id}
-             title={c.purpose}>
-            <img src={c.icon} alt="" width="22" height="22" />
-            <span>{c.name}</span>
-            {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
-          </a>
-        ))}
-      </div>
-    </div>
-    <span class="overlay-arrow right">▸</span>
-  </div>
-
-  <!-- ═════════════════════ Bottom overlay: Observability ═════════════════════ -->
-  <div class="ref-overlay overlay-bottom-2" data-stage="observability">
-    <span class="overlay-arrow left">◂</span>
-    <div class="overlay-body">
-      <span class="overlay-label">
-        <img class="stage-icon" src={sObservability.icon} alt="" width="18" height="18" />
-        {sObservability.title}
-      </span>
-      <div class="overlay-comps">
-        {observability.map((c) => (
-          <a class="comp-chip" href={c.url ?? '#'} target={c.url ? '_blank' : undefined}
-             rel={c.url ? 'noopener noreferrer' : undefined}
-             data-component={c.id}
-             title={c.purpose}>
-            <img src={c.icon} alt="" width="22" height="22" />
-            <span>{c.name}</span>
-            {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
-          </a>
-        ))}
-      </div>
-    </div>
-    <span class="overlay-arrow right">▸</span>
-  </div>
-
-  <!-- ═════════════════════ Identity strip ═════════════════════ -->
-  <aside class="ref-identity" data-stage="identity">
-    <header class="stage-head">
-      <img class="stage-icon" src={sIdentity.icon} alt="" width="18" height="18" />
-      <h4>{sIdentity.title}</h4>
-    </header>
-    <p class="stage-blurb">{sIdentity.blurb}</p>
-    <div class="overlay-comps">
-      {identity.map((c) => (
-        <a class="comp-chip" href={c.url ?? '#'} target={c.url ? '_blank' : undefined}
-           rel={c.url ? 'noopener noreferrer' : undefined}
-           data-component={c.id}
-           title={c.purpose}>
-          <img src={c.icon} alt="" width="22" height="22" />
-          <span>{c.name}</span>
-          {c.prometheusJob && <span class="dot" data-status-job={c.prometheusJob} />}
-        </a>
-      ))}
-    </div>
-  </aside>
+  ))}
 </section>
 
-<style>
+<style is:global>
   .ref-arch {
-    --c-discovery: #d946ef;     /* paars-roze */
-    --c-pipeline: #8b5cf6;      /* paars */
-    --c-observability: #f59e0b; /* amber, sluit aan op huidige accent */
-    --c-sources: #38bdf8;       /* lichtblauw */
-    --c-stage: var(--c-accent);
-    --c-output: #34d399;        /* groen */
-    --c-identity: #f87171;      /* rood */
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
 
-    background: var(--c-panel);
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius);
-    padding: 1rem;
+  .lane {
     display: grid;
-    grid-template-columns: 1fr;
-    gap: .75rem;
+    grid-template-columns: 168px 1fr;
+    gap: var(--space-7);
+    padding: var(--space-5) var(--space-5);
+    border-top: 1px solid var(--line);
+    align-items: start;
   }
+  .lane:first-child { border-top: 0; }
 
-  /* ─── Overlay-banners (Discovery / Pipeline / Observability) ─── */
-  .ref-overlay {
+  /* Category lanes: soft tinted background + colored eyebrow. */
+  .lane--cat-discovery     { background: color-mix(in oklch, var(--cat-discovery-soft)     45%, transparent); }
+  .lane--cat-pipeline      { background: color-mix(in oklch, var(--cat-pipeline-soft)      45%, transparent); }
+  .lane--cat-observability { background: color-mix(in oklch, var(--cat-observability-soft) 45%, transparent); }
+  .lane--cat-identity      { background: color-mix(in oklch, var(--cat-identity-soft)      45%, transparent); }
+  .lane--cat-agents        { background: color-mix(in oklch, var(--cat-agents-soft)        45%, transparent); }
+
+  [data-theme="dark"] .lane--cat-discovery     { background: color-mix(in oklch, var(--cat-discovery)     8%, transparent); }
+  [data-theme="dark"] .lane--cat-pipeline      { background: color-mix(in oklch, var(--cat-pipeline)      8%, transparent); }
+  [data-theme="dark"] .lane--cat-observability { background: color-mix(in oklch, var(--cat-observability) 8%, transparent); }
+  [data-theme="dark"] .lane--cat-identity      { background: color-mix(in oklch, var(--cat-identity)      8%, transparent); }
+  [data-theme="dark"] .lane--cat-agents        { background: color-mix(in oklch, var(--cat-agents)        8%, transparent); }
+
+  .lane--cat-discovery     .eyebrow { color: var(--cat-discovery); }
+  .lane--cat-pipeline      .eyebrow { color: var(--cat-pipeline); }
+  .lane--cat-observability .eyebrow { color: var(--cat-observability); }
+  .lane--cat-identity      .eyebrow { color: var(--cat-identity); }
+  .lane--cat-agents        .eyebrow { color: var(--cat-agents); }
+
+  .lane-label {
     display: flex;
-    align-items: center;
-    gap: .5rem;
-    border-radius: 999px;
-    padding: .35rem .65rem;
-    background: linear-gradient(90deg, transparent, var(--c-panel-2) 12%, var(--c-panel-2) 88%, transparent);
-    border: 1px solid var(--c-border);
-    position: relative;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
   }
-  .overlay-top { border-color: color-mix(in srgb, var(--c-discovery) 40%, transparent); }
-  .overlay-top .overlay-label { color: var(--c-discovery); }
-  .overlay-bottom-1 { border-color: color-mix(in srgb, var(--c-pipeline) 40%, transparent); }
-  .overlay-bottom-1 .overlay-label { color: var(--c-pipeline); }
-  .overlay-bottom-2 { border-color: color-mix(in srgb, var(--c-observability) 40%, transparent); }
-  .overlay-bottom-2 .overlay-label { color: var(--c-observability); }
-
-  .overlay-arrow {
-    font-size: 1.4rem;
-    line-height: 1;
-    opacity: .55;
-    user-select: none;
+  .lane-step {
+    font-feature-settings: 'tnum';
+    color: var(--ink-2);
   }
-  .overlay-top .overlay-arrow { color: var(--c-discovery); }
-  .overlay-bottom-1 .overlay-arrow { color: var(--c-pipeline); }
-  .overlay-bottom-2 .overlay-arrow { color: var(--c-observability); }
-
-  .overlay-body {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: .75rem;
-    flex-wrap: wrap;
+  .lane-blurb {
+    margin: 0;
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+    line-height: 1.45;
+    text-wrap: pretty;
   }
-  .overlay-label {
-    font-weight: 700;
-    font-size: .8rem;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    display: inline-flex;
-    align-items: center;
-    gap: .4rem;
-    white-space: nowrap;
-  }
-  .overlay-comps {
+  .lane-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: .35rem;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
   }
 
-  .comp-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: .4rem;
-    padding: .25rem .55rem .25rem .35rem;
-    background: var(--c-panel);
-    border: 1px solid var(--c-border);
-    border-radius: 999px;
-    color: var(--c-text);
-    font-size: .82rem;
-    transition: border-color .15s, background .15s;
+  .lane-tiles {
+    min-width: 0;
   }
-  .comp-chip:hover { border-color: var(--c-accent); text-decoration: none; }
-  .comp-chip img { display: block; flex-shrink: 0; }
-
-  /* ─── Hoofdrij ─── */
-  .ref-row {
-    display: grid;
-    grid-template-columns: auto auto 1fr auto 1fr auto 1fr auto auto;
-    gap: .5rem;
+  .lane-tiles--flow {
+    display: flex;
+    flex-wrap: wrap;
     align-items: stretch;
+    gap: var(--space-3);
+  }
+  .lane-tiles--flow .tile {
+    flex: 1 1 200px;
+    min-width: 0;
+  }
+  .lane-tiles--grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+  .lane-tiles--grid .tile {
+    grid-column: span 1;
   }
 
-  .ref-sources {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: .5rem;
-  }
-  .source-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: .35rem;
-    padding: .35rem .6rem;
-    background: var(--c-panel-2);
-    border: 1px solid color-mix(in srgb, var(--c-sources) 40%, var(--c-border));
-    border-radius: var(--radius);
-    color: var(--c-sources);
-    font-size: .78rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: .06em;
-    white-space: nowrap;
-  }
-
-  .ref-arrow {
+  .lane-arrow {
     align-self: center;
-    color: var(--c-muted);
-    font-size: 1.4rem;
-    line-height: 1;
+    color: var(--ink-4);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    flex: 0 0 auto;
     user-select: none;
   }
 
-  .ref-stage {
-    background: var(--c-panel-2);
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius);
-    padding: .75rem .9rem;
-    display: flex;
-    flex-direction: column;
-    gap: .5rem;
-    min-width: 0;
-  }
-  .stage-head {
-    display: flex;
-    align-items: center;
-    gap: .45rem;
-  }
-  .stage-head h3, .stage-head h4 {
-    margin: 0;
-    font-size: .9rem;
-    color: var(--c-text);
-  }
-  .stage-icon { display: block; flex-shrink: 0; opacity: .85; }
-  .stage-blurb {
-    margin: 0;
-    color: var(--c-muted);
-    font-size: .78rem;
-    line-height: 1.4;
-  }
-  .stage-comps {
-    display: flex;
-    flex-direction: column;
-    gap: .35rem;
-    margin-top: auto;
-  }
-
-  .comp-tile {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    gap: .55rem;
-    padding: .45rem .6rem;
-    background: var(--c-panel);
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius);
-    color: var(--c-text);
-    transition: border-color .15s, transform .15s;
-  }
-  .comp-tile:hover { border-color: var(--c-accent); text-decoration: none; transform: translateY(-1px); }
-  .comp-tile img { display: block; }
-  .tile-name { font-weight: 500; font-size: .85rem; }
-
-  /* Action-tile (geen externe component, maar een portal-actie zoals CSV-upload). */
-  .comp-tile-action {
-    background: color-mix(in srgb, var(--c-accent) 8%, var(--c-panel));
-    border-style: dashed;
-    border-color: color-mix(in srgb, var(--c-accent) 50%, var(--c-border));
-  }
-  .comp-tile-action:hover { background: color-mix(in srgb, var(--c-accent) 14%, var(--c-panel)); }
-  .upload-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px; height: 28px;
-    border-radius: 6px;
-    font-size: 1.1rem;
-    color: var(--c-accent);
-    background: color-mix(in srgb, var(--c-accent) 18%, transparent);
-  }
-  .tile-tag {
-    font-size: .65rem;
-    text-transform: uppercase;
-    letter-spacing: .08em;
-    color: var(--c-accent);
-    background: color-mix(in srgb, var(--c-accent) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--c-accent) 35%, transparent);
-    border-radius: 999px;
-    padding: .1rem .45rem;
-  }
-
-  .ref-outputs {
-    background: var(--c-panel-2);
-    border: 1px solid color-mix(in srgb, var(--c-output) 35%, var(--c-border));
-    border-radius: var(--radius);
-    padding: .75rem .9rem;
-    display: flex;
-    flex-direction: column;
-    gap: .5rem;
-    min-width: 0;
-  }
-  .output-tile {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    gap: .55rem;
-    padding: .55rem .65rem;
-    background: var(--c-panel);
-    border: 1px solid color-mix(in srgb, var(--c-output) 30%, var(--c-border));
-    border-radius: var(--radius);
-    color: var(--c-text);
-    transition: border-color .15s, transform .15s;
-  }
-  .output-tile:hover { border-color: var(--c-output); text-decoration: none; transform: translateY(-1px); }
-  .output-tile.output-secondary { cursor: default; opacity: .85; }
-  .output-tile.output-secondary:hover { transform: none; border-color: color-mix(in srgb, var(--c-output) 30%, var(--c-border)); }
-  .output-text { display: flex; flex-direction: column; line-height: 1.2; }
-  .output-text strong { font-size: .85rem; }
-  .output-text small { color: var(--c-muted); font-size: .72rem; }
-
-  /* ─── Identity strip (rechtsonder, los) ─── */
-  .ref-identity {
-    background: var(--c-panel-2);
-    border: 1px solid color-mix(in srgb, var(--c-identity) 35%, var(--c-border));
-    border-radius: var(--radius);
-    padding: .65rem .85rem;
-    display: flex;
-    flex-direction: column;
-    gap: .35rem;
-  }
-  .ref-identity h4 { color: var(--c-identity); }
-
-  /* ─── Status-dots ─── */
-  .dot {
-    display: inline-block;
-    width: .55em;
-    height: .55em;
-    border-radius: 50%;
-    background: var(--c-muted);
-  }
-  .dot.ok   { background: var(--c-ok); }
-  .dot.warn { background: var(--c-warn); }
-  .dot.bad  { background: var(--c-bad); }
-
-  /* ─── Per-rol highlight (gebruikt door /me en optionele toggle) ─── */
-  .ref-arch[data-active-role] .comp-tile,
-  .ref-arch[data-active-role] .comp-chip,
-  .ref-arch[data-active-role] .output-tile { opacity: .35; }
-  .ref-arch[data-active-role] .comp-tile.is-mine,
-  .ref-arch[data-active-role] .comp-chip.is-mine,
-  .ref-arch[data-active-role] .output-tile.is-mine {
+  /* Per-role highlight pass. /me/ adds data-active-role on .ref-arch and
+     toggles .is-mine on each tile based on rolesUsing. */
+  .ref-arch[data-active-role] .tile { opacity: 0.4; transition: opacity .2s; }
+  .ref-arch[data-active-role] .tile.is-mine {
     opacity: 1;
-    border-color: var(--c-accent);
-    box-shadow: 0 0 0 1px var(--c-accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
   }
 
-  /* ─── Responsive: stapel verticaal onder ~960 px ─── */
-  @media (max-width: 960px) {
-    .ref-row {
+  /* Responsive: stack label above tiles below ~720 px. */
+  @media (max-width: 720px) {
+    .lane {
       grid-template-columns: 1fr;
-      gap: .65rem;
+      gap: var(--space-3);
+      padding: var(--space-4) var(--space-4);
     }
-    .ref-arrow { display: none; }
-    .ref-sources { flex-direction: row; flex-wrap: wrap; }
-    .overlay-arrow { display: none; }
+    .lane-tiles--grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .lane-arrow { display: none; }
   }
 </style>

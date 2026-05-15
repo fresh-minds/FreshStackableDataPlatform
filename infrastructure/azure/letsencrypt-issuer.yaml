@@ -1,0 +1,68 @@
+# Let's Encrypt ClusterIssuer for *.eu-sovereigndataplatform.com.
+#
+# Uses DNS-01 challenge via Azure DNS — HTTP-01 would need port 80 reachable
+# from the public internet, which isn't useful when the user accessing the
+# cluster sits behind an outbound block. DNS-01 is solved entirely by
+# cert-manager talking to the Azure DNS API.
+#
+# The Service Principal `sp_stackable` is reused (it has Contributor on the
+# subscription, which transitively covers the DNS Zone Contributor role
+# needed to create/delete TXT records on the zone).
+#
+# The client-secret for the SP is stored in a Secret in the cert-manager
+# namespace. It's NOT in this manifest — it's created by aks-deploy.sh from
+# scripts/azure/env.sh (which is gitignored).
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: karel.goense@freshminds.nl
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - dns01:
+          azureDNS:
+            subscriptionID: 4910a5a6-aec6-405d-9294-c7f2845512a4
+            resourceGroupName: ai-trial-rg
+            hostedZoneName: eu-sovereigndataplatform.com
+            environment: AzurePublicCloud
+            tenantID: fedcef2f-0c85-40dd-8f55-e23143dcb367
+            clientID: 7e14e768-6dac-44f4-886f-ba2990447f1f
+            clientSecretSecretRef:
+              name: azuredns-config
+              key: client-secret
+        selector:
+          dnsZones:
+            - eu-sovereigndataplatform.com
+---
+# Staging issuer for testing (rate-limit friendly, but cert is not trusted
+# by browsers — useful while iterating on Ingress configs).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: karel.goense@freshminds.nl
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - dns01:
+          azureDNS:
+            subscriptionID: 4910a5a6-aec6-405d-9294-c7f2845512a4
+            resourceGroupName: ai-trial-rg
+            hostedZoneName: eu-sovereigndataplatform.com
+            environment: AzurePublicCloud
+            tenantID: fedcef2f-0c85-40dd-8f55-e23143dcb367
+            clientID: 7e14e768-6dac-44f4-886f-ba2990447f1f
+            clientSecretSecretRef:
+              name: azuredns-config
+              key: client-secret
+        selector:
+          dnsZones:
+            - eu-sovereigndataplatform.com

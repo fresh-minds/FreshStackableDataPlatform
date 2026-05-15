@@ -1,0 +1,46 @@
+---
+// 7px circular status dot. Default size 7px, --md is 10px.
+// Pass `job` to wire the live Prometheus refresh — the script in
+// src/scripts/status.ts queries [data-status-job] and toggles
+// .ok / .warn / .bad classes (existing convention preserved).
+
+interface Props {
+  status?: 'ok' | 'warn' | 'down' | 'bad' | 'unknown' | null;
+  job?: string;
+  size?: 'sm' | 'md';
+  class?: string;
+  title?: string;
+}
+
+const { status = 'unknown', job, size = 'sm', class: className = '', title } = Astro.props;
+const klass = [
+  'status-dot',
+  size === 'md' ? 'status-dot--md' : '',
+  status && status !== 'unknown' ? status : '',
+  className,
+].filter(Boolean).join(' ');
+---
+<span class={klass}
+      data-status-job={job}
+      title={title}
+      aria-label={`status: ${status ?? 'unknown'}`}></span>
+
+<style is:global>
+  .status-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: var(--radius-pill);
+    background: var(--ink-4);
+    vertical-align: middle;
+    flex-shrink: 0;
+  }
+  .status-dot--md { width: 10px; height: 10px; }
+
+  /* Both new (`down`) and legacy (`bad`) class hooks supported so existing
+     scripts that toggle `.ok / .warn / .bad` keep working unchanged. */
+  .status-dot.ok    { background: var(--status-ok); }
+  .status-dot.warn  { background: var(--status-warn); }
+  .status-dot.bad,
+  .status-dot.down  { background: var(--status-down); }
+</style>

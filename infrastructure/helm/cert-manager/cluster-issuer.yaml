@@ -1,41 +1,13 @@
-# Self-signed ClusterIssuer + interne CA voor het UWV-platform.
+# uwv-platform CA-based ClusterIssuer.
 #
-# Pad: cert-manager genereert eerst een self-signed cert (issuer #1), gebruikt
-# die om een CA-certificaat te tekenen, en de echte CA-issuer (#2) tekent
-# alle service-certs. Dit voorkomt "elke service zijn eigen self-signed cert".
+# De CA-cert + privé-sleutel zitten in het Secret `uwv-platform-ca` in de
+# `cert-manager` namespace. Het Secret wordt aangemaakt door
+# scripts/bootstrap.sh vanuit ~/.config/uwv-platform/ca/ — een persistente
+# CA op de host die *niet* opnieuw wordt gegenereerd bij
+# `make clean && make cluster && make bootstrap`. Daardoor blijft de in je
+# OS-keychain vertrouwde CA geldig over cluster-wipes heen.
 #
-# Toepassen na cert-manager Helm install:
-#   kubectl apply -f infrastructure/helm/cert-manager/cluster-issuer.yaml
----
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: selfsigned-bootstrap
-spec:
-  selfSigned: {}
----
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: uwv-platform-ca
-  namespace: cert-manager
-spec:
-  isCA: true
-  commonName: UWV Reference Platform Self-Signed CA
-  secretName: uwv-platform-ca
-  duration: 87600h  # 10 jaar (dev only)
-  renewBefore: 720h
-  privateKey:
-    algorithm: ECDSA
-    size: 256
-  subject:
-    organizations:
-      - UWV Reference Platform
-      - Dev / Self-Signed
-  issuerRef:
-    name: selfsigned-bootstrap
-    kind: ClusterIssuer
-    group: cert-manager.io
+# Rotate de CA:  rm -rf ~/.config/uwv-platform/ca/ && make bootstrap && make trust-ca
 ---
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer

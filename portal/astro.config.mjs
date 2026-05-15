@@ -1,5 +1,6 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
+import mdx from '@astrojs/mdx';
 
 export default defineConfig({
   site: 'https://platform.uwv-platform.local',
@@ -7,6 +8,7 @@ export default defineConfig({
   build: {
     format: 'directory',
   },
+  integrations: [mdx()],
   server: {
     host: true,
     port: 4321,

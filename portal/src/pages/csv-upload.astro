@@ -1,5 +1,8 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import Button from '../components/primitives/Button.astro';
+import Eyebrow from '../components/primitives/Eyebrow.astro';
+import { docsArchitectureUrl } from '../data/external-links';
 
 // Minimale CSV-upload UX. Wijst de gebruiker naar de twee externe stappen
 // (MinIO Console upload + Airflow DAG-trigger) en toont een copy-pasteable
@@ -23,28 +26,32 @@ const sources = [
   },
 ];
 
-// Default-keuze; dropdown laat extra bronnen toe wanneer ze toegevoegd worden.
 const defaultSource = sources[0];
 ---
 <Layout title="CSV upload">
-  <section class="panel hero">
-    <h1>Handmatige CSV-upload → bronze</h1>
-    <p>
+  <section class="csv-hero">
+    <Eyebrow rule>CSV-upload · staging</Eyebrow>
+    <h1 class="csv-hero-title">
+      Handmatige CSV-upload <em>naar bronze</em>.
+    </h1>
+    <p class="csv-hero-body">
       Upload een CSV-bestand voor een bron met <code>mode: csv_batch</code>.
       De flow is: bestand op MinIO zetten → Airflow-DAG triggeren →
       Delta-tabel in <code>bronze</code> → automatisch silver + gold via dbt.
     </p>
-    <p class="note">
+    <p class="csv-hero-note">
       Voor streaming-bronnen (WIA, WW, polisadministratie, …) gaat data via
-      Kafka — zie het architectuur-diagram. CSV-upload is bedoeld voor
-      ad-hoc batch-bronnen zoals klanttevredenheid-metingen.
+      Kafka — zie de <a href={docsArchitectureUrl('ingestion')} target="_blank" rel="noopener noreferrer">architectuur-documentatie ↗</a>.
+      CSV-upload is bedoeld voor ad-hoc batch-bronnen.
     </p>
   </section>
 
-  <section class="panel">
-    <h2>Bron</h2>
-    <div class="src-pick">
-      <label for="src-select">Kies een bron:</label>
+  <section class="csv-step">
+    <Eyebrow>Bron</Eyebrow>
+    <h2>Welke bron upload je?</h2>
+
+    <div class="csv-pick">
+      <label for="src-select">Kies een bron</label>
       <select id="src-select" aria-label="Bron">
         {sources.map((s) => (
           <option value={s.name}
@@ -58,74 +65,93 @@ const defaultSource = sources[0];
       </select>
     </div>
 
-    <p id="src-desc" class="src-desc">{defaultSource.description}</p>
+    <p id="src-desc" class="csv-pick-desc">{defaultSource.description}</p>
 
-    <dl class="src-meta">
-      <dt>Bucket</dt>
-      <dd><code id="src-bucket">{defaultSource.bucket}</code></dd>
-      <dt>Prefix</dt>
-      <dd><code id="src-prefix">{defaultSource.prefix}</code></dd>
-      <dt>DAG</dt>
-      <dd><code id="src-dag">{defaultSource.dagId}</code></dd>
+    <dl class="csv-meta">
+      <div class="csv-meta-row">
+        <dt class="mono">BUCKET</dt>
+        <dd><code id="src-bucket">{defaultSource.bucket}</code></dd>
+      </div>
+      <div class="csv-meta-row">
+        <dt class="mono">PREFIX</dt>
+        <dd><code id="src-prefix">{defaultSource.prefix}</code></dd>
+      </div>
+      <div class="csv-meta-row">
+        <dt class="mono">DAG</dt>
+        <dd><code id="src-dag">{defaultSource.dagId}</code></dd>
+      </div>
     </dl>
   </section>
 
-  <section class="panel">
-    <h2>Stap 1 — Upload het CSV-bestand</h2>
-    <p>
+  <section class="csv-step">
+    <Eyebrow>01 · Upload</Eyebrow>
+    <h2>Zet het CSV-bestand op MinIO</h2>
+    <p class="csv-step-body">
       Open MinIO Console en sleep je CSV in de map
       <code id="src-path-1">{defaultSource.bucket}/{defaultSource.prefix}/</code>.
       Naam mag vrij gekozen worden (bv. <code>2026-05-01.csv</code>).
     </p>
-    <div class="actions">
-      <a id="open-minio" class="btn btn-primary"
-         href={`https://minio-console.uwv-platform.local:8443/browser/${defaultSource.bucket}/${defaultSource.prefix.replace(/\//g, '%2F')}%2F`}
-         target="_blank" rel="noopener noreferrer">
+    <div class="csv-actions">
+      <Button id="open-minio" variant="accent"
+              href={`https://minio-console.uwv-platform.local:8443/browser/${defaultSource.bucket}/${defaultSource.prefix.replace(/\//g, '%2F')}%2F`}
+              target="_blank" rel="noopener noreferrer">
         Open MinIO Console
-      </a>
+      </Button>
     </div>
-    <details class="alt">
+    <details class="csv-alt">
       <summary>Liever via CLI (<code>mc</code>)?</summary>
-      <pre><code id="mc-cmd">mc cp ./mijn-meting.csv uwv-platform/{defaultSource.bucket}/{defaultSource.prefix}/$(date -u +%Y%m%dT%H%M%S).csv</code></pre>
-      <p class="note">
-        Vereist een geconfigureerde <code>uwv-platform</code> alias in
-        <code>~/.mc/config.json</code>. Zie
-        <a href="/UWV_Platform_Handboek_per_rol.pdf" target="_blank" rel="noopener noreferrer">handboek</a>.
+      <p class="csv-step-note">Stel éénmalig de alias in:</p>
+      <pre class="csv-pre"><code>mc alias set minio-uwv https://minio.uwv-platform.local:8443 uwvadmin 'uwv-dev-only-CHANGE-ME-2026' --insecure</code></pre>
+      <p class="csv-step-note">Daarna uploaden:</p>
+      <pre class="csv-pre"><code id="mc-cmd">mc cp ./mijn-meting.csv minio-uwv/{defaultSource.bucket}/{defaultSource.prefix}/$(date -u +%Y%m%dT%H%M%S).csv --insecure</code></pre>
+      <p class="csv-step-note">
+        De DAG wordt automatisch getriggerd binnen 2 minuten — handmatige stap 2 is niet meer nodig.
       </p>
     </details>
   </section>
 
-  <section class="panel">
-    <h2>Stap 2 — Trigger de ingest-DAG</h2>
-    <p>
+  <section class="csv-step">
+    <Eyebrow>02 · Trigger</Eyebrow>
+    <h2>Trigger de ingest-DAG in Airflow</h2>
+    <p class="csv-step-body">
       Open Airflow en trigger DAG <code id="src-dag-2">{defaultSource.dagId}</code>
       met deze JSON-config (<em>Trigger DAG w/ config</em>):
     </p>
-    <pre class="cfg"><code id="dag-conf">{JSON.stringify({ object_key: `${defaultSource.prefix}/<bestandsnaam>.csv` }, null, 2)}</code></pre>
-    <div class="actions">
-      <a id="open-airflow" class="btn btn-primary"
-         href={`https://airflow.uwv-platform.local:8443/dags/${defaultSource.dagId}/`}
-         target="_blank" rel="noopener noreferrer">
+    <pre class="csv-pre"><code id="dag-conf">{JSON.stringify({ object_key: `${defaultSource.prefix}/<bestandsnaam>.csv` }, null, 2)}</code></pre>
+    <div class="csv-actions">
+      <Button id="open-airflow"
+              href={`https://airflow.uwv-platform.local:8443/dags/${defaultSource.dagId}/`}
+              target="_blank" rel="noopener noreferrer">
         Open Airflow DAG
-      </a>
+      </Button>
     </div>
   </section>
 
-  <section class="panel">
-    <h2>Stap 3 — Resultaat</h2>
-    <p>
-      Bij succes verschijnt de data automatisch:
-    </p>
-    <ul>
-      <li><strong>Bronze</strong> — Delta-tabel in <code>bronze.uwv.&lt;bron&gt;</code> (Trino).</li>
-      <li><strong>Silver</strong> — getriggerd door bronze-Dataset; dbt staging-view.</li>
-      <li><strong>Gold</strong> — getriggerd door silver-Dataset; dbt mart-tabel.</li>
-      <li><strong>Superset</strong> — dashboard <em>Klanttevredenheid trend</em>.</li>
+  <section class="csv-step">
+    <Eyebrow>03 · Resultaat</Eyebrow>
+    <h2>Wat gebeurt er daarna?</h2>
+    <ul class="csv-result">
+      <li>
+        <span class="mono">BRONZE</span>
+        <span>Delta-tabel in <code>bronze.uwv.&lt;bron&gt;</code> (Trino).</span>
+      </li>
+      <li>
+        <span class="mono">SILVER</span>
+        <span>Getriggerd door bronze-Dataset; dbt staging-view.</span>
+      </li>
+      <li>
+        <span class="mono">GOLD</span>
+        <span>Getriggerd door silver-Dataset; dbt mart-tabel.</span>
+      </li>
+      <li>
+        <span class="mono">SUPERSET</span>
+        <span>Dashboard <em>Klanttevredenheid trend</em>.</span>
+      </li>
     </ul>
-    <div class="actions">
-      <a class="btn" href="https://trino.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">Trino UI</a>
-      <a class="btn" href="https://superset.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">Superset</a>
-      <a class="btn" href="https://openmetadata.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">OpenMetadata</a>
+    <div class="csv-actions">
+      <Button href="https://trino.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">Trino UI</Button>
+      <Button href="https://superset.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">Superset</Button>
+      <Button href="https://openmetadata.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">OpenMetadata</Button>
     </div>
   </section>
 
@@ -142,7 +168,6 @@ const defaultSource = sources[0];
     const oM   = document.getElementById('open-minio') as HTMLAnchorElement | null;
     const oA   = document.getElementById('open-airflow') as HTMLAnchorElement | null;
 
-    // Source-data zit in <option data-*> attributes — geen runtime fetch nodig.
     type Src = { description: string; bucket: string; prefix: string; dagId: string };
     const collected: Record<string, Src> = {};
     Array.from(sel?.options ?? []).forEach((opt) => {
@@ -165,7 +190,7 @@ const defaultSource = sources[0];
       if (dag2) dag2.textContent = s.dagId;
       if (path1) path1.textContent = `${s.bucket}/${s.prefix}/`;
       if (conf) conf.textContent = JSON.stringify({ object_key: `${s.prefix}/<bestandsnaam>.csv` }, null, 2);
-      if (mc)   mc.textContent   = `mc cp ./mijn-meting.csv uwv-platform/${s.bucket}/${s.prefix}/$(date -u +%Y%m%dT%H%M%S).csv`;
+      if (mc)   mc.textContent   = `mc cp ./mijn-meting.csv minio-uwv/${s.bucket}/${s.prefix}/$(date -u +%Y%m%dT%H%M%S).csv --insecure`;
       if (oM)   oM.href = `https://minio-console.uwv-platform.local:8443/browser/${s.bucket}/${encodeURIComponent(s.prefix + '/')}`;
       if (oA)   oA.href = `https://airflow.uwv-platform.local:8443/dags/${s.dagId}/`;
     }
@@ -174,58 +199,181 @@ const defaultSource = sources[0];
   </script>
 
   <style>
-    .hero h1 { margin-bottom: .5rem; }
-    .note { font-size: .82rem; color: var(--c-muted); margin-top: .5rem; }
-
-    .src-pick { display: flex; align-items: center; gap: .75rem; margin-bottom: .75rem; }
-    .src-pick select {
-      background: var(--c-panel-2);
-      color: var(--c-text);
-      border: 1px solid var(--c-border);
-      border-radius: var(--radius);
-      padding: .35rem .55rem;
-      font: inherit;
+    .csv-hero { padding: var(--space-9) 0 var(--space-7); max-width: 720px; }
+    .csv-hero-title {
+      font-size: 44px;
+      line-height: var(--leading-display);
+      letter-spacing: var(--tracking-display);
+      font-weight: var(--weight-medium);
+      color: var(--ink-1);
+      margin: var(--space-4) 0 var(--space-4);
+      border: 0;
+      padding: 0;
+      text-wrap: balance;
     }
-    .src-desc { color: var(--c-muted); margin: .25rem 0 .75rem; }
-    .src-meta {
+    .csv-hero-title em {
+      font-family: var(--font-serif);
+      font-style: italic;
+      color: var(--ink-3);
+      font-weight: var(--weight-regular);
+    }
+    .csv-hero-body, .csv-hero-note {
+      color: var(--ink-2);
+      line-height: var(--leading-body);
+      margin: 0 0 var(--space-3);
+      max-width: 56ch;
+    }
+    .csv-hero-note { color: var(--ink-3); font-size: var(--text-meta); }
+    .csv-hero code, .csv-step code {
+      background: var(--bg-sunken);
+      color: var(--ink-1);
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      font-size: 0.92em;
+    }
+
+    .csv-step {
+      padding: var(--space-7) 0;
+      border-top: 1px solid var(--line);
+      max-width: 720px;
+    }
+    .csv-step h2 {
+      font-size: var(--text-h2);
+      font-weight: var(--weight-medium);
+      letter-spacing: var(--tracking-tight);
+      color: var(--ink-1);
+      margin: var(--space-3) 0 var(--space-4);
+      border: 0;
+      padding: 0;
+    }
+    .csv-step-body, .csv-step-note {
+      color: var(--ink-2);
+      line-height: var(--leading-body);
+      margin: 0 0 var(--space-4);
+      text-wrap: pretty;
+    }
+    .csv-step-note { color: var(--ink-3); font-size: var(--text-meta); }
+
+    .csv-pick {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin-bottom: var(--space-3);
+    }
+    .csv-pick label {
+      color: var(--ink-3);
+      font-size: var(--text-meta);
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: var(--tracking-eyebrow);
+    }
+    .csv-pick select {
+      background: var(--bg-elev);
+      color: var(--ink-1);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      font: inherit;
+      font-size: var(--text-meta);
+    }
+    .csv-pick-desc { color: var(--ink-3); margin: var(--space-2) 0 var(--space-4); font-size: var(--text-meta); }
+
+    .csv-meta {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      margin: 0;
+      overflow: hidden;
+    }
+    .csv-meta-row {
       display: grid;
-      grid-template-columns: max-content 1fr;
-      gap: .25rem 1rem;
+      grid-template-columns: 14ch 1fr;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .csv-meta-row:last-child { border-bottom: 0; }
+    .csv-meta dt {
+      color: var(--ink-3);
+      font-size: var(--text-eyebrow);
+      letter-spacing: var(--tracking-eyebrow);
       margin: 0;
     }
-    .src-meta dt { color: var(--c-muted); font-size: .82rem; }
-    .src-meta dd { margin: 0; }
+    .csv-meta dd { margin: 0; }
 
-    .actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .75rem; }
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      padding: .45rem .85rem;
-      background: var(--c-panel-2);
-      border: 1px solid var(--c-border);
-      border-radius: var(--radius);
-      color: var(--c-text);
-      font-size: .9rem;
+    .csv-actions {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      margin: var(--space-4) 0 0;
     }
-    .btn:hover { border-color: var(--c-accent); text-decoration: none; }
-    .btn-primary {
-      background: var(--c-accent);
-      color: #1a1206;
-      border-color: var(--c-accent);
-      font-weight: 600;
-    }
-    [data-theme="light"] .btn-primary { color: #fff; }
-    .btn-primary:hover { filter: brightness(1.05); }
 
-    pre.cfg, details.alt pre {
-      background: var(--c-panel-2);
-      border: 1px solid var(--c-border);
-      border-radius: var(--radius);
-      padding: .65rem .85rem;
+    .csv-pre {
+      background: var(--bg-sunken);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: var(--space-3) var(--space-4);
       overflow-x: auto;
-      font-size: .85rem;
+      margin: var(--space-2) 0;
+      font-family: var(--font-mono);
+      font-size: var(--text-meta);
+      color: var(--ink-1);
     }
-    details.alt summary { cursor: pointer; color: var(--c-muted); }
-    details.alt[open] summary { color: var(--c-text); }
+    .csv-pre code {
+      background: transparent;
+      padding: 0;
+      border: 0;
+    }
+
+    .csv-alt summary {
+      cursor: pointer;
+      color: var(--ink-3);
+      font-size: var(--text-meta);
+      list-style: none;
+      padding: var(--space-2) 0;
+    }
+    .csv-alt summary::-webkit-details-marker { display: none; }
+    .csv-alt summary::before {
+      content: '▸';
+      font-family: var(--font-mono);
+      margin-right: var(--space-2);
+      transition: transform .15s;
+      display: inline-block;
+    }
+    .csv-alt[open] summary::before { transform: rotate(90deg); }
+    .csv-alt summary:hover { color: var(--ink-1); }
+
+    .csv-result {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+    .csv-result li {
+      display: grid;
+      grid-template-columns: 12ch 1fr;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--line-soft);
+      color: var(--ink-2);
+      font-size: var(--text-meta);
+    }
+    .csv-result li:last-child { border-bottom: 0; }
+    .csv-result li .mono {
+      color: var(--ink-3);
+      font-size: var(--text-eyebrow);
+      letter-spacing: var(--tracking-eyebrow);
+    }
+    .csv-result em { font-style: italic; color: var(--ink-1); }
   </style>
 </Layout>

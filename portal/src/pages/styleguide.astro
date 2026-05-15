@@ -1,0 +1,342 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Button from '../components/primitives/Button.astro';
+import Eyebrow from '../components/primitives/Eyebrow.astro';
+import StatusDot from '../components/primitives/StatusDot.astro';
+import Tag from '../components/primitives/Tag.astro';
+import NavLink from '../components/primitives/NavLink.astro';
+import Tile from '../components/primitives/Tile.astro';
+---
+<Layout title="Styleguide">
+  <article class="sg">
+    <header class="sg-head">
+      <Eyebrow rule>Internal · Designers + Engineers</Eyebrow>
+      <h1>Portal styleguide</h1>
+      <p class="sg-lead">
+        Live reference for every primitive component. Open this page in
+        the theme you're working in (toggle in topbar) — every primitive
+        is wired through the design tokens, so dark/light is automatic.
+      </p>
+    </header>
+
+    <section class="sg-section">
+      <Eyebrow>Tokens · Surface</Eyebrow>
+      <h2>Surfaces</h2>
+      <div class="sg-swatches">
+        <div class="sg-swatch" style="background: var(--bg)"><code>--bg</code></div>
+        <div class="sg-swatch" style="background: var(--bg-elev)"><code>--bg-elev</code></div>
+        <div class="sg-swatch" style="background: var(--bg-sunken)"><code>--bg-sunken</code></div>
+      </div>
+    </section>
+
+    <section class="sg-section">
+      <Eyebrow>Tokens · Ink</Eyebrow>
+      <h2>Ink scale</h2>
+      <div class="sg-inks">
+        <span style="color: var(--ink-1)">Ink 1 — primary text</span>
+        <span style="color: var(--ink-2)">Ink 2 — secondary</span>
+        <span style="color: var(--ink-3)">Ink 3 — meta / muted</span>
+        <span style="color: var(--ink-4)">Ink 4 — placeholder / disabled</span>
+        <span style="color: var(--ink-5)">Ink 5 — hairline / disabled bg</span>
+      </div>
+    </section>
+
+    <section class="sg-section">
+      <Eyebrow>Tokens · Brand & Status</Eyebrow>
+      <h2>Brand & status</h2>
+      <div class="sg-swatches">
+        <div class="sg-swatch sg-swatch--solid" style="background: var(--accent); color: var(--accent-ink)">--accent</div>
+        <div class="sg-swatch sg-swatch--solid" style="background: var(--accent-soft); color: var(--ink-1)">--accent-soft</div>
+        <div class="sg-swatch sg-swatch--solid" style="background: var(--status-ok); color: white">--status-ok</div>
+        <div class="sg-swatch sg-swatch--solid" style="background: var(--status-warn); color: var(--ink-1)">--status-warn</div>
+        <div class="sg-swatch sg-swatch--solid" style="background: var(--status-down); color: white">--status-down</div>
+      </div>
+    </section>
+
+    <section class="sg-section">
+      <Eyebrow>Tokens · Categories</Eyebrow>
+      <h2>Category hues (architecture lanes)</h2>
+      <div class="sg-cats">
+        <div class="sg-cat" style="--c: var(--cat-discovery); --c-soft: var(--cat-discovery-soft); --c-line: var(--cat-discovery-line)">
+          <Eyebrow>Discovery</Eyebrow>
+          <div class="sg-cat-row">
+            <span class="sg-cat-chip" style="background: var(--c)"></span>
+            <span class="sg-cat-chip" style="background: var(--c-soft)"></span>
+            <span class="sg-cat-chip" style="border:1px solid var(--c-line)"></span>
+          </div>
+        </div>
+        <div class="sg-cat" style="--c: var(--cat-pipeline); --c-soft: var(--cat-pipeline-soft); --c-line: var(--cat-pipeline-line)">
+          <Eyebrow>Pipeline</Eyebrow>
+          <div class="sg-cat-row">
+            <span class="sg-cat-chip" style="background: var(--c)"></span>
+            <span class="sg-cat-chip" style="background: var(--c-soft)"></span>
+            <span class="sg-cat-chip" style="border:1px solid var(--c-line)"></span>
+          </div>
+        </div>
+        <div class="sg-cat" style="--c: var(--cat-observability); --c-soft: var(--cat-observability-soft); --c-line: var(--cat-observability-line)">
+          <Eyebrow>Observability</Eyebrow>
+          <div class="sg-cat-row">
+            <span class="sg-cat-chip" style="background: var(--c)"></span>
+            <span class="sg-cat-chip" style="background: var(--c-soft)"></span>
+            <span class="sg-cat-chip" style="border:1px solid var(--c-line)"></span>
+          </div>
+        </div>
+        <div class="sg-cat" style="--c: var(--cat-identity); --c-soft: var(--cat-identity-soft); --c-line: var(--cat-identity-line)">
+          <Eyebrow>Identity</Eyebrow>
+          <div class="sg-cat-row">
+            <span class="sg-cat-chip" style="background: var(--c)"></span>
+            <span class="sg-cat-chip" style="background: var(--c-soft)"></span>
+            <span class="sg-cat-chip" style="border:1px solid var(--c-line)"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sg-section">
+      <Eyebrow>Type</Eyebrow>
+      <h2>Typography</h2>
+      <div class="sg-type">
+        <p class="sg-display">Hero <em>display</em> — 56 px, weight 500</p>
+        <h1>H1 — 32 px, weight 500</h1>
+        <h2 style="border:0; padding:0">H2 — 22 px, weight 500</h2>
+        <h3>H3 — 18 px, weight 500</h3>
+        <p>Body — 14.5 px, weight 400, line-height 1.55. The quick brown fox jumps over the lazy dog. AaBbCcDd 0123456789.</p>
+        <p class="mono">Mono — JetBrains Mono. UP{`{job=portal}`} → 1.0 · 200ms · 99.97%</p>
+        <p><Eyebrow>Eyebrow · 11 px mono uppercase</Eyebrow></p>
+      </div>
+    </section>
+
+    <section class="sg-section">
+      <Eyebrow>Primitive · Button</Eyebrow>
+      <h2>Buttons</h2>
+      <p class="sg-note">One <code>btn--accent</code> per screen — reserve it for the primary CTA.</p>
+      <div class="sg-row">
+        <Button>Default ghost</Button>
+        <Button variant="primary">Primary</Button>
+        <Button variant="accent">Accent</Button>
+        <Button href="https://example.com">External link</Button>
+        <Button arrow="none">No arrow</Button>
+        <Button size="sm">Small</Button>
+        <Button disabled>Disabled</Button>
+      </div>
+    </section>
+
+    <section class="sg-section">
+      <Eyebrow>Primitive · Tag</Eyebrow>
+      <h2>Tags</h2>
+      <div class="sg-row">
+        <Tag>default</Tag>
+        <Tag variant="mono">batch</Tag>
+        <Tag variant="mono">stream</Tag>
+        <Tag tone="ok">ok</Tag>
+        <Tag tone="warn">warn</Tag>
+        <Tag tone="down">down</Tag>
+        <Tag tone="accent">accent</Tag>
+      </div>
+    </section>
+
+    <section class="sg-section">
+      <Eyebrow>Primitive · StatusDot</Eyebrow>
+      <h2>Status dots</h2>
+      <div class="sg-row sg-dots">
+        <span><StatusDot status="unknown" /> unknown</span>
+        <span><StatusDot status="ok" /> ok</span>
+        <span><StatusDot status="warn" /> warn</span>
+        <span><StatusDot status="down" /> down</span>
+        <span><StatusDot status="ok" size="md" /> medium</span>
+      </div>
+    </section>
+
+    <section class="sg-section">
+      <Eyebrow>Primitive · NavLink</Eyebrow>
+      <h2>Nav links</h2>
+      <nav class="sg-row">
+        <NavLink href="#a">Default</NavLink>
+        <NavLink href="#b" active>Active</NavLink>
+        <NavLink href="#c">Hover me</NavLink>
+      </nav>
+    </section>
+
+    <section class="sg-section">
+      <Eyebrow>Primitive · Tile</Eyebrow>
+      <h2>Tiles</h2>
+      <div class="sg-tiles">
+        <Tile name="Apache NiFi" subLabel="Streaming" icon="/icons/brand/nifi.svg" href="https://nifi.example" statusJob="nifi" />
+        <Tile name="Apache Kafka" subLabel="Stream" icon="/icons/brand/kafka.svg" href="https://kafka.example" statusJob="kafka" />
+        <Tile name="MinIO" subLabel="Object storage" icon="/icons/brand/minio.svg" href="https://minio.example" />
+        <Tile name="Apache Spark" subLabel="Compute" icon="/icons/brand/spark.svg" />
+      </div>
+    </section>
+
+    <section class="sg-section">
+      <Eyebrow>States · empty / loading / error</Eyebrow>
+      <h2>Stateful surfaces</h2>
+      <div class="sg-states">
+        <div class="state">
+          <span class="state-eyebrow">Geen data</span>
+          <strong class="state-title">Nog niets om te tonen</strong>
+          <p class="state-body">Wacht op de eerste run, of voeg een
+            voorbeeld-bron toe via <code>/csv-upload</code>.</p>
+        </div>
+        <div class="state state--loading">
+          <span class="state-eyebrow">Laden…</span>
+          <div class="skeleton" style="width:60%; height:14px"></div>
+          <div class="skeleton" style="width:80%; height:14px"></div>
+          <div class="skeleton" style="width:40%; height:14px"></div>
+        </div>
+        <div class="state state--error">
+          <span class="state-eyebrow">Fout</span>
+          <strong class="state-title">Service niet bereikbaar</strong>
+          <p class="state-body">Prometheus reageert niet op
+            <code>/api/status/up</code>. Check de cluster-status of
+            probeer over 30s opnieuw.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sg-section">
+      <Eyebrow>Primitive · UserPill</Eyebrow>
+      <h2>User pill</h2>
+      <p class="sg-note">Empty state — populated by <code>renderWho()</code> in Layout after SSO.</p>
+      <div class="sg-row">
+        <div class="user-pill user-pill--empty">
+          <span class="user-pill-empty-label">Niet ingelogd</span>
+        </div>
+      </div>
+      <p class="sg-note" style="margin-top: var(--space-5)">Loaded state — preview only.</p>
+      <div class="sg-row">
+        <div class="user-pill">
+          <span class="user-pill-avatar" aria-hidden="true">K</span>
+          <span class="user-pill-body">
+            <span class="user-pill-role">platform_admin</span>
+            <span class="user-pill-user">karel@uwv-platform.local</span>
+          </span>
+          <a class="user-pill-logout" href="#">↗</a>
+        </div>
+      </div>
+    </section>
+  </article>
+</Layout>
+
+<style>
+  .sg {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: var(--space-7) 0 var(--space-12);
+  }
+  .sg-head { margin-bottom: var(--space-9); }
+  .sg-lead {
+    color: var(--ink-2);
+    font-size: var(--text-body-lg);
+    max-width: 56ch;
+    text-wrap: pretty;
+  }
+
+  .sg-section {
+    padding-top: var(--space-7);
+    border-top: 1px solid var(--line);
+    margin-top: var(--space-7);
+  }
+  .sg-section h2 {
+    margin: var(--space-2) 0 var(--space-5);
+    font-size: var(--text-h2);
+    border: 0;
+    padding: 0;
+    font-weight: var(--weight-medium);
+    letter-spacing: var(--tracking-tight);
+  }
+  .sg-note {
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+    margin: 0 0 var(--space-5);
+  }
+
+  .sg-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+  }
+  .sg-dots span {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+  }
+
+  .sg-swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--space-3);
+  }
+  .sg-swatch {
+    height: 80px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--line);
+    display: flex;
+    align-items: flex-end;
+    padding: var(--space-3);
+  }
+  .sg-swatch code {
+    background: var(--bg-elev);
+    color: var(--ink-2);
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+  }
+  .sg-swatch--solid {
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-meta);
+  }
+
+  .sg-inks {
+    display: grid;
+    gap: var(--space-2);
+    font-size: var(--text-body-lg);
+  }
+
+  .sg-cats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--space-5);
+  }
+  .sg-cat-row { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+  .sg-cat-chip {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    display: inline-block;
+  }
+
+  .sg-type > * { margin: 0 0 var(--space-3); }
+  .sg-display {
+    font-size: var(--text-display);
+    line-height: var(--leading-display);
+    letter-spacing: var(--tracking-display);
+    font-weight: var(--weight-medium);
+    color: var(--ink-1);
+  }
+  .sg-display em {
+    font-family: var(--font-serif);
+    font-style: italic;
+    color: var(--ink-3);
+    font-weight: var(--weight-regular);
+  }
+
+  .sg-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--space-3);
+  }
+
+  .sg-states {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--space-3);
+  }
+</style>

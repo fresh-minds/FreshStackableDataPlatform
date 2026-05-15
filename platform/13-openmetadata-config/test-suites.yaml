@@ -1,0 +1,91 @@
+# Declaratieve DataQuality TestSuites + TestCases voor de UWV-gold-marts.
+#
+# Wordt door de init-Job (apply_test_suites) toegepast via OM REST API:
+#   POST /api/v1/dataQuality/testSuites/executable    — per (entity)
+#   POST /api/v1/dataQuality/testCases                 — per test in suite
+#
+# OM 1.5-quirks die in init_openmetadata.py worden afgevangen:
+#   - Executable-suite FQN = `<entityFQN>.testSuite` (hardcoded door OM,
+#     suite-name uit yaml leeft alleen als displayName).
+#   - Suite-creation faalt 404 als de target-tabel nog niet in OM staat —
+#     init-job slaat die suites over en logt een waarschuwing.
+
+test_suites:
+  # UC-01 WIA Funnel — DoD-anchor, business-critical.
+  - name: uc01_wia_funnel_dq
+    displayName: "UC-01 WIA Funnel — Data Quality"
+    description: "Dagelijkse DQ-checks op de WIA Funnel-mart (Tier1, DoD-anchor)."
+    entityFQN: uwv-trino.gold.uc01_wia_funnel.mart_uc01_wia_funnel_daily
+    test_cases:
+      - name: row_count_not_empty
+        displayName: "Niet-lege funnel"
+        description: "Mart moet minstens 1 rij hebben."
+        testDefinition: tableRowCountToBeBetween
+        parameters:
+          - name: minValue
+            value: "1"
+      - name: aanvraag_datum_not_null
+        displayName: "Aanvraagdatum aanwezig"
+        column: aanvraag_datum
+        testDefinition: columnValuesToBeNotNull
+      - name: n_aanvragen_non_negative
+        displayName: "n_aanvragen >= 0"
+        column: n_aanvragen
+        testDefinition: columnValueMinToBeBetween
+        parameters:
+          - name: minValueForMinInCol
+            value: "0"
+
+  # UC-11 Klantreis — cross-domein, Tier1.
+  - name: uc11_klantreis_dq
+    displayName: "UC-11 Klantreis — Data Quality"
+    description: "Integriteitschecks op cross-domein klantreis-events."
+    entityFQN: uwv-trino.gold.uc11_klantreis.mart_uc11_klantreis_events
+    test_cases:
+      - name: bsn_not_null
+        displayName: "BSN aanwezig"
+        column: bsn
+        testDefinition: columnValuesToBeNotNull
+      - name: event_ts_not_null
+        column: event_ts
+        testDefinition: columnValuesToBeNotNull
+      - name: domein_not_null
+        column: domein
+        testDefinition: columnValuesToBeNotNull
+
+  # UC-07 DQ Polisadm — UC-07 is zelf datakwaliteit; deze suite valideert
+  # dat het rapport zelf zinvolle waardes heeft.
+  - name: uc07_dq_meta
+    displayName: "UC-07 DQ Polisadm — Meta-DQ"
+    description: "Datakwaliteit van het dq-dagrapport zelf."
+    entityFQN: uwv-trino.gold.uc07_dq_polisadm.mart_uc07_dq_dagrapport
+    test_cases:
+      - name: rapport_datum_not_null
+        column: rapport_datum
+        testDefinition: columnValuesToBeNotNull
+      - name: bsn_buiten_bereik_is_zero
+        displayName: "Geen BSN's buiten test-bereik"
+        description: "Verwacht 0 — alle BSNs zouden 9-prefix moeten zijn."
+        column: n_bsn_buiten_test_bereik
+        testDefinition: columnValueMaxToBeBetween
+        parameters:
+          - name: maxValueForMaxInCol
+            value: "0"
+
+# Alert / Subscription — notificeert op events. OM 1.5 valideert resource-
+# strings strict; "all" werkt overal. Granulair filteren op testCase doe je
+# in productie via Observability-alert + filtering-rule.
+alerts:
+  - name: dq_failure_alert
+    displayName: "DQ-failure → ops-channel (stub)"
+    description: |
+      Triggert op events platform-breed. Productie: vervang destination door
+      Slack-webhook (SLACK_WEBHOOK_URL secret) of email (SMTP-config in
+      OM-server) en filter op testStatus=Failed.
+    alertType: Notification
+    resource: all
+    destination:
+      type: Webhook
+      # k3d-locale endpoint die requests slikt en logt — productie vervangt
+      # dit met de daadwerkelijke Slack/Teams webhook.
+      endpoint: http://openmetadata.uwv-meta.svc.cluster.local:8585/api/v1/system/healthz

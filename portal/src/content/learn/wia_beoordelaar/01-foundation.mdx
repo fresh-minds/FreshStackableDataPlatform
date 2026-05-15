@@ -1,0 +1,97 @@
+---
+title: "Het platform voor de WIA-beoordelaar"
+role: wia_beoordelaar
+level: foundation
+order: 1
+duration: "20 min"
+summary: "Korte rondleiding door de drie applicaties die je dagelijks gebruikt: Superset, Trino en OpenMetadata — en wat je in welke catalog wel en niet mag zien."
+labs:
+  - title: "Open de WIA-funnel in Superset"
+    hint: "Voorraad en doorlooptijden in jouw regio"
+    href: "/go/superset/"
+  - title: "Bekijk de tabel silver.wia.aanvraag in OpenMetadata"
+    hint: "Wat betekent welke kolom, wie is eigenaar?"
+    href: "/go/openmetadata/"
+quiz:
+  - q: "Welke catalogs mag een WIA-beoordelaar direct queryen?"
+    options:
+      - "alleen bronze"
+      - "silver en gold (eigen regio voor PII-kolommen)"
+      - "alle catalogs, mits met TICKET-id"
+      - "alleen sensitive"
+    correct: 1
+    explain: "Je werkt op silver.wia (geconformeerd) en gold.uc01_wia_funnel (sturing). Bronze is voor data-engineers; sensitive voor de Wajong-arbeidsdeskundige."
+  - q: "Wat doet de OPA-policy in Trino voor jouw rol?"
+    options:
+      - "Hij encrypt je query voor verzending"
+      - "Hij filtert rijen op jouw regio en blokkeert kolommen waarvoor jouw doel geen grondslag heeft"
+      - "Hij maakt de query sneller"
+      - "Hij stuurt logs naar OpenSearch"
+    correct: 1
+    explain: "OPA controleert per query of jouw rol + doelbinding de gevraagde kolommen mag zien, en past automatisch een regio-filter toe."
+  - q: "Waar vind je de definitie van een kolom als je niet zeker weet wat ‘arbeidsongeschiktheidsklasse’ betekent?"
+    options:
+      - "In de Trino-query zelf"
+      - "In Apache Superset onder Datasets"
+      - "In OpenMetadata, op de tabel-pagina onder Schema/Glossary"
+      - "In Airflow"
+    correct: 2
+---
+
+Welkom. Deze module is je startpunt op het UWV Reference Data Platform.
+Doel: aan het einde weet je *waar* je werkt, *wat* je mag en *waarom* het zo
+is georganiseerd.
+
+## Wat is dit platform?
+
+Een Kubernetes-native data-stack die ruwe brondata in vier zones beheert:
+
+- **bronze** — ruwe data zoals binnengekomen, met PII;
+- **silver** — geconformeerd en gevalideerd;
+- **gold** — gemodelleerde marts per use case (UC-01 t/m UC-10);
+- **sensitive** — apart afgeschermd voor sociaal-medische dossiers (Wajong).
+
+Jij werkt nooit op bronze. Je werkt op `silver.wia` (de eigen aanvragen)
+en `gold.uc01_wia_funnel` (sturingsmart met voorraad, doorlooptijden,
+voorspelling).
+
+## Drie applicaties
+
+| Applicatie | Wanneer? |
+|---|---|
+| **Superset** | Dagelijks — dashboards en SQL-Lab voor ad-hoc analyses |
+| **Trino** | Soms — directe queries via DBeaver wanneer Superset te beperkt is |
+| **OpenMetadata** | Bij twijfel — kolomdefinities, eigenaren, lineage, glossary |
+
+Je logt één keer in via Keycloak. SSO regelt dat je in elke applicatie
+direct binnenkomt. MFA is verplicht — TOTP-app instellen bij eerste login.
+
+## Wat zie je wel, wat zie je niet?
+
+Drie regels die je altijd moet kennen:
+
+1. **Regio-filter.** Trino past automatisch een filter toe op `regio_code`.
+   Je ziet alleen je eigen regio, ook als je het filter weglaat. Geen workaround.
+2. **PII zichtbaar binnen doel.** Je doelbinding is *uitkering / behandeling /
+   reïntegratie*. Daarvoor mag je BSN, naam, adres zien. Voor andere doelen niet.
+3. **Geen bronze, geen sensitive.** Geen JIT-uitzondering: dit zijn rolgrenzen.
+
+Wie wat ook wil zien dat hier niet bij past — bel de data-steward, niet de admin.
+
+## Compliance — waar dit op rust
+
+De toegangsregels komen niet uit een willekeurige config: ze volgen uit de
+[architectuur](https://fresh-minds.github.io/FreshStackableDataPlatform/architectuur/) en de
+[compliance-mapping](https://fresh-minds.github.io/FreshStackableDataPlatform/compliance-mapping/). Concreet:
+
+- **AVG art. 6 lid 1e** als grondslag (publieke taak — beoordeling WIA);
+- **Doelbinding** in OPA-policies — zie [ADR-0003](https://fresh-minds.github.io/FreshStackableDataPlatform/adr/0003-opa-as-trino-authz/);
+- **Audit** — elke query gelogd in OpenSearch met je gebruikersnaam, tijdstip, doel.
+
+Audit-logs zijn niet bedoeld om je te controleren maar om — wanneer ooit nodig —
+te kunnen bewijzen dat het platform binnen de wet draaide.
+
+## Volgende stap
+
+Open eerst het WIA-funnel dashboard hieronder. Dat is wat je elke ochtend
+gaat zien. Module 2 (Practitioner) doorloopt UC-01 van vraagtekst tot beslissing.

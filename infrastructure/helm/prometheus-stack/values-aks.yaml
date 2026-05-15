@@ -1,0 +1,18 @@
+# kube-prometheus-stack — AKS-specific overrides.
+prometheus:
+  prometheusSpec:
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "managed-csi"
+
+grafana:
+  persistence:
+    storageClassName: "managed-csi"
+
+  ingress:
+    hosts:
+      - grafana.eu-sovereigndataplatform.com
+    tls:
+      - hosts: [grafana.eu-sovereigndataplatform.com]
+        secretName: grafana-tls

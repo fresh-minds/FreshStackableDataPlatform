@@ -8,16 +8,38 @@ source:
     config:
       type: Profiler
       profileSample: 30  # 30% sample voor scaled-down k3d
-      generateSampleData: false
+      # `generateSampleData` is verwijderd in OM 1.6+
       schemaFilterPattern:
         includes:
+          # Bronze + silver staging
           - polisadm
           - persoon
           - ww
           - wia
+          - zw
+          - wajong
+          - crm
+          - fez
+          - klantcontact
+          - intermediate
+          # Gold UC marts
+          - uc01_wia_funnel
+          - uc04_tw_eligibility
+          - uc05_client_360
+          - uc06_lastprognose
+          - uc07_dq_polisadm
+          - uc09_reint_effect
+          - uc11_klantreis
+          - uc_klant_tev
+          - dq_overview
 processor:
   type: orm-profiler
-  config: {}
+  config:
+    # Auto-PII-classification — OM scant kolom-samples voor BSN-/IBAN-/
+    # email-/telefoon-patronen en past PII.* tags automatisch toe
+    # (improvements 9.2). Voorgestelde tags moeten in de UI bevestigd
+    # worden voordat ze effectief worden (false-positive control).
+    processPiiSensitive: true
 sink:
   type: metadata-rest
   config: {}

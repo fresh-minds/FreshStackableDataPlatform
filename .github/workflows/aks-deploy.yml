@@ -1,0 +1,184 @@
+# Handmatige deploy van de UWV-platform main-branch naar het AKS-cluster.
+#
+# Triggert alleen op:
+#   - workflow_dispatch (handmatig vanuit Actions-tab of `gh workflow run`)
+#
+# Wat doet 'ie:
+#   1. Checkout van de gekozen ref (default main).
+#   2. Azure-login met service principal credentials (zelfde SP als
+#      scripts/azure/env.sh — sp_stackable).
+#   3. `az aks get-credentials` → kubeconfig voor uwv-platform-aks
+#      (in dev-stackable-rg). Identiek aan scripts/azure/aks-context.sh.
+#   4. (optioneel) `make aks-deploy` — re-apply alle platform-manifests
+#      onder platform/00-..15- (kustomize/kubectl, idempotent) plus de
+#      AKS-only post-deploy patches (CoreDNS, Keycloak realm scopes,
+#      .cloud redirect-URIs, MinIO restart).
+#   5. (optioneel) `make aks-portal-publish` — Astro portal builden en als
+#      binaryData-ConfigMap shippen (geen image-registry nodig, zie
+#      scripts/azure/portal-publish.sh). Roll de platform-landing
+#      Deployment zodat de initContainer de nieuwe tarball uitpakt.
+#   6. (optioneel) `make aks-smoke` — alle tests/smoke/*.sh runs tegen
+#      de AKS-context. Faalt de pipeline bij eerste rode test.
+#
+# Vereiste GitHub-repo-secrets (Settings → Secrets and variables → Actions):
+#   AZURE_CREDENTIALS  — JSON met clientId/clientSecret/subscriptionId/tenantId
+#                        van de sp_stackable service-principal. Voorbeeld:
+#                          {
+#                            "clientId":       "7e14e768-…",
+#                            "clientSecret":   "<rotated-secret>",
+#                            "subscriptionId": "4910a5a6-…",
+#                            "tenantId":       "fedcef2f-…"
+#                          }
+#                        Zie scripts/azure/env.sh.example voor de waardes.
+#
+# NB: het AKS-cluster moet draaien (`make aks-start` als 'ie gestopt is)
+# en de API-server moet bereikbaar zijn vanaf GitHub-hosted runners. De
+# huidige terraform (infrastructure/azure/terraform/main.tf) zet geen
+# authorized_ip_ranges → public endpoint, dus dat zit goed.
+name: aks-deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch of SHA om te deployen'
+        required: false
+        default: 'main'
+      apply_platform:
+        description: 'Run `make aks-deploy` (platform manifests + post-patches)'
+        type: boolean
+        default: true
+      publish_portal:
+        description: 'Run `make aks-portal-publish` (build + ship portal bundle)'
+        type: boolean
+        default: true
+      run_smoke:
+        description: 'Run `make aks-smoke` (tests/smoke/*.sh)'
+        type: boolean
+        default: true
+      smoke_required:
+        description: 'Maak smoke-failures fataal voor de pipeline (uit = warning-only)'
+        type: boolean
+        default: true
+
+# Eén AKS-deploy tegelijk. Niet cancellen — een half afgebroken apply
+# kan het cluster in een rare staat achterlaten. Queue liever.
+concurrency:
+  group: aks-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read   # nodig om images van ghcr.io te pullen via GITHUB_TOKEN
+                   # (tests/smoke/04-dbt-parse.sh trekt ghcr.io/dbt-labs/dbt-trino)
+  # id-token: write is hier niet nodig (we authenticeren met SP-secret,
+  # niet met OIDC-federated-credentials). Zet 'm alleen aan als we later
+  # naar OIDC migreren.
+
+env:
+  AKS_RESOURCE_GROUP: dev-stackable-rg
+  AKS_CLUSTER_NAME:   uwv-platform-aks
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repo @ ${{ inputs.ref }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Python (voor render-trino-catalogs.py)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyYAML (vereist door render-trino-catalogs.py)
+        run: pip install pyyaml
+
+      - name: Setup Node.js (voor portal-build)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: portal/package-lock.json
+
+      - name: Install OPA CLI (voor tests/smoke/11-uc11-klantreis.sh)
+        # 11-uc11-klantreis.sh draait `opa test` op opa-policies-src/. De
+        # ubuntu-runner heeft 'm niet preinstalled. Static binary uit de
+        # officiële release; geen version-pin (smoke is geen reproducibility-
+        # gevoelig — pin pas als we tests aan OPA-versie gaan koppelen).
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/opa \
+            https://github.com/open-policy-agent/opa/releases/latest/download/opa_linux_amd64_static
+          sudo chmod +x /usr/local/bin/opa
+          opa version
+
+      - name: Login to ghcr.io (voor tests/smoke/04-dbt-parse.sh)
+        # 04-dbt-parse.sh doet `docker pull ghcr.io/dbt-labs/dbt-trino:1.9.0`.
+        # GitHub-hosted runners hebben geen ghcr-auth out-of-the-box → 'denied'
+        # op de manifest pull. GITHUB_TOKEN met `packages: read` permission
+        # is genoeg voor anonymous-readable public packages.
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Azure login (service principal)
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get AKS kubeconfig
+        run: |
+          az aks get-credentials \
+            --resource-group "$AKS_RESOURCE_GROUP" \
+            --name "$AKS_CLUSTER_NAME" \
+            --overwrite-existing
+          # aks-deploy.sh / aks-portal-publish.sh checken op context-naam.
+          kubectl config current-context
+          kubectl get nodes -o wide
+
+      - name: Apply platform manifests (make aks-deploy)
+        if: ${{ inputs.apply_platform }}
+        run: make aks-deploy
+
+      - name: Build + publish portal (make aks-portal-publish)
+        if: ${{ inputs.publish_portal }}
+        run: make aks-portal-publish
+
+      - name: Smoke tests (make aks-smoke)
+        # smoke_required toggle:
+        #   true  → faalt de pipeline op rode smoke (default, strict mode)
+        #   false → smoke-failures worden ::warning:: annotaties, pipeline blijft groen.
+        # Reden voor de toggle: het AKS-cluster is geen 100% gezonde state
+        # (opensearch-dashboards, dbt-manifest-render, OPA cold-start), dus
+        # voor een 'gewone deploy' wil je soms door, voor een release-deploy
+        # wil je hard falen. Default = strict.
+        if: ${{ inputs.run_smoke }}
+        run: |
+          if make aks-smoke; then
+            echo "Smoke tests groen."
+          elif [[ "${{ inputs.smoke_required }}" == "true" ]]; then
+            echo "::error title=Smoke tests faalden::Een of meer tests/smoke/*.sh exited non-zero. Zie log + dump hieronder."
+            exit 1
+          else
+            echo "::warning title=Smoke tests faalden (niet-fataal)::smoke_required=false → pipeline blijft groen. Inspect de log voor details."
+          fi
+
+      - name: Dump pod-status bij failure
+        if: failure()
+        run: |
+          echo "::group::Pods across UWV namespaces"
+          for ns in uwv-platform uwv-auth uwv-data uwv-meta ingress-nginx; do
+            echo "--- $ns ---"
+            kubectl -n "$ns" get pods -o wide 2>/dev/null || true
+          done
+          echo "::endgroup::"
+          echo "::group::Recent events (laatste 50)"
+          kubectl get events --all-namespaces \
+            --sort-by=.lastTimestamp 2>/dev/null \
+            | tail -n 50 || true
+          echo "::endgroup::"

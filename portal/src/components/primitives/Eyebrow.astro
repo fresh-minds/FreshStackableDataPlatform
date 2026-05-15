@@ -1,0 +1,40 @@
+---
+// Eyebrow: 11px mono, uppercase, ink-3, optionally prefixed with a short rule.
+// Sits above titles and section headings. Examples:
+//   <Eyebrow>01 · Dataflow</Eyebrow>
+//   <Eyebrow rule>Reference Implementation · v2.4.1</Eyebrow>
+
+interface Props {
+  rule?: boolean;
+  as?: 'span' | 'p' | 'div';
+  class?: string;
+}
+
+const { rule = false, as: As = 'span', class: className = '' } = Astro.props;
+const klass = ['eyebrow', rule ? 'eyebrow--rule' : '', className].filter(Boolean).join(' ');
+---
+<As class={klass}><slot /></As>
+
+<style is:global>
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: var(--text-eyebrow);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: var(--ink-3);
+    font-weight: var(--weight-medium);
+    line-height: 1.4;
+    font-feature-settings: 'tnum';
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .eyebrow--rule::before {
+    content: '';
+    display: inline-block;
+    width: 22px;
+    height: 1px;
+    background: currentColor;
+    opacity: 0.5;
+  }
+</style>

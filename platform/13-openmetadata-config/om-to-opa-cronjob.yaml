@@ -1,0 +1,108 @@
+# Reverse Metadata sync — OM tags → OPA bundle data.json.
+#
+# OM 1.5 heeft geen native Reverse Metadata (community-feature pas vanaf
+# 1.7+). Deze CronJob implementeert het pad zelf: leest Doelbinding.* tags
+# van Trino-tabellen in OM en updatet `uwv_role_mappings.resource_purposes`
+# in de opa-trino-bundle ConfigMap. Stackable's OPA-operator herlaadt
+# automatisch via de bundle-label.
+#
+# Sluit het lint: dbt-meta → enricher → OM → OPA → Trino-row/col-policy.
+#
+# Cross-namespace RBAC: CronJob draait in uwv-meta, patcht configmap in
+# uwv-platform. ServiceAccount `om-to-opa-sync` heeft een Role in beide NS:
+#   - uwv-platform: configmaps/get,patch (om de bundle te updaten)
+#   - kube-API-discovery wordt door ServiceAccount-token gedekt.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: om-to-opa-sync
+  namespace: uwv-meta
+  labels:
+    uwv.nl/component: om-to-opa-sync
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: om-to-opa-sync-cm
+  namespace: uwv-platform
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["opa-trino-bundle"]
+    verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: om-to-opa-sync-cm
+  namespace: uwv-platform
+subjects:
+  - kind: ServiceAccount
+    name: om-to-opa-sync
+    namespace: uwv-meta
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: om-to-opa-sync-cm
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: openmetadata-to-opa-sync
+  namespace: uwv-meta
+  labels:
+    uwv.nl/component: om-to-opa-sync
+spec:
+  # Elke 15 min — Doelbinding-tags zijn relatief stabiel (komen uit dbt-meta)
+  # maar deze cadence vangt nieuwe marts snel op zonder OPA-flapping.
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            uwv.nl/component: om-to-opa-sync
+        spec:
+          serviceAccountName: om-to-opa-sync
+          restartPolicy: OnFailure
+          containers:
+            - name: sync
+              image: openmetadata/ingestion:1.5.7
+              command: ["bash", "-c"]
+              args:
+                - "python /config/om_to_opa_sync.py"
+              env:
+                - name: OM_URL
+                  value: "http://openmetadata.uwv-meta.svc.cluster.local:8585"
+                - name: OM_JWT_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: openmetadata-admin
+                      key: jwtToken
+                - name: OM_TRINO_SERVICE
+                  value: "uwv-trino"
+                - name: OPA_CONFIGMAP_NS
+                  value: "uwv-platform"
+                - name: OPA_CONFIGMAP_NAME
+                  value: "opa-trino-bundle"
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+          volumes:
+            - name: config
+              configMap:
+                name: openmetadata-uwv-config

@@ -1,0 +1,33 @@
+---
+import ProgressDot from './ProgressDot.astro';
+import { levelMeta, type Level } from '../../data/learn-tracks';
+
+interface Props {
+  href: string;
+  title: string;
+  level: Level;
+  duration: string;
+  moduleKey: string;
+  certifies?: boolean;
+}
+
+const { href, title, level, duration, moduleKey, certifies } = Astro.props;
+const lvl = levelMeta(level);
+---
+<li>
+  <a class="module-row" href={href}>
+    <ProgressDot moduleKey={moduleKey} />
+    <span class="module-body">
+      <span class="module-title">{title}</span>
+      <span class="module-meta">
+        {lvl.title}
+        {certifies && <> · <strong>certificaat</strong></>}
+      </span>
+    </span>
+    <span class="module-duration">{duration}</span>
+  </a>
+</li>
+
+<style>
+  .module-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+</style>

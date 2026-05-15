@@ -1,0 +1,18 @@
+# kube-prometheus-stack — kind-specific overrides.
+prometheus:
+  prometheusSpec:
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard
+
+grafana:
+  persistence:
+    storageClassName: standard
+
+  ingress:
+    hosts:
+      - grafana.uwv-platform.local
+    tls:
+      - hosts: [grafana.uwv-platform.local]
+        secretName: grafana-tls

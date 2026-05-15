@@ -4,6 +4,11 @@
 # Wordt via init-Job met POST /api/v1/glossaries en /api/v1/glossaryTerms toegepast.
 #
 # Productie zou de officiële CGM-yaml uit het Data Office repo halen.
+#
+# Reviewers/Owners per term — gebruikt door de Request Access-flow (ADR-0008).
+# Default valt terug op `glossary.reviewers` + `glossary.owner` als de term
+# zelf niets specifieks zet. dataOwner per term scopet aanvragen op het
+# verantwoordelijke domein.
 
 glossary:
   name: CGM
@@ -46,6 +51,11 @@ terms:
   - name: Diagnose
     displayName: "Diagnose"
     description: "Medische diagnose — bijzonder PG (art. 9 AVG). Sensitive Vault."
+    # Medisch art. 9 AVG — review door arbeidsdeskundige naast data.steward.
+    dataOwner: wajong.arbeidsdeskundige
+    reviewers:
+      - wajong.arbeidsdeskundige
+      - data.steward
 
   # Re-integratie
   - name: Traject
@@ -75,29 +85,61 @@ terms:
     displayName: "Ontslag"
     description: "Beëindiging van een Dienstverband."
 
-  # Uitkering / financieel
+  # Uitkering / financieel — FEZ-domein
   - name: Uitkering
     displayName: "Uitkering"
     description: "Periodieke betaling aan Cliënt op grond van een wet (WW/WIA/Wajong/ZW/TW)."
+    dataOwner: fez.analist
   - name: Inkomen
     displayName: "Inkomen"
     description: "Bruto inkomen per periode (uit IKV's)."
+    dataOwner: fez.analist
   - name: Huishouden
     displayName: "Huishouden"
     description: "Huishoudsamenstelling (uit BRP-spiegel) voor TW-toets."
   - name: Aggregaat
     displayName: "Aggregaat"
     description: "Geanonimiseerde geaggregeerde uitkeringslast per wet × regio × periode (UC-06)."
+    dataOwner: fez.analist
 
   # CRM
   - name: Contact
     displayName: "Klantcontact"
     description: "Contactgebeurtenis tussen Cliënt en UWV (telefoon, balie, beeldbellen, mail)."
+    dataOwner: crm.medewerker
   - name: Kanaal
     displayName: "Kanaal"
     description: "Communicatiekanaal — telefoon, balie, beeldbellen, werkmap_bericht, mail."
+    dataOwner: crm.medewerker
 
   # Doelgroep
   - name: Doelgroepregister
     displayName: "Doelgroepregister Banenafspraak"
     description: "Indicaties art. 38d Wfsv."
+
+  # Cross-domein klantreis (UC-11)
+  - name: Klantreis
+    displayName: "Integrale Klantreis"
+    description: |
+      Cross-domein aggregaat: chronologische reeks van fase-overgangen van een
+      cliënt door UWV-wetten heen (werknemer → ziek → WIA → re-integratie → ...).
+      Afgeleid uit events in IKV, WW, ZW, WIA, Wajong en Contact. Eigenaar is
+      divisie_klantcontact; OPA filtert per rol op kolom + rij.
+    relatedTerms: [Client, IKV, Aanvraag, Beoordeling, Uitkering, Contact, Traject, Werkhervatting]
+    dataOwner: crm.medewerker
+    reviewers:
+      - crm.medewerker
+      - data.steward
+  - name: Fase
+    displayName: "Klantreis-fase"
+    description: |
+      Periode in de klantreis waarin de cliënt in een bepaalde status
+      verkeert (werknemer, ziek, ww_aanvraag, ww_uitkering, wia_in_behandeling,
+      wga, iva, wajong_actief, tussen_dienstverband).
+    relatedTerms: [Klantreis]
+  - name: EventStream
+    displayName: "Event-stream"
+    description: |
+      Tijdgeordende reeks van cliënt-gebeurtenissen, geünificeerd over
+      domeinen. Basis voor klantreis-tijdlijn-visualisaties.
+    relatedTerms: [Klantreis, Contact]
