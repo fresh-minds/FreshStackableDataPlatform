@@ -28,6 +28,24 @@ mkdir -p "$ROOT/platform/08-spark/scripts"
 cp "$ROOT/spark-jobs/streaming_kafka_to_lakehouse.py" "$ROOT/platform/08-spark/scripts/"
 cp "$ROOT/spark-jobs/lib/lakehouse_io.py"             "$ROOT/platform/08-spark/scripts/"
 
+# Bootstrap dev-placeholder secrets for layers that need them. Same pattern
+# as the om-bridge target in the Makefile: only generate if missing, so a
+# re-run never clobbers real values. Skipping these would crash 17-multica
+# on first apply (Postgres + backend deployments reference the secrets).
+log "Multica: ensure dev-placeholder secrets exist (idempotent)"
+kubectl create namespace uwv-platform --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+if ! kubectl -n uwv-platform get secret multica-postgres >/dev/null 2>&1; then
+  PG_PW=$(openssl rand -hex 24)
+  kubectl -n uwv-platform create secret generic multica-postgres \
+    --from-literal=POSTGRES_PASSWORD="$PG_PW"
+  kubectl -n uwv-platform create secret generic multica-backend \
+    --from-literal=JWT_SECRET="$(openssl rand -hex 32)" \
+    --from-literal=DATABASE_URL="postgres://multica:${PG_PW}@multica-postgres:5432/multica?sslmode=disable"
+  ok "multica-postgres + multica-backend secrets seeded (dev values)"
+else
+  log "multica secrets already present — skipping seed"
+fi
+
 # Volgorde van applicatie. Per directory een README.md (TODO fase 2+).
 LAYERS=(
   "platform/00-namespaces"
@@ -47,11 +65,11 @@ LAYERS=(
   "platform/14-monitoring"
   "platform/15-portal"
   "platform/16-jupyter"
+  "platform/17-multica"
 )
-# NB: 17-multica and 18-om-access-bridge have separate deploy flows
-# (`make bootstrap-multica-host`, `make deploy-om-bridge`) because they
-# need extra setup (host-only DNS, OM JWT seeding). Their AKS overlays
-# in platform-overlays/aks/ are picked up by those flows when MODE=aks.
+# NB: 18-om-access-bridge still has a separate flow (`make deploy-om-bridge`)
+# because it needs the OM JWT to be seeded into its Secret before deploy,
+# which only makes sense after OpenMetadata is up.
 
 for layer in "${LAYERS[@]}"; do
   if [[ ! -d "$ROOT/$layer" ]]; then

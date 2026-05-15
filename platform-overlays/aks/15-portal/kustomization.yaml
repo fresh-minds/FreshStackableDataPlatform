@@ -1,0 +1,32 @@
+# AKS overlay for platform/15-portal.
+#
+# On AKS the chart-style `portal` Deployment (k3d-only `uwv-platform/portal:dev`
+# image) is replaced by `platform-landing` — same Astro static site but
+# served via a tarball ConfigMap + public nginx image, so no registry-push
+# step is needed. The platform-public Ingress (LE-issued cert, public apex
+# + www + platform.* hosts) is moved in here from public-ingresses.yaml so
+# the AKS portal lives in one place.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/15-portal
+  - platform-landing.yaml
+  - platform-public.yaml
+patches:
+  - path: delete-chart-portal.yaml
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: portal
+  - path: delete-chart-service.yaml
+    target:
+      version: v1
+      kind: Service
+      name: portal
+  - path: delete-chart-ingress.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: Ingress
+      name: portal

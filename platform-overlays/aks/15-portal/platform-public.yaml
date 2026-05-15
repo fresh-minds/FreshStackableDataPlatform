@@ -1,0 +1,40 @@
+# Public-facing TLS + Ingress for the platform-landing Deployment.
+# Moved from infrastructure/azure/public-ingresses.yaml — keeps the AKS
+# portal's full shape in one place (alongside the Deployment that backs it).
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: platform-public-tls
+  namespace: uwv-platform
+spec:
+  secretName: platform-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: platform.eu-sovereigndataplatform.com
+  dnsNames:
+    - platform.eu-sovereigndataplatform.com
+    - eu-sovereigndataplatform.com
+    - www.eu-sovereigndataplatform.com
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: platform-public
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - platform.eu-sovereigndataplatform.com
+        - eu-sovereigndataplatform.com
+        - www.eu-sovereigndataplatform.com
+      secretName: platform-public-tls
+  rules:
+    - host: platform.eu-sovereigndataplatform.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: platform-landing, port: { number: 80 } } } }] }
+    - host: eu-sovereigndataplatform.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: platform-landing, port: { number: 80 } } } }] }
+    - host: www.eu-sovereigndataplatform.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: platform-landing, port: { number: 80 } } } }] }

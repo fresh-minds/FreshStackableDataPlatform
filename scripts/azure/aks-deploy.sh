@@ -22,6 +22,19 @@ require_context
 
 bash "$ROOT/scripts/deploy-platform.sh" --mode=aks
 
+# ---- AKS-only: sweep chart-style portal leftovers ----
+# platform-overlays/aks/15-portal/ uses kustomize `$patch: delete` to
+# remove the chart-style `portal` Deployment/Service/Ingress from the
+# rendered output — but `kubectl apply -k` only creates/updates, never
+# deletes resources missing from the manifest. If a prior deploy left
+# the chart-style portal in place (e.g. the cluster was first deployed
+# on an older revision without the overlay), explicitly remove it here.
+# Idempotent (`--ignore-not-found`).
+log "AKS-post: remove chart-style portal leftovers (platform-landing owns the public portal on AKS)"
+kubectl -n uwv-platform delete deployment portal --ignore-not-found
+kubectl -n uwv-platform delete service portal --ignore-not-found
+kubectl -n uwv-platform delete ingress portal --ignore-not-found
+
 # ---- AKS-only: ensure public-domain DNS records exist ----
 # Every *.eu-sovereigndataplatform.com subdomain needs a CNAME → apex (which
 # is an A record at the ingress static IP, set up by terraform/aks-up).
@@ -31,7 +44,7 @@ bash "$ROOT/scripts/deploy-platform.sh" --mode=aks
 DNS_RG="${PUBLIC_DNS_RG:-ai-trial-rg}"
 DNS_ZONE="${PUBLIC_DNS_ZONE:-eu-sovereigndataplatform.com}"
 if command -v az >/dev/null 2>&1 && az network dns zone show -g "$DNS_RG" -n "$DNS_ZONE" >/dev/null 2>&1; then
-  log "AKS-post: ensure CNAMEs for all 13 public subdomains in $DNS_RG/$DNS_ZONE"
+  log "AKS-post: ensure CNAMEs for all public subdomains in $DNS_RG/$DNS_ZONE"
   for sub in platform www keycloak airflow grafana prometheus minio minio-api \
              superset dbt-docs openmetadata opensearch nifi trino \
              spark jupyter multica; do
