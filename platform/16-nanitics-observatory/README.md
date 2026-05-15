@@ -276,6 +276,29 @@ To go live:
 3. Flip `MULTICA_DRY_RUN: "false"` in `configmap.yaml` and roll the
    deployment.
 
+### Scheduled runs (CronJob)
+
+`cronjob-watcher.yaml` deploys a CronJob that POSTs to `/run/watcher`
+every 30 min. **It ships suspended.** Each tick costs a real Foundry
+call, so the operator flips it on once dry-run output looks right:
+
+```sh
+# Inspect the dry-run loop manually first.
+kubectl -n uwv-platform create job --from=cronjob/nanitics-watcher-cron \
+  watcher-manual-$(date +%s)
+kubectl -n uwv-platform logs -l job-name=watcher-manual-... --tail=200
+
+# Once happy, enable the schedule.
+kubectl -n uwv-platform patch cronjob nanitics-watcher-cron \
+  -p '{"spec":{"suspend":false}}'
+```
+
+The cron body lives in ConfigMap `nanitics-watcher-cron-body` — tweak
+the investigation prompt by editing `body.json` and re-applying. The
+CronJob has `concurrencyPolicy: Forbid`, so a long-running ReAct loop
+is not overlapped by the next tick; the 30-min cadence is the natural
+rate limiter rather than a hard per-day cap.
+
 ### What's deliberately not in this build
 
 - **No autonomous fixes** — the watcher only writes Multica tasks. Every
@@ -283,7 +306,9 @@ To go live:
   → coding agent opens PR → human merges PR`. Two human gates by design.
 - **No K8s write verbs** — the ClusterRole in `rbac.yaml` grants only
   `events: get/list/watch`. The watcher cannot mutate cluster state.
-- **No cron yet** — runs are manual via curl until slice 4 adds a CronJob.
+- **No hard per-day task cap** — the cron interval is the rate limiter.
+  If a tight budget becomes necessary, have `file_multica_task` consult
+  Multica for "tasks filed by me in last 24h" and short-circuit.
 - **No distributed traces** — Tempo (slice 3) is intentionally deferred;
   logs + metrics + events get ~80% of the signal.
 

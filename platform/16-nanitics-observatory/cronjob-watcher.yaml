@@ -1,0 +1,87 @@
+# Scheduled platform-watcher runs.
+#
+# The CronJob ships SUSPENDED. Each run costs a real Foundry call —
+# operators flip suspend off once the dry-run results in `kubectl logs`
+# look right and Multica's `platform-watcher@uwv` user has been
+# provisioned. To enable:
+#
+#   kubectl -n uwv-platform patch cronjob nanitics-watcher-cron \
+#     -p '{"spec":{"suspend":false}}'
+#
+# Cadence: every 30 min by default. concurrencyPolicy=Forbid means a
+# long-running ReAct loop will not be overlapped by the next tick — the
+# cron interval is the natural rate limiter, not a strict per-day cap.
+# If a tight per-day budget becomes necessary, switch the watcher's
+# file_multica_task to consult Multica for "tasks filed by me in last
+# 24h" and short-circuit when over budget.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nanitics-watcher-cron-body
+  namespace: uwv-platform
+data:
+  # Body POSTed to /run/watcher by each cron tick. Kept in a ConfigMap so
+  # operators can tweak the prompt without rebuilding the image or
+  # editing the CronJob spec.
+  body.json: |
+    {
+      "task": "Investigate the currently firing PrometheusRule alerts on the platform. Call list_firing_alerts first; if any alerts are firing, pick the single most severe one, dedup using its Alertmanager fingerprint, and if it is a new issue file ONE Multica task in the platform-ops workspace. If nothing is firing, optionally scan recent K8s Warning events for hot pods. Output one of: 'task filed: <id>', 'already tracked: <id>', or 'no issue found: <one-line reason>'."
+    }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nanitics-watcher-cron
+  namespace: uwv-platform
+spec:
+  suspend: true
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.8.0
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  curl -fsS \
+                    -H 'Content-Type: application/json' \
+                    --max-time 540 \
+                    --data @/etc/watcher/body.json \
+                    http://nanitics-observatory.uwv-platform.svc.cluster.local/run/watcher \
+                    | tee /dev/stderr
+              volumeMounts:
+                - name: body
+                  mountPath: /etc/watcher
+                  readOnly: true
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits:   { cpu: 100m, memory: 64Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+          volumes:
+            - name: body
+              configMap:
+                name: nanitics-watcher-cron-body
+                items:
+                  - key: body.json
+                    path: body.json
