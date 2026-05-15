@@ -218,6 +218,7 @@ patch_uris openmetadata 'https://openmetadata.uwv-platform.cloud/*' 'https://ope
 patch_uris nifi 'https://nifi.uwv-platform.cloud/*' 'https://nifi.uwv-platform.cloud:8443/*'
 patch_uris minio 'https://minio-console.uwv-platform.cloud:8443/oauth_callback' 'https://minio-console.uwv-platform.cloud:8443/*'
 patch_uris portal 'https://platform.uwv-platform.cloud:8443/oauth2/callback' 'https://platform.uwv-platform.cloud/oauth2/callback'
+patch_uris jupyter 'https://jupyter.uwv-platform.cloud/hub/oauth_callback' 'https://jupyter.uwv-platform.cloud:8443/hub/oauth_callback'
 
 # Also register the eu-sovereigndataplatform.com redirects (current public
 # DNS — the .cloud variants above are kept for backward compat).
@@ -228,6 +229,7 @@ patch_uris nifi 'https://nifi.eu-sovereigndataplatform.com/*'
 patch_uris trino 'https://trino.eu-sovereigndataplatform.com/*' 'https://trino.eu-sovereigndataplatform.com/oauth2/callback'
 patch_uris minio 'https://minio.eu-sovereigndataplatform.com/oauth_callback' 'https://minio.eu-sovereigndataplatform.com/*'
 patch_uris portal 'https://platform.eu-sovereigndataplatform.com/oauth2/callback' 'https://eu-sovereigndataplatform.com/oauth2/callback'
+patch_uris jupyter 'https://jupyter.eu-sovereigndataplatform.com/hub/oauth_callback'
 " >/dev/null 2>&1 || warn "  redirect-URI patch failed (browse Keycloak admin to fix manually)"
     log "  .cloud + .eu-sovereigndataplatform.com redirect URIs added (idempotent)"
   fi
