@@ -57,7 +57,7 @@ bootstrap: ## Installeer Helm-charts: cert-manager, MinIO, Postgres, Keycloak, S
 	bash scripts/bootstrap.sh --mode=$(MODE)
 
 .PHONY: deploy-platform
-deploy-platform: render-catalogs portal-image dbt-image jupyter-image ## Deploy alle platform-manifests onder platform/ (mode-aware)
+deploy-platform: render-catalogs portal-image dbt-image jupyter-image nanitics-image multica-daemon-image ## Deploy alle platform-manifests onder platform/ (mode-aware)
 	bash scripts/deploy-platform.sh --mode=$(MODE)
 
 .PHONY: deploy
@@ -86,6 +86,24 @@ jupyter-image: ## Build uwv-platform/jupyter-kernel:dev (JupyterLab + uwv_lab he
 	  kind) kind load docker-image uwv-platform/jupyter-kernel:dev --name $(CLUSTER_NAME) ;; \
 	esac
 	@echo "[jupyter-image] image gebouwd + geïmporteerd (mode=$(MODE))."
+
+.PHONY: nanitics-image
+nanitics-image: ## Build uwv-platform/nanitics-observatory:dev (FastAPI + nanitics SDK + watcher). Skipped voor aks.
+	@if [ "$(MODE)" = "aks" ]; then echo "[nanitics-image] mode=aks: skip — pull from registry (TODO: aks-nanitics-publish target)"; exit 0; fi
+	@case "$(MODE)" in \
+	  k3d)  bash platform/19-nanitics-observatory/build-and-load.sh ;; \
+	  kind) echo "[nanitics-image] MODE=kind not wired (build-and-load.sh imports via 'k3d image import'). Build manually with 'docker build ... && kind load ...'."; exit 1 ;; \
+	esac
+	@echo "[nanitics-image] image gebouwd + geïmporteerd (mode=$(MODE))."
+
+.PHONY: multica-daemon-image
+multica-daemon-image: ## Build uwv-platform/multica-daemon:dev (multica CLI + Codex bound to Foundry). Skipped voor aks.
+	@if [ "$(MODE)" = "aks" ]; then echo "[multica-daemon-image] mode=aks: skip — pull from registry (TODO: aks-multica-daemon-publish target)"; exit 0; fi
+	@case "$(MODE)" in \
+	  k3d)  bash platform/20-multica-daemon/build-and-load.sh ;; \
+	  kind) echo "[multica-daemon-image] MODE=kind not wired (build-and-load.sh imports via 'k3d image import'). Build manually with 'docker build ... && kind load ...'."; exit 1 ;; \
+	esac
+	@echo "[multica-daemon-image] image gebouwd + geïmporteerd (mode=$(MODE))."
 
 .PHONY: portal-publish-dbt-docs
 portal-publish-dbt-docs: dbt-docs-offline portal-image ## Genereer dbt-docs → bake in portal-image → rollout (k3d)

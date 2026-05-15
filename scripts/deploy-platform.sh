@@ -46,6 +46,24 @@ else
   log "multica secrets already present — skipping seed"
 fi
 
+# Out-of-band secrets for 19-nanitics-observatory and 20-multica-daemon.
+# These CANNOT be auto-seeded (Foundry key is the operator's Azure asset;
+# Multica PAT must be minted in the UI). Warn loudly if missing so the
+# operator knows the watcher / daemon pods will crash-loop until they
+# are provisioned — but don't fail the deploy, since the rest of the
+# platform comes up independently and the pods recover on their own
+# once the Secrets land.
+check_optional_secret() {
+  local name="$1" component="$2" hint="$3"
+  if ! kubectl -n uwv-platform get secret "$name" >/dev/null 2>&1; then
+    warn "${component}: Secret '${name}' not found — pod will crash-loop until provisioned. ${hint}"
+  fi
+}
+check_optional_secret "nanitics-azure-foundry" "19-nanitics-observatory" \
+  "See platform/19-nanitics-observatory/secret.yaml for the kubectl create command."
+check_optional_secret "multica-daemon-auth" "20-multica-daemon" \
+  "Mint a PAT in Multica UI (Settings → API Tokens), then platform/20-multica-daemon/secret-token.yaml has the kubectl recipe."
+
 # Volgorde van applicatie. Per directory een README.md (TODO fase 2+).
 LAYERS=(
   "platform/00-namespaces"
@@ -66,10 +84,17 @@ LAYERS=(
   "platform/15-portal"
   "platform/16-jupyter"
   "platform/17-multica"
+  "platform/19-nanitics-observatory"
+  "platform/20-multica-daemon"
 )
 # NB: 18-om-access-bridge still has a separate flow (`make deploy-om-bridge`)
 # because it needs the OM JWT to be seeded into its Secret before deploy,
 # which only makes sense after OpenMetadata is up.
+#
+# 19-nanitics-observatory and 20-multica-daemon land here despite needing
+# out-of-band secrets, because the secrets can't be auto-seeded (operator
+# decisions) and the pods give clear error messages while waiting. The
+# check_optional_secret calls above surface the warning at deploy time.
 
 for layer in "${LAYERS[@]}"; do
   if [[ ! -d "$ROOT/$layer" ]]; then
