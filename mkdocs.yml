@@ -147,6 +147,8 @@ markdown_extensions:
 # omdat we wel docs/README.md (repo) én docs/index.md (landing) willen.
 nav:
   - Home: index.md
+  - Onboarding:
+      - Overzicht: onboarding/index.md
   - Architectuur:
       - Overzicht: architectuur/index.md
       - Componenten: architectuur/componenten.md
