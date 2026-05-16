@@ -78,7 +78,22 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Check AKS cluster powerState
+        # Zelfde reden als aks-cd: cluster Stopped → kubectl no-such-host →
+        # smoke faalt zinloos. Skip met warning i.p.v. rood.
+        run: |
+          STATE=$(az aks show \
+            --resource-group "$AKS_RESOURCE_GROUP" \
+            --name "$AKS_CLUSTER_NAME" \
+            --query powerState.code -o tsv 2>/dev/null || echo "Unknown")
+          echo "Cluster powerState: $STATE"
+          if [[ "$STATE" != "Running" ]]; then
+            echo "::warning title=AKS cluster is $STATE::Smoke skipped — run \`make aks-start\` en re-trigger."
+            echo "SKIP_SMOKE=true" >> "$GITHUB_ENV"
+          fi
+
       - name: Get AKS kubeconfig
+        if: env.SKIP_SMOKE != 'true'
         run: |
           az aks get-credentials \
             --resource-group "$AKS_RESOURCE_GROUP" \
@@ -87,10 +102,11 @@ jobs:
           kubectl config current-context
 
       - name: Smoke tests (make aks-smoke)
+        if: env.SKIP_SMOKE != 'true'
         run: make aks-smoke
 
       - name: Dump pod-status bij failure
-        if: failure()
+        if: failure() && env.SKIP_SMOKE != 'true'
         run: |
           echo "::group::Pods across UWV namespaces"
           for ns in uwv-platform uwv-auth uwv-data uwv-meta ingress-nginx; do

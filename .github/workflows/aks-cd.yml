@@ -70,7 +70,26 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Check AKS cluster powerState
+        # Als `make aks-stop` / `make aks-hibernate` is gedraaid staat de API-
+        # server uit én verdwijnt de FQDN uit Azure-DNS → kubectl faalt met
+        # "no such host". Dan willen we de pipeline niet rood laten gaan;
+        # cluster bewust uit = "skip deploy", zichtbaar als ::warning::.
+        # Zet SKIP_DEPLOY=true en alle volgende steps no-op'en zichzelf.
+        id: power
+        run: |
+          STATE=$(az aks show \
+            --resource-group "$AKS_RESOURCE_GROUP" \
+            --name "$AKS_CLUSTER_NAME" \
+            --query powerState.code -o tsv 2>/dev/null || echo "Unknown")
+          echo "Cluster powerState: $STATE"
+          if [[ "$STATE" != "Running" ]]; then
+            echo "::warning title=AKS cluster is $STATE::Deploy skipped — run \`make aks-start\` (of \`make aks-wake\`) en re-trigger deze workflow."
+            echo "SKIP_DEPLOY=true" >> "$GITHUB_ENV"
+          fi
+
       - name: Get AKS kubeconfig
+        if: env.SKIP_DEPLOY != 'true'
         run: |
           az aks get-credentials \
             --resource-group "$AKS_RESOURCE_GROUP" \
@@ -80,13 +99,15 @@ jobs:
           kubectl get nodes -o wide
 
       - name: Apply platform manifests (make aks-deploy)
+        if: env.SKIP_DEPLOY != 'true'
         run: make aks-deploy
 
       - name: Build + publish portal (make aks-portal-publish)
+        if: env.SKIP_DEPLOY != 'true'
         run: make aks-portal-publish
 
       - name: Dump pod-status bij failure
-        if: failure()
+        if: failure() && env.SKIP_DEPLOY != 'true'
         run: |
           echo "::group::Pods across UWV namespaces"
           for ns in uwv-platform uwv-auth uwv-data uwv-meta ingress-nginx; do
