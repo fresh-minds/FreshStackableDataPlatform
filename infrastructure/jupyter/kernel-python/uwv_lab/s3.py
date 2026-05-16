@@ -15,6 +15,15 @@ from __future__ import annotations
 import os
 from typing import Any
 
+# delta-rs / object_store-rs reads SSL_CERT_FILE (not AWS_CA_BUNDLE) for the
+# trust store. The spawner exports UWV_CA_BUNDLE pointing at the mounted
+# combined CA — propagate it so `read_delta`/`write_delta` work against the
+# in-cluster HTTPS MinIO without manual SSL_CERT_FILE-juggling per notebook.
+_uwv_ca = os.environ.get("UWV_CA_BUNDLE")
+if _uwv_ca and os.path.isfile(_uwv_ca):
+    os.environ.setdefault("SSL_CERT_FILE", _uwv_ca)
+    os.environ.setdefault("AWS_CA_BUNDLE", _uwv_ca)
+
 
 def _endpoint() -> str:
     return os.environ.get("S3_ENDPOINT", "https://minio.uwv-platform.svc.cluster.local:9000")
