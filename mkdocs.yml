@@ -202,6 +202,7 @@ nav:
       - Context (NORA/AVG/BIO/AI Act): context-summary.md
   - Operations:
       - Runbook: runbook.md
+      - Deployment modes: deployment-modes.md
       - Security: security.md
       - Documentatie-gaps: documentation-gap-report.md
       - Roadmap & improvements: improvements.md
