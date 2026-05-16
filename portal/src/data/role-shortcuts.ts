@@ -21,11 +21,9 @@ export const shortcuts: Record<RoleId, Shortcut[]> = {
   ],
   ww_handhaver: [
     { title: 'WW Risk dashboard', hint: 'Risico-scores per dossier', component: 'superset', href: 'https://superset.uwv-platform.local:8443/dashboard/list/?filters=(slug:ww-risk)' },
-    { title: 'Trino: silver.ww + iban onmasked', hint: 'Bankrekening alleen voor handhavingsdoel', component: 'trino', href: 'https://trino.uwv-platform.local:8443' },
     { title: 'Lineage WW-funnel', hint: 'Bron → silver → gold', component: 'openmetadata', href: 'https://openmetadata.uwv-platform.local:8443/lineage/trino.gold.uc03_ww_risk' },
   ],
   wajong_arbeidsdeskundige: [
-    { title: 'Wajong Sensitive Vault', hint: '4-eyes check vereist', component: 'trino', href: 'https://trino.uwv-platform.local:8443' },
     { title: 'UC02 Wajong dashboard', hint: 'Reïntegratie-trajecten', component: 'superset', href: 'https://superset.uwv-platform.local:8443/dashboard/list/?filters=(slug:uc02-wajong)' },
     { title: 'Glossary: „participatie” termen', hint: 'Begrippen opéén plek', component: 'openmetadata', href: 'https://openmetadata.uwv-platform.local:8443/glossary' },
   ],
@@ -48,7 +46,6 @@ export const shortcuts: Record<RoleId, Shortcut[]> = {
   ],
   researcher: [
     { title: 'UWV Lab (notebooks)', hint: 'Jupyter + Trino + Delta — research op sandbox-data, versioneer met Git', component: 'jupyter', href: 'https://jupyter.uwv-platform.local:8443' },
-    { title: 'Sandbox-zone', hint: 'Gepseudonimiseerde panels voor onderzoek', component: 'trino', href: 'https://trino.uwv-platform.local:8443' },
     { title: 'Lineage UC-09', hint: 'Hoe het sandbox-panel is opgebouwd', component: 'openmetadata', href: 'https://openmetadata.uwv-platform.local:8443/lineage/trino.sandbox.uc09_research' },
   ],
   data_steward: [
@@ -58,10 +55,8 @@ export const shortcuts: Record<RoleId, Shortcut[]> = {
     { title: 'Glossary onderhouden', hint: 'Termen, eigenaars, classificaties', component: 'openmetadata', href: 'https://openmetadata.uwv-platform.local:8443/glossary' },
     { title: 'dbt docs — modellen & tests', hint: 'Statische export van dbt-projectdefinities', component: 'dbt-docs', href: '/dbt-docs.html' },
     { title: 'Notebook DQ-checks (UWV Lab)', hint: 'Scripted DQ via OpenMetadata-API in Jupyter', component: 'jupyter', href: 'https://jupyter.uwv-platform.local:8443' },
-    { title: 'Trino: profiler-queries', hint: 'Verkennen op kwaliteits-doel', component: 'trino', href: 'https://trino.uwv-platform.local:8443' },
   ],
   data_engineer: [
-    { title: 'NiFi flows', hint: 'Ingestion-pipelines bewerken', component: 'nifi', href: 'https://nifi.uwv-platform.local:8443' },
     { title: 'Airflow DAGs', hint: 'Batch- en dbt-runs', component: 'airflow', href: 'https://airflow.uwv-platform.local:8443' },
     { title: 'dbt docs — modellen & lineage', hint: 'Welk model leest welke source, welke tests draaien', component: 'dbt-docs', href: '/dbt-docs.html' },
     { title: 'UWV Lab (notebooks)', hint: 'Ad-hoc PySQL / Delta-rs op de lakehouse — git-backed', component: 'jupyter', href: 'https://jupyter.uwv-platform.local:8443' },

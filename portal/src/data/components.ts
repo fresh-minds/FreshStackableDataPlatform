@@ -84,7 +84,9 @@ export const components: PlatformComponent[] = [
     short: 'Visuele ingestion-flows — bronsystemen → Kafka.',
     purpose: 'Data uit UWV-bronsystemen ophalen en in het platform binnenbrengen.',
     icon: '/icons/brand/nifi.svg',
-    url: 'https://nifi.uwv-platform.local:8443',
+    // Flows worden as-code beheerd (process-group JSON, REST-import); de UI
+    // is geen onderdeel van de dagelijkse workflow. Geen klikbare link op /me.
+    url: null,
     prometheusJob: 'nifi',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
@@ -151,7 +153,9 @@ export const components: PlatformComponent[] = [
     short: 'SQL query-engine over Delta-lakehouse, met OPA-authorisatie.',
     purpose: 'Snel SQL draaien over de hele lakehouse — voor dbt-modellen én eindgebruikers.',
     icon: '/icons/brand/trino.svg',
-    url: 'https://trino.uwv-platform.local:8443',
+    // Eindgebruikers raken Trino via Superset, Jupyter, dbt of Airflow — niet
+    // via de Trino-UI zelf. Geen klikbare link op /me.
+    url: null,
     prometheusJob: 'trino',
     rolesUsing: [
       'wia_beoordelaar',
