@@ -27,14 +27,15 @@ platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache NiFi** | Flow-design, ingestion-routes | https://nifi.uwv-platform.local |
 | **Apache Airflow** | DAGs maken, runs monitoren | https://airflow.uwv-platform.local |
-| **Trino (DBeaver)** | Debug + dbt-runs vanaf je laptop | https://trino.uwv-platform.local |
 | **dbt CLI** | Lokaal of in CI | terminal |
 | **kubectl + k9s** | Spark-jobs, pod-status, Hive Metastore | terminal |
 | **Apache Superset** | Eigen build-dashboards reviewen | https://superset.uwv-platform.local |
 | **OpenMetadata** | Service-config, lineage publishing | https://openmetadata.uwv-platform.local |
 | **MinIO Console** | Bucket-debugging | https://minio.uwv-platform.local |
+
+- NiFi-flows worden as-code beheerd in `nifi-flows/templates/` en geïmporteerd via `kubectl port-forward` (zie `nifi-flows/templates/delta/README.md`).
+- dbt en Airflow benaderen Trino in-cluster; voor ad-hoc debug: `kubectl -n uwv-platform port-forward svc/uwv-trino-coordinator 8443:8443`.
 
 ---
 

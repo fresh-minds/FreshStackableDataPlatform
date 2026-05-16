@@ -17,7 +17,7 @@ self-signed certs). Zorg dat je `/etc/hosts` deze entries heeft (één regel
 volstaat — IP wijst naar de ingress-controller):
 
 ```
-127.0.0.1   platform.uwv-platform.local keycloak.uwv-platform.local airflow.uwv-platform.local superset.uwv-platform.local openmetadata.uwv-platform.local trino.uwv-platform.local minio.uwv-platform.local minio-console.uwv-platform.local nifi.uwv-platform.local grafana.uwv-platform.local prometheus.uwv-platform.local opensearch.uwv-platform.local
+127.0.0.1   platform.uwv-platform.local keycloak.uwv-platform.local airflow.uwv-platform.local superset.uwv-platform.local openmetadata.uwv-platform.local minio.uwv-platform.local minio-console.uwv-platform.local grafana.uwv-platform.local prometheus.uwv-platform.local opensearch.uwv-platform.local
 ```
 
 Cluster up? Check via `kubectl get ingress -A` of:
@@ -54,9 +54,7 @@ Wachtwoorden in [`infrastructure/helm/keycloak/realm-uwv.json`](../../infrastruc
 | **OpenMetadata** (catalog, glossary, tags, lineage) | https://openmetadata.uwv-platform.local:8443 | CGM-glossary `Klantreis`, doelbinding-tags |
 | **Superset** (BI / dashboards) | https://superset.uwv-platform.local:8443 | klantreis-tijdlijn-dashboard |
 | **Airflow** (orkestratie) | https://airflow.uwv-platform.local:8443 | DAG `gold_uc11_klantreis` |
-| **Trino** (query-engine) | https://trino.uwv-platform.local:8443 | live queries; OPA-policies enforce hier |
 | **Keycloak** (SSO + rollen) | https://keycloak.uwv-platform.local:8443 | rol-switch, realm-export |
-| **NiFi** (ingestion-flows) | https://nifi.uwv-platform.local:8443 | bronze-ingestion |
 | **MinIO console** (lakehouse buckets) | https://minio-console.uwv-platform.local:8443 | bronze/silver/gold/sensitive Delta-bestanden |
 | **Grafana** (metrics) | https://grafana.uwv-platform.local:8443 | Trino/OPA latency tijdens demo |
 | **OpenSearch** (audit-logs) | https://opensearch.uwv-platform.local:8443 | "wie keek wanneer" |
@@ -113,7 +111,8 @@ tool). Tabblad **Sample Data** toont een paar rijen.
 
 ### Stap 5 — Eén query, zes brillen (live OPA-demo)
 
-Open https://trino.uwv-platform.local:8443. Login als `smoketest`. Run:
+Zet eerst een port-forward op: `kubectl -n uwv-platform port-forward svc/uwv-trino-coordinator 8443:8443`.
+Open vervolgens https://localhost:8443. Login als `smoketest`. Run:
 
 ```sql
 SELECT bsn, event_ts, domein, event_type, event_label, regio_code
@@ -205,7 +204,7 @@ Geen nieuwe generator voor UC-11; we hergebruiken de bestaande:
 Loader: [data-generation/load_to_kafka.py](../../data-generation/load_to_kafka.py).
 Aanroepen via `make seed` (zie [scripts/seed.sh](../../scripts/seed.sh)).
 
-Live verkennen: open https://nifi.uwv-platform.local:8443 → flow per topic.
+Live verkennen: `kubectl -n uwv-platform port-forward svc/uwv-nifi-node-default 8443:8443` en open `https://localhost:8443/` → flow per topic.
 
 ### 3.2 Kafka → bronze Delta — Spark Structured Streaming
 

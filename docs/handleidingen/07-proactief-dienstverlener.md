@@ -28,7 +28,6 @@ case en initieert proactief contact. Je gebruikt het platform om:
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
 | **Apache Superset** | Werklijst-dashboard | https://superset.uwv-platform.local |
-| **Trino (DBeaver)** | Optioneel — meeste werk via Superset | https://trino.uwv-platform.local |
 | **OpenMetadata** | Definities, model-info | https://openmetadata.uwv-platform.local |
 
 ---

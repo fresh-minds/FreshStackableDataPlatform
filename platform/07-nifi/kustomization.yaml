@@ -4,4 +4,3 @@ namespace: uwv-platform
 resources:
   - znode.yaml
   - nificluster.yaml
-  - ingress.yaml

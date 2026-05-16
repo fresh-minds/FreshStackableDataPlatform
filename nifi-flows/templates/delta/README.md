@@ -5,7 +5,9 @@ Status: **flow-design beschreven; geen geautomatiseerde import in fase 4.**
 In de referentie-implementatie wordt de `uwv.<domain>.<event>` Kafka-pijp
 voorlopig gevuld door [`data-generation/load_to_kafka.py`](../../../data-generation/load_to_kafka.py).
 NiFi-flows volgen in fase 5+ — dit document legt vast hoe ze ontworpen zijn,
-zodat de UI-import (of REST-API-deploy) direct kan starten.
+zodat de REST-API-deploy direct kan starten. **NiFi heeft géén publieke
+Ingress meer** — flows zijn as-code (process-group JSON in deze repo) en
+worden via `kubectl port-forward` geïmporteerd, niet via een UI.
 
 ## Flow-architectuur per domein
 
@@ -52,16 +54,22 @@ de referentie kiest daarom een tussenweg via Kafka. Zie
 
 ## NiFi 2.x import-API
 
+Geen publieke Ingress — eerst port-forwarden naar de NiFi-node, dan curl
+tegen `https://localhost:8443/`.
+
 ```bash
-# Eenmalig: registreer NiFi Registry-bucket
+# Terminal 1: port-forward (laat openstaan)
+kubectl -n uwv-platform port-forward svc/uwv-nifi-node-default 8443:8443
+
+# Terminal 2: eenmalig — registreer NiFi Registry-bucket
 curl -k -u "data.engineer:..." \
-  -X POST https://nifi.uwv-platform.local:8443/nifi-registry-api/buckets \
+  -X POST https://localhost:8443/nifi-registry-api/buckets \
   -H "Content-Type: application/json" \
   -d '{"name":"uwv-flows-delta","description":"UWV reference flows (Delta variant)"}'
 
 # Per flow: import process group via JSON
 curl -k -u "data.engineer:..." \
-  -X POST "https://nifi.uwv-platform.local:8443/nifi-api/process-groups/<root-id>/process-groups/upload" \
+  -X POST "https://localhost:8443/nifi-api/process-groups/<root-id>/process-groups/upload" \
   -F "process-group-import-json=@wia-ingest.json"
 ```
 

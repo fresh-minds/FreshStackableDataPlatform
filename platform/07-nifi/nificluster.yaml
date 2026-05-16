@@ -2,8 +2,9 @@
 #
 # In fase 4 is NiFi gedeployed maar geen flows automatisch geladen. De
 # referentie-implementatie gebruikt `data-generation/load_to_kafka.py` als
-# producer; NiFi-flows komen in fase 5+ via UI-import (zie
-# `nifi-flows/templates/delta/README.md`).
+# producer; NiFi-flows komen in fase 5+ via REST-API-import vanaf een
+# port-forward (zie `nifi-flows/templates/delta/README.md`). Geen publieke
+# Ingress meer — flows worden as-code beheerd.
 #
 # Reden: NiFi 2.x flow-definition JSON met de hand schrijven is foutgevoelig
 # en levert geen extra waarde voor de smoke-test. De `streaming_kafka_to_lakehouse.py`
@@ -27,18 +28,10 @@ spec:
       - authenticationClass: keycloak-uwv
         oidc:
           clientCredentialsSecret: nifi-oidc-client
-    # Reverse-proxy aware: ingress-nginx stuurt X-Forwarded-Port 8443
-    # mee (zie ingress.yaml), maar default `allowAll: true` zet
-    # `nifi.web.proxy.host=*`. Met die wildcard kiest NiFi zelf welke
-    # host:port hij in absolute redirect-URL's zet, en in k3d (waar
-    # ingress intern op :443 draait) verliest hij de :8443. Door de
-    # externe host expliciet op de whitelist te zetten gebruikt NiFi
-    # die als publieke URL → /nifi-api/.../authorization/<id> blijft
-    # netjes :8443 houden.
-    hostHeaderCheck:
-      allowAll: false
-      additionalAllowedHosts:
-        - "nifi.uwv-platform.local:8443"
+    # Geen publieke ingress in de base — NiFi UI/REST wordt bereikt via
+    # `kubectl port-forward`. Default `hostHeaderCheck.allowAll: true`
+    # accepteert dan localhost:8443. AKS-overlay zet z'n eigen whitelist
+    # met de .com publieke host.
   nodes:
     roleConfig:
       listenerClass: cluster-internal

@@ -328,10 +328,9 @@ git clone https://github.com/fresh-minds/FreshStackableDataPlatform.git
 cd FreshStackableDataPlatform
 
 # DNS-injectie voor lokale toegang
-echo "127.0.0.1 trino.uwv-platform.local keycloak.uwv-platform.local \\
-  superset.uwv-platform.local airflow.uwv-platform.local nifi.uwv-platform.local \\
-  minio.uwv-platform.local openmetadata.uwv-platform.local \\
-  spark.uwv-platform.local" | sudo tee -a /etc/hosts
+echo "127.0.0.1 keycloak.uwv-platform.local \\
+  superset.uwv-platform.local airflow.uwv-platform.local \\
+  minio.uwv-platform.local openmetadata.uwv-platform.local" | sudo tee -a /etc/hosts
 
 # Cluster + platform deployen (~15-30 min op de eerste run)
 make cluster        # k3d cluster create

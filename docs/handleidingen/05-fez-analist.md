@@ -25,7 +25,6 @@ input voor begrotingen. Je gebruikt het platform om:
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
 | **Apache Superset** | Dashboards: schadelast, prognoses | https://superset.uwv-platform.local |
-| **Trino (DBeaver)** | Aggregatie-queries op `gold.uc06_lastprognose` | https://trino.uwv-platform.local |
 | **OpenMetadata** | Definities, eigenaarschap | https://openmetadata.uwv-platform.local |
 
 ---

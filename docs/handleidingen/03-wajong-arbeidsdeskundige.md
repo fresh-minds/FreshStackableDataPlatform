@@ -39,7 +39,6 @@ gelogd en periodiek gereviewd."
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
 | **Apache Superset** | Dashboards: caseload, trajecten | https://superset.uwv-platform.local |
-| **Trino (DBeaver/CLI)** | Queries op `silver.wajong`, `gold.uc02_wajong`, `sensitive.wajong` | https://trino.uwv-platform.local |
 | **OpenMetadata** | Begrippen, glossary, lineage | https://openmetadata.uwv-platform.local |
 
 ### 2.3 Vier-ogen-principe

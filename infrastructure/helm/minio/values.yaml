@@ -109,6 +109,11 @@ tls:
 # vereist dat de pod keycloak.uwv-platform.local in-cluster kan resolveren
 # (zie platform/02-authentication/keycloak-external-svc.yaml + CoreDNS).
 # Cert-manager CA is nodig voor TLS-verify; mount via extraVolumes.
+#
+# CORS — de portal-CSV-upload doet vanuit https://platform.uwv-platform.local:8443
+# een AssumeRoleWithWebIdentity + PUT naar https://minio.uwv-platform.local:8443.
+# Cross-origin browser-PUT vereist dat MinIO de portal-origin in de CORS-header
+# whitelist heeft.
 environment:
   MINIO_IDENTITY_OPENID_CONFIG_URL: "https://keycloak.uwv-platform.local:8443/realms/uwv/.well-known/openid-configuration"
   MINIO_IDENTITY_OPENID_CLIENT_ID: "minio"
@@ -117,8 +122,35 @@ environment:
   MINIO_IDENTITY_OPENID_CLAIM_NAME: "policy"
   MINIO_IDENTITY_OPENID_REDIRECT_URI: "https://minio-console.uwv-platform.local:8443/oauth_callback"
   MINIO_IDENTITY_OPENID_SCOPES: "openid,profile,email,roles"
+  MINIO_API_CORS_ALLOW_ORIGIN: "https://platform.uwv-platform.local:8443,https://platform.uwv-platform.local"
   SSL_CERT_FILE: "/etc/uwv-ca/ca.crt"
   CURL_CA_BUNDLE: "/etc/uwv-ca/ca.crt"
+
+# Named policies — chart maakt deze aan via post-install mc-job
+# (`mc admin policy create`). De 'csv-uploader' policy wordt door MinIO
+# toegekend aan gebruikers met user-attribute policy=csv-uploader in Keycloak
+# (zie infrastructure/helm/keycloak/realm-uwv.json) na een
+# AssumeRoleWithWebIdentity STS-call vanuit de portal.
+policies:
+  - name: csv-uploader
+    statements:
+      - effect: Allow
+        resources:
+          - "arn:aws:s3:::uwv-staging/incoming/*"
+        actions:
+          - "s3:PutObject"
+          - "s3:AbortMultipartUpload"
+          - "s3:ListMultipartUploadParts"
+      - effect: Allow
+        resources:
+          - "arn:aws:s3:::uwv-staging"
+        actions:
+          - "s3:GetBucketLocation"
+          - "s3:ListBucket"
+        conditions:
+          StringLike:
+            "s3:prefix":
+              - "incoming/*"
 
 extraVolumes:
   - name: uwv-ca

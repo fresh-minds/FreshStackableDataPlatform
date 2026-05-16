@@ -21,7 +21,7 @@ flowchart LR
     ingestion["**Ingestie**<br/>Apache NiFi + Kafka"]
     storage["**Opslag & Verwerking**<br/>MinIO + Hive Metastore"]
     transformation["**Transformatie & Modellen**<br/>Apache Spark + Trino + OPA"]
-    consumption["**BI / Analytics**<br/>Apache Superset"]
+    consumption["**BI / Analytics**<br/>Apache Superset + UWV Lab (Jupyter)"]
     ingestion --> storage
     storage --> transformation
     transformation --> consumption
@@ -83,6 +83,7 @@ Eindgebruikers consumeren via dashboards en SQL.
 | Component | Verantwoordelijkheid | Doel |
 |---|---|---|
 | [Apache Superset](componenten.md#superset) | Dashboards en SQL Lab — primaire UI voor de meeste eindgebruikers. | Dashboards en ad-hoc analyse voor business-rollen — zonder SQL hoeven kennen. |
+| [UWV Lab (Jupyter)](componenten.md#jupyter) | Notebook-werkomgeving — Python/SQL op bronze/silver/gold/sensitive, met Git-integratie. | Interactief data verkennen en analyseren — Trino, Delta, MinIO, OpenMetadata vanuit één Python-kernel; werk versioneren met Git. |
 
 ### Data Discovery { #discovery }
 

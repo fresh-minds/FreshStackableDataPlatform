@@ -44,7 +44,7 @@ platform:
 # Overridable per invocation via PLATFORM_DOMAIN env var. Het veld `suffix`
 # hieronder is de lokale default (k3d/kind); voor AKS wordt het overschreven.
 # Voor lokaal verwacht in /etc/hosts:
-#   127.0.0.1 trino.uwv-platform.local keycloak.uwv-platform.local ...
+#   127.0.0.1 keycloak.uwv-platform.local ...
 dns:
   suffix: uwv-platform.local
   modes:

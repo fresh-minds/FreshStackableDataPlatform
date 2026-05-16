@@ -41,7 +41,7 @@ _Data binnenhalen en op een event-bus zetten._
 
 Visuele ingestion-flows — bronsystemen → Kafka.
 
-- **URL:** [Live UI ↗](https://nifi.uwv-platform.local:8443)
+- **URL:** _geen UI_
 - **Gebruikt door:** `platform_admin`, `data_engineer`
 
 ### Kafka { #kafka }
@@ -97,7 +97,7 @@ _Opschonen, joinen, modelleren — met policy-checks per query._
 
 Streaming + batch jobs die Delta-tabellen op MinIO schrijven.
 
-- **URL:** _geen UI_
+- **URL:** [Live UI ↗](https://spark.uwv-platform.local:8443)
 - **Gebruikt door:** `platform_admin`, `data_engineer`
 
 ### Trino { #trino }
@@ -109,7 +109,7 @@ Streaming + batch jobs die Delta-tabellen op MinIO schrijven.
 
 SQL query-engine over Delta-lakehouse, met OPA-authorisatie.
 
-- **URL:** [Live UI ↗](https://trino.uwv-platform.local:8443)
+- **URL:** _geen UI_
 - **Gebruikt door:** `wia_beoordelaar`, `ww_handhaver`, `wajong_arbeidsdeskundige`, `fez_analist`, `smz_planner`, `proactief_dienstverlener`, `researcher`, `data_steward`, `data_engineer`, `platform_admin`
 
 ### OPA { #opa }
@@ -139,6 +139,18 @@ Dashboards en SQL Lab — primaire UI voor de meeste eindgebruikers.
 
 - **URL:** [Live UI ↗](https://superset.uwv-platform.local:8443)
 - **Gebruikt door:** `wia_beoordelaar`, `ww_handhaver`, `wajong_arbeidsdeskundige`, `crm_medewerker`, `fez_analist`, `smz_planner`, `proactief_dienstverlener`, `researcher`, `data_steward`, `platform_admin`
+
+### UWV Lab (Jupyter) { #jupyter }
+
+!!! abstract "Wat doet UWV Lab (Jupyter)?"
+    Interactief data verkennen en analyseren — Trino, Delta, MinIO, OpenMetadata vanuit één Python-kernel; werk versioneren met Git.
+
+**Laag:** `compute` · **Stage:** `consumption` · **Prometheus job:** _niet gemonitord_
+
+Notebook-werkomgeving — Python/SQL op bronze/silver/gold/sensitive, met Git-integratie.
+
+- **URL:** [Live UI ↗](https://jupyter.uwv-platform.local:8443)
+- **Gebruikt door:** `researcher`, `data_engineer`, `data_steward`, `wajong_arbeidsdeskundige`, `fez_analist`, `platform_admin`
 
 ## Data Discovery
 
@@ -193,7 +205,7 @@ _Metrics, logs en alerts om de gezondheid van het platform te zien._
 !!! abstract "Wat doet Prometheus?"
     Metrics verzamelen en alerteren als iets stuk dreigt te gaan.
 
-**Laag:** `observability` · **Stage:** `observability` · **Prometheus job:** `prometheus`
+**Laag:** `observability` · **Stage:** `observability` · **Prometheus job:** `prometheus-kube-prometheus-prometheus`
 
 Metrics + alerts; voedt de status-badges in deze portal.
 
@@ -236,16 +248,16 @@ referentie-implementatie via de portal-shortcuts naar de UI van het
 component wordt gestuurd. Een lege cel betekent dat de rol normaliter geen
 directe toegang nodig heeft (toegang kan alsnog via JIT/break-glass).
 
-| Rol | keycloak | nifi | kafka | minio | hive | spark | trino | opa | superset | openmetadata | dbt-docs | airflow | prometheus | opensearch | multica |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `wia_beoordelaar` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |
-| `ww_handhaver` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |
-| `wajong_arbeidsdeskundige` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |
-| `crm_medewerker` | ✓ |  |  |  |  |  |  |  | ✓ | ✓ |  |  |  |  |  |
-| `fez_analist` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |
-| `smz_planner` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |
-| `proactief_dienstverlener` | ✓ |  |  |  |  |  | ✓ |  | ✓ |  |  |  |  |  |  |
-| `researcher` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |
-| `data_steward` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ | ✓ |  |  | ✓ |  |
-| `data_engineer` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  |  | ✓ | ✓ | ✓ |  |  | ✓ |
-| `platform_admin` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Rol | keycloak | nifi | kafka | minio | hive | spark | trino | opa | superset | openmetadata | dbt-docs | jupyter | airflow | prometheus | opensearch | multica |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `wia_beoordelaar` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |
+| `ww_handhaver` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |
+| `wajong_arbeidsdeskundige` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |
+| `crm_medewerker` | ✓ |  |  |  |  |  |  |  | ✓ | ✓ |  |  |  |  |  |  |
+| `fez_analist` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |
+| `smz_planner` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |
+| `proactief_dienstverlener` | ✓ |  |  |  |  |  | ✓ |  | ✓ |  |  |  |  |  |  |  |
+| `researcher` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |
+| `data_steward` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |  |
+| `data_engineer` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  |  | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |
+| `platform_admin` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |

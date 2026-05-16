@@ -59,8 +59,8 @@ Voorvereisten:
 make doctor MODE=k3d
 
 # 2. /etc/hosts injectie (vereist sudo, eenmalig)
-echo "127.0.0.1 trino.uwv-platform.local keycloak.uwv-platform.local \
-  superset.uwv-platform.local airflow.uwv-platform.local nifi.uwv-platform.local \
+echo "127.0.0.1 keycloak.uwv-platform.local \
+  superset.uwv-platform.local airflow.uwv-platform.local \
   minio.uwv-platform.local openmetadata.uwv-platform.local \
   jupyter.uwv-platform.local platform.uwv-platform.local" | sudo tee -a /etc/hosts
 

@@ -37,7 +37,6 @@ configureer een TOTP-app (Google Authenticator, Microsoft Authenticator, 1Passwo
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
 | **Apache Superset** | Dashboards bekijken: WIA-funnel, doorlooptijden | https://superset.uwv-platform.local |
-| **Trino (DBeaver/CLI)** | Ad-hoc queries op `silver.wia` en `gold.uc01_wia_funnel` | https://trino.uwv-platform.local |
 | **OpenMetadata** | Opzoeken welke kolom wat betekent, wie eigenaar is | https://openmetadata.uwv-platform.local |
 
 > Je gebruikt **niet**: NiFi (ingestion), Airflow (orchestratie). Die zijn voor het platform-team.

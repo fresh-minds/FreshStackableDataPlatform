@@ -28,7 +28,6 @@ Je bewaakt de governance van het platform. Je gebruikt het platform om:
 |---|---|---|
 | **OpenMetadata** | Hoofdwerkplek: catalog, glossary, classificaties, profiler, lineage | https://openmetadata.uwv-platform.local |
 | **Apache Superset** | Dashboards reviewen, ownership-overzichten | https://superset.uwv-platform.local |
-| **Trino (DBeaver)** | DQ-queries op `bronze.*`, `silver.*`, `gold.*` | https://trino.uwv-platform.local |
 | **Apache Airflow** | DQ-DAGs draaien | https://airflow.uwv-platform.local |
 | **OpenSearch (Kibana-achtig)** | OPA-decision-logs reviewen | https://openmetadata.uwv-platform.local/logs |
 | **dbt CLI / docs** | dbt-tests + lineage-docs | lokaal of via VS Code remote |

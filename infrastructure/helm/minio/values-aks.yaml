@@ -13,6 +13,10 @@ persistence:
 # by infrastructure/azure/public-ingresses.yaml (`minio-public` + `minio-api-public`).
 
 # OIDC URLs visible to the browser must match the public hostname.
+# CORS-origin lijst moet de publieke portal-host bevatten zodat de browser
+# vanuit https://platform.eu-sovereigndataplatform.com mag PUTten naar
+# https://minio-api.eu-sovereigndataplatform.com.
 environment:
   MINIO_IDENTITY_OPENID_CONFIG_URL: "https://keycloak.eu-sovereigndataplatform.com/realms/uwv/.well-known/openid-configuration"
   MINIO_IDENTITY_OPENID_REDIRECT_URI: "https://minio.eu-sovereigndataplatform.com/oauth_callback"
+  MINIO_API_CORS_ALLOW_ORIGIN: "https://platform.eu-sovereigndataplatform.com"

@@ -33,7 +33,6 @@ wachtwoord wijzigen.
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
 | **Apache Superset** | Cliënt-360-dashboard, contact-trends | https://superset.uwv-platform.local |
-| **Trino (DBeaver)** | Optioneel — meeste werk gaat via Superset | https://trino.uwv-platform.local |
 | **OpenMetadata** | Begrippen opzoeken | https://openmetadata.uwv-platform.local |
 
 Voor productie: meestal werk je vanuit een **Werkmap-frontend** die UC-05

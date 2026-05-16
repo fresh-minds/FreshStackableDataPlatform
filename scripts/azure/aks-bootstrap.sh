@@ -71,7 +71,7 @@ done
 if [[ -n "${LB_IP:-}" ]]; then
   log "Ingress LoadBalancer IP: $LB_IP"
   echo "Add to /etc/hosts:"
-  echo "  $LB_IP keycloak.uwv-platform.local minio-console.uwv-platform.local grafana.uwv-platform.local openmetadata.uwv-platform.local trino.uwv-platform.local airflow.uwv-platform.local superset.uwv-platform.local nifi.uwv-platform.local spark.uwv-platform.local"
+  echo "  $LB_IP keycloak.uwv-platform.local minio-console.uwv-platform.local grafana.uwv-platform.local openmetadata.uwv-platform.local airflow.uwv-platform.local superset.uwv-platform.local spark.uwv-platform.local"
 else
   warn "LoadBalancer IP not yet allocated; run 'kubectl -n ingress-nginx get svc' later."
 fi

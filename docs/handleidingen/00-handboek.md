@@ -145,7 +145,6 @@ configureer een TOTP-app (Google Authenticator, Microsoft Authenticator, 1Passwo
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
 | **Apache Superset** | Dashboards bekijken: WIA-funnel, doorlooptijden | https://superset.uwv-platform.local |
-| **Trino (DBeaver/CLI)** | Ad-hoc queries op `silver.wia` en `gold.uc01_wia_funnel` | https://trino.uwv-platform.local |
 | **OpenMetadata** | Opzoeken welke kolom wat betekent, wie eigenaar is | https://openmetadata.uwv-platform.local |
 
 > Je gebruikt **niet**: NiFi (ingestion), Airflow (orchestratie). Die zijn voor het platform-team.
@@ -410,7 +409,6 @@ voor andere rollen. Wachtwoord wijzigen bij eerste login.
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
 | **Apache Superset** | Dashboards: WW-risico, caseload, signalen | https://superset.uwv-platform.local |
-| **Trino (DBeaver/CLI)** | Ad-hoc queries op `silver.ww` en `gold.uc03_ww_risk` | https://trino.uwv-platform.local |
 | **OpenMetadata** | Begrippen, eigenaarschap, lineage | https://openmetadata.uwv-platform.local |
 
 > Je gebruikt **niet**: NiFi, Airflow, sensitive vault.
@@ -622,7 +620,6 @@ gelogd en periodiek gereviewd."
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
 | **Apache Superset** | Dashboards: caseload, trajecten | https://superset.uwv-platform.local |
-| **Trino (DBeaver/CLI)** | Queries op `silver.wajong`, `gold.uc02_wajong`, `sensitive.wajong` | https://trino.uwv-platform.local |
 | **OpenMetadata** | Begrippen, glossary, lineage | https://openmetadata.uwv-platform.local |
 
 ### 2.3 Vier-ogen-principe
@@ -853,7 +850,6 @@ wachtwoord wijzigen.
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
 | **Apache Superset** | Cliënt-360-dashboard, contact-trends | https://superset.uwv-platform.local |
-| **Trino (DBeaver)** | Optioneel — meeste werk gaat via Superset | https://trino.uwv-platform.local |
 | **OpenMetadata** | Begrippen opzoeken | https://openmetadata.uwv-platform.local |
 
 Voor productie: meestal werk je vanuit een **Werkmap-frontend** die UC-05
@@ -1017,7 +1013,6 @@ input voor begrotingen. Je gebruikt het platform om:
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
 | **Apache Superset** | Dashboards: schadelast, prognoses | https://superset.uwv-platform.local |
-| **Trino (DBeaver)** | Aggregatie-queries op `gold.uc06_lastprognose` | https://trino.uwv-platform.local |
 | **OpenMetadata** | Definities, eigenaarschap | https://openmetadata.uwv-platform.local |
 
 ---
@@ -1184,7 +1179,6 @@ waar je op werkt. Je gebruikt het platform om:
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
 | **Apache Superset** | Capaciteits-dashboards | https://superset.uwv-platform.local |
-| **Trino (DBeaver)** | Aggregaat-queries op `gold.uc08_smz_capaciteit` | https://trino.uwv-platform.local |
 | **OpenMetadata** | Definities | https://openmetadata.uwv-platform.local |
 
 ---
@@ -1345,7 +1339,6 @@ case en initieert proactief contact. Je gebruikt het platform om:
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
 | **Apache Superset** | Werklijst-dashboard | https://superset.uwv-platform.local |
-| **Trino (DBeaver)** | Optioneel — meeste werk via Superset | https://trino.uwv-platform.local |
 | **OpenMetadata** | Definities, model-info | https://openmetadata.uwv-platform.local |
 
 ---
@@ -1512,11 +1505,11 @@ en vergelijkbare studies). Je gebruikt het platform om:
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
 | **Apache Superset** | Dashboards en SQL Lab | https://superset.uwv-platform.local |
-| **Trino (DBeaver/Notebook)** | Statistische queries op `sandbox.*` | https://trino.uwv-platform.local |
 | **OpenMetadata** | Definities, lineage van panels | https://openmetadata.uwv-platform.local |
 
 Tip: Trino integreert met Python-notebooks via `trino-python-client`. Voor
 reproduceerbaar onderzoek: bewaar je notebook + queries bij je publicatie.
+Voor ad-hoc gebruik van Trino: `kubectl -n uwv-platform port-forward svc/uwv-trino-coordinator 8443:8443` en verbind op `localhost:8443`.
 
 ---
 
@@ -1580,10 +1573,11 @@ ORDER  BY slaag_pct DESC;
 ### 4.3 Workflow C — Regressie via Python-notebook
 
 ```python
+# Eerst port-forwarden: kubectl -n uwv-platform port-forward svc/uwv-trino-coordinator 8443:8443
 import trino, pandas as pd, statsmodels.api as sm
 
 conn = trino.dbapi.connect(
-    host="trino.uwv-platform.local", port=443,
+    host="localhost", port=8443,
     user="researcher",
     auth=trino.auth.OAuth2Authentication(),  # via Keycloak
     catalog="sandbox", schema="uc09",
@@ -1690,7 +1684,6 @@ Je bewaakt de governance van het platform. Je gebruikt het platform om:
 |---|---|---|
 | **OpenMetadata** | Hoofdwerkplek: catalog, glossary, classificaties, profiler, lineage | https://openmetadata.uwv-platform.local |
 | **Apache Superset** | Dashboards reviewen, ownership-overzichten | https://superset.uwv-platform.local |
-| **Trino (DBeaver)** | DQ-queries op `bronze.*`, `silver.*`, `gold.*` | https://trino.uwv-platform.local |
 | **Apache Airflow** | DQ-DAGs draaien | https://airflow.uwv-platform.local |
 | **OpenSearch (Kibana-achtig)** | OPA-decision-logs reviewen | https://openmetadata.uwv-platform.local/logs |
 | **dbt CLI / docs** | dbt-tests + lineage-docs | lokaal of via VS Code remote |
@@ -1889,14 +1882,15 @@ platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache NiFi** | Flow-design, ingestion-routes | https://nifi.uwv-platform.local |
 | **Apache Airflow** | DAGs maken, runs monitoren | https://airflow.uwv-platform.local |
-| **Trino (DBeaver)** | Debug + dbt-runs vanaf je laptop | https://trino.uwv-platform.local |
 | **dbt CLI** | Lokaal of in CI | terminal |
 | **kubectl + k9s** | Spark-jobs, pod-status, Hive Metastore | terminal |
 | **Apache Superset** | Eigen build-dashboards reviewen | https://superset.uwv-platform.local |
 | **OpenMetadata** | Service-config, lineage publishing | https://openmetadata.uwv-platform.local |
 | **MinIO Console** | Bucket-debugging | https://minio.uwv-platform.local |
+
+- NiFi-flows worden as-code beheerd in `nifi-flows/templates/` en geïmporteerd via `kubectl port-forward` (zie `nifi-flows/templates/delta/README.md`).
+- dbt en Airflow benaderen Trino in-cluster; voor ad-hoc debug: `kubectl -n uwv-platform port-forward svc/uwv-trino-coordinator 8443:8443`.
 
 ---
 
@@ -2118,10 +2112,11 @@ platform. Je gebruikt het platform om:
 | **kubectl + k9s** | Alle clusters, alle pods | terminal |
 | **Apache Airflow** | Maintenance-DAGs | https://airflow.uwv-platform.local |
 | **OpenSearch / OPA-logs** | Audit-log review | via Vector ingestion |
-| **Trino (DBeaver)** | Break-glass queries (gelogd) | https://trino.uwv-platform.local |
 | **OpenMetadata** | Service-config, governance | https://openmetadata.uwv-platform.local |
 | **Prometheus + Grafana** | Metrics, alerts | https://grafana.uwv-platform.local |
 | **MinIO Console** | Bucket-beheer | https://minio.uwv-platform.local |
+
+- Trino break-glass queries: `kubectl -n uwv-platform port-forward svc/uwv-trino-coordinator 8443:8443` en dan via DBeaver op `localhost:8443`.
 
 > **MFA verplicht en hardware-gebonden.** Voor productie: WebAuthn-passkey of
 > hardware-token (YubiKey). Geen TOTP-app op een mobiel.

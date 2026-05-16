@@ -33,10 +33,11 @@ platform. Je gebruikt het platform om:
 | **kubectl + k9s** | Alle clusters, alle pods | terminal |
 | **Apache Airflow** | Maintenance-DAGs | https://airflow.uwv-platform.local |
 | **OpenSearch / OPA-logs** | Audit-log review | via Vector ingestion |
-| **Trino (DBeaver)** | Break-glass queries (gelogd) | https://trino.uwv-platform.local |
 | **OpenMetadata** | Service-config, governance | https://openmetadata.uwv-platform.local |
 | **Prometheus + Grafana** | Metrics, alerts | https://grafana.uwv-platform.local |
 | **MinIO Console** | Bucket-beheer | https://minio.uwv-platform.local |
+
+- Trino break-glass queries: `kubectl -n uwv-platform port-forward svc/uwv-trino-coordinator 8443:8443` en dan via DBeaver op `localhost:8443`.
 
 > **MFA verplicht en hardware-gebonden.** Voor productie: WebAuthn-passkey of
 > hardware-token (YubiKey). Geen TOTP-app op een mobiel.

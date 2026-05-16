@@ -4,14 +4,17 @@ import Button from '../components/primitives/Button.astro';
 import Eyebrow from '../components/primitives/Eyebrow.astro';
 import { docsArchitectureUrl } from '../data/external-links';
 
-// Minimale CSV-upload UX. Wijst de gebruiker naar de twee externe stappen
-// (MinIO Console upload + Airflow DAG-trigger) en toont een copy-pasteable
-// `mc cp`-command voor wie liever via CLI werkt.
+// Browser-side CSV-upload met MinIO STS (AssumeRoleWithWebIdentity).
 //
-// Bewust geen browser-side multipart-upload: de portal is pure statische
-// content (geen backend), dus we bouwen geen presigned-URL flow voor één
-// demo-bron. Wanneer er meerdere CSV-bronnen komen kan dit een echte
-// upload-form worden — bijvoorbeeld via MinIO STS + STS-token.
+// Flow:
+//   1. Browser GET /api/auth/token  → access-token uit oauth2-proxy sessie.
+//   2. Browser POST minio/?Action=AssumeRoleWithWebIdentity → temp S3-creds.
+//   3. Browser PUT minio/uwv-staging/incoming/<bron>/<ts>.csv met aws4fetch.
+//   4. Airflow `watch_csv_staging` DAG (polling, 2 min) triggert ingest_csv_<bron>.
+//
+// Autorisatie zit bij MinIO: gebruiker krijgt alleen temp-creds met de
+// `csv-uploader`-policy als z'n Keycloak user-attribute `policy` daarop
+// gemapt staat (zie infrastructure/helm/keycloak/realm-uwv.json).
 
 const sources = [
   {
@@ -35,9 +38,10 @@ const defaultSource = sources[0];
       Handmatige CSV-upload <em>naar bronze</em>.
     </h1>
     <p class="csv-hero-body">
-      Upload een CSV-bestand voor een bron met <code>mode: csv_batch</code>.
-      De flow is: bestand op MinIO zetten → Airflow-DAG triggeren →
-      Delta-tabel in <code>bronze</code> → automatisch silver + gold via dbt.
+      Sleep een CSV-bestand in het vak hieronder. Het bestand wordt direct
+      naar MinIO geüpload en binnen 2 minuten door Airflow opgepikt — daarna
+      verschijnt het automatisch in <code>bronze</code> en (via dbt) in
+      silver + gold.
     </p>
     <p class="csv-hero-note">
       Voor streaming-bronnen (WIA, WW, polisadministratie, …) gaat data via
@@ -85,19 +89,30 @@ const defaultSource = sources[0];
 
   <section class="csv-step">
     <Eyebrow>01 · Upload</Eyebrow>
-    <h2>Zet het CSV-bestand op MinIO</h2>
-    <p class="csv-step-body">
-      Open MinIO Console en sleep je CSV in de map
-      <code id="src-path-1">{defaultSource.bucket}/{defaultSource.prefix}/</code>.
-      Naam mag vrij gekozen worden (bv. <code>2026-05-01.csv</code>).
-    </p>
-    <div class="csv-actions">
-      <Button id="open-minio" variant="accent"
-              href={`https://minio-console.uwv-platform.local:8443/browser/${defaultSource.bucket}/${defaultSource.prefix.replace(/\//g, '%2F')}%2F`}
-              target="_blank" rel="noopener noreferrer">
-        Open MinIO Console
-      </Button>
+    <h2>Sleep je CSV-bestand hier</h2>
+
+    <label id="drop-zone" class="csv-drop" for="file-input"
+           data-state="idle"
+           aria-describedby="upload-status">
+      <input id="file-input" type="file" accept=".csv,text/csv" hidden />
+      <div class="csv-drop-inner">
+        <strong class="csv-drop-title">Klik om te kiezen of sleep een .csv hierheen</strong>
+        <span class="csv-drop-sub">Max 500 MB · bestand komt direct in
+          <code id="src-path-1">{defaultSource.bucket}/{defaultSource.prefix}/</code></span>
+      </div>
+    </label>
+
+    <div id="upload-status" class="csv-status" role="status" aria-live="polite" hidden>
+      <div class="csv-status-row">
+        <span class="csv-status-label" id="status-label">Wachten…</span>
+        <span class="csv-status-pct mono" id="status-pct"></span>
+      </div>
+      <div class="csv-progress" aria-hidden="true">
+        <div class="csv-progress-bar" id="progress-bar"></div>
+      </div>
+      <p class="csv-status-detail" id="status-detail"></p>
     </div>
+
     <details class="csv-alt">
       <summary>Liever via CLI (<code>mc</code>)?</summary>
       <p class="csv-step-note">Stel éénmalig de alias in:</p>
@@ -105,32 +120,19 @@ const defaultSource = sources[0];
       <p class="csv-step-note">Daarna uploaden:</p>
       <pre class="csv-pre"><code id="mc-cmd">mc cp ./mijn-meting.csv minio-uwv/{defaultSource.bucket}/{defaultSource.prefix}/$(date -u +%Y%m%dT%H%M%S).csv --insecure</code></pre>
       <p class="csv-step-note">
-        De DAG wordt automatisch getriggerd binnen 2 minuten — handmatige stap 2 is niet meer nodig.
+        De DAG wordt automatisch getriggerd binnen 2 minuten — een handmatige Airflow-trigger is niet nodig.
       </p>
     </details>
   </section>
 
   <section class="csv-step">
-    <Eyebrow>02 · Trigger</Eyebrow>
-    <h2>Trigger de ingest-DAG in Airflow</h2>
-    <p class="csv-step-body">
-      Open Airflow en trigger DAG <code id="src-dag-2">{defaultSource.dagId}</code>
-      met deze JSON-config (<em>Trigger DAG w/ config</em>):
-    </p>
-    <pre class="csv-pre"><code id="dag-conf">{JSON.stringify({ object_key: `${defaultSource.prefix}/<bestandsnaam>.csv` }, null, 2)}</code></pre>
-    <div class="csv-actions">
-      <Button id="open-airflow"
-              href={`https://airflow.uwv-platform.local:8443/dags/${defaultSource.dagId}/`}
-              target="_blank" rel="noopener noreferrer">
-        Open Airflow DAG
-      </Button>
-    </div>
-  </section>
-
-  <section class="csv-step">
-    <Eyebrow>03 · Resultaat</Eyebrow>
+    <Eyebrow>02 · Resultaat</Eyebrow>
     <h2>Wat gebeurt er daarna?</h2>
     <ul class="csv-result">
+      <li>
+        <span class="mono">AIRFLOW</span>
+        <span>DAG <code id="src-dag-2">{defaultSource.dagId}</code> wordt binnen 2 min getriggerd door <code>watch_csv_staging</code>.</span>
+      </li>
       <li>
         <span class="mono">BRONZE</span>
         <span>Delta-tabel in <code>bronze.uwv.&lt;bron&gt;</code> (Trino).</span>
@@ -149,13 +151,23 @@ const defaultSource = sources[0];
       </li>
     </ul>
     <div class="csv-actions">
-      <Button href="https://trino.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">Trino UI</Button>
       <Button href="https://superset.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">Superset</Button>
+      <Button href="https://airflow.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">Airflow</Button>
       <Button href="https://openmetadata.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">OpenMetadata</Button>
     </div>
   </section>
 
   <script>
+    import { AwsClient } from 'aws4fetch';
+
+    // Mapping platform-host → MinIO S3-API host. Dezelfde build draait op
+    // k3d (.local) én op AKS (.eu-sovereigndataplatform.com).
+    const MINIO_ENDPOINT_MAP: Record<string, string> = {
+      'platform.uwv-platform.local':           'https://minio.uwv-platform.local:8443',
+      'platform.eu-sovereigndataplatform.com': 'https://minio-api.eu-sovereigndataplatform.com',
+    };
+
+    // ── Source-keuze rendering ─────────────────────────────────────────────
     const sel  = document.getElementById('src-select') as HTMLSelectElement | null;
     const desc = document.getElementById('src-desc');
     const buck = document.getElementById('src-bucket');
@@ -163,10 +175,7 @@ const defaultSource = sources[0];
     const dag  = document.getElementById('src-dag');
     const dag2 = document.getElementById('src-dag-2');
     const path1 = document.getElementById('src-path-1');
-    const conf = document.getElementById('dag-conf');
     const mc   = document.getElementById('mc-cmd');
-    const oM   = document.getElementById('open-minio') as HTMLAnchorElement | null;
-    const oA   = document.getElementById('open-airflow') as HTMLAnchorElement | null;
 
     type Src = { description: string; bucket: string; prefix: string; dagId: string };
     const collected: Record<string, Src> = {};
@@ -179,23 +188,209 @@ const defaultSource = sources[0];
       };
     });
 
-    function render() {
+    function currentSource(): Src {
       const v = sel?.value;
-      if (!v) return;
-      const s = collected[v];
+      return (v && collected[v]) || { description: '', bucket: '', prefix: '', dagId: '' };
+    }
+
+    function render() {
+      const s = currentSource();
       if (desc) desc.textContent = s.description;
       if (buck) buck.textContent = s.bucket;
       if (pref) pref.textContent = s.prefix;
       if (dag)  dag.textContent  = s.dagId;
       if (dag2) dag2.textContent = s.dagId;
       if (path1) path1.textContent = `${s.bucket}/${s.prefix}/`;
-      if (conf) conf.textContent = JSON.stringify({ object_key: `${s.prefix}/<bestandsnaam>.csv` }, null, 2);
-      if (mc)   mc.textContent   = `mc cp ./mijn-meting.csv minio-uwv/${s.bucket}/${s.prefix}/$(date -u +%Y%m%dT%H%M%S).csv --insecure`;
-      if (oM)   oM.href = `https://minio-console.uwv-platform.local:8443/browser/${s.bucket}/${encodeURIComponent(s.prefix + '/')}`;
-      if (oA)   oA.href = `https://airflow.uwv-platform.local:8443/dags/${s.dagId}/`;
+      if (mc)   mc.textContent = `mc cp ./mijn-meting.csv minio-uwv/${s.bucket}/${s.prefix}/$(date -u +%Y%m%dT%H%M%S).csv --insecure`;
     }
     sel?.addEventListener('change', render);
     render();
+
+    // ── Endpoint detectie ──────────────────────────────────────────────────
+    const minioEndpoint =
+      MINIO_ENDPOINT_MAP[window.location.hostname] ??
+      'https://minio.uwv-platform.local:8443';
+
+    // ── DOM refs voor upload ───────────────────────────────────────────────
+    const dropZone  = document.getElementById('drop-zone') as HTMLLabelElement | null;
+    const fileInput = document.getElementById('file-input') as HTMLInputElement | null;
+    const statusBox = document.getElementById('upload-status') as HTMLDivElement | null;
+    const statusLbl = document.getElementById('status-label');
+    const statusPct = document.getElementById('status-pct');
+    const statusDet = document.getElementById('status-detail');
+    const progBar   = document.getElementById('progress-bar') as HTMLDivElement | null;
+
+    const MAX_BYTES = 500 * 1024 * 1024;  // 500 MB
+
+    function setState(state: 'idle' | 'busy' | 'ok' | 'err', label: string, detail = '', pct = 0) {
+      if (!statusBox) return;
+      statusBox.hidden = false;
+      dropZone?.setAttribute('data-state', state);
+      if (statusLbl) statusLbl.textContent = label;
+      if (statusPct) statusPct.textContent = pct > 0 ? `${pct.toFixed(0)} %` : '';
+      if (statusDet) statusDet.innerHTML = detail;
+      if (progBar)   progBar.style.width = `${pct}%`;
+    }
+
+    // ── Upload-flow ────────────────────────────────────────────────────────
+    async function fetchAccessToken(): Promise<string> {
+      const r = await fetch('/api/auth/token', { credentials: 'same-origin' });
+      if (!r.ok) throw new Error(`/api/auth/token: HTTP ${r.status} — ben je ingelogd?`);
+      const token = (await r.text()).trim();
+      if (!token) throw new Error('Geen access-token in sessie. Log opnieuw in.');
+      return token;
+    }
+
+    type TempCreds = {
+      accessKeyId: string;
+      secretAccessKey: string;
+      sessionToken: string;
+      expiration: string;
+    };
+
+    async function assumeRoleWithWebIdentity(token: string): Promise<TempCreds> {
+      const body = new URLSearchParams({
+        Action:           'AssumeRoleWithWebIdentity',
+        Version:          '2011-06-15',
+        DurationSeconds:  '3600',
+        WebIdentityToken: token,
+      });
+      const r = await fetch(`${minioEndpoint}/`, {
+        method:  'POST',
+        body,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        credentials: 'omit',
+      });
+      const text = await r.text();
+      if (!r.ok) {
+        throw new Error(`STS HTTP ${r.status}: ${text.slice(0, 300)}`);
+      }
+      const xml = new DOMParser().parseFromString(text, 'application/xml');
+      const get = (tag: string) => xml.getElementsByTagName(tag)[0]?.textContent ?? '';
+      const creds: TempCreds = {
+        accessKeyId:     get('AccessKeyId'),
+        secretAccessKey: get('SecretAccessKey'),
+        sessionToken:    get('SessionToken'),
+        expiration:      get('Expiration'),
+      };
+      if (!creds.accessKeyId || !creds.secretAccessKey) {
+        throw new Error('STS antwoord miste credentials — controleer Keycloak policy-claim.');
+      }
+      return creds;
+    }
+
+    function objectKey(prefix: string, fileName: string): string {
+      const ts = new Date().toISOString()
+        .replace(/[-:]/g, '')
+        .replace(/\.\d+Z$/, 'Z');           // 20260516T143022Z
+      const safe = fileName
+        .replace(/[^A-Za-z0-9._-]/g, '_')
+        .replace(/^_+|_+$/g, '');
+      return `${prefix}/${ts}-${safe || 'upload.csv'}`;
+    }
+
+    async function putWithProgress(
+      signedReq: Request,
+      file: File,
+      onProgress: (pct: number) => void,
+    ): Promise<void> {
+      // aws4fetch geeft een Request terug met getekende headers; XHR gebruikt
+      // diezelfde headers + body zodat we wel een upload-progress event krijgen
+      // (fetch() heeft die niet native).
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open(signedReq.method, signedReq.url, true);
+        signedReq.headers.forEach((v, k) => {
+          // Browser blokkeert sommige headers (Host, Content-Length, …); negeer
+          // die — XHR zet ze automatisch goed.
+          const lk = k.toLowerCase();
+          if (lk === 'host' || lk === 'content-length') return;
+          try { xhr.setRequestHeader(k, v); } catch { /* ignore */ }
+        });
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) onProgress((e.loaded / e.total) * 100);
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve();
+          else reject(new Error(`PUT HTTP ${xhr.status}: ${xhr.responseText.slice(0, 300)}`));
+        };
+        xhr.onerror = () => reject(new Error('Netwerk- of CORS-fout tijdens upload.'));
+        xhr.send(file);
+      });
+    }
+
+    async function handleFile(file: File) {
+      if (!file.name.toLowerCase().endsWith('.csv')) {
+        setState('err', 'Geen CSV-bestand', 'Alleen <code>.csv</code> wordt geaccepteerd.');
+        return;
+      }
+      if (file.size > MAX_BYTES) {
+        setState('err', 'Bestand te groot',
+          `Max 500 MB; dit bestand is ${(file.size / 1024 / 1024).toFixed(1)} MB.`);
+        return;
+      }
+
+      const src = currentSource();
+      const key = objectKey(src.prefix, file.name);
+      const url = `${minioEndpoint}/${src.bucket}/${key}`;
+
+      try {
+        setState('busy', 'Token ophalen…', 'Sessie van oauth2-proxy.');
+        const token = await fetchAccessToken();
+
+        setState('busy', 'Temp-credentials via MinIO STS…', 'AssumeRoleWithWebIdentity.');
+        const creds = await assumeRoleWithWebIdentity(token);
+
+        const aws = new AwsClient({
+          accessKeyId:     creds.accessKeyId,
+          secretAccessKey: creds.secretAccessKey,
+          sessionToken:    creds.sessionToken,
+          service:         's3',
+          region:          'us-east-1',     // MinIO accepteert elke regio; us-east-1 default
+        });
+        const signed = await aws.sign(url, {
+          method:  'PUT',
+          body:    file,
+          headers: { 'Content-Type': 'text/csv' },
+        });
+
+        setState('busy', `Uploaden naar ${src.bucket}/${key}…`, '');
+        await putWithProgress(signed, file, (pct) =>
+          setState('busy', 'Uploaden…', `${(file.size / 1024 / 1024).toFixed(1)} MB`, pct));
+
+        setState('ok', 'Klaar — DAG triggert binnen 2 minuten.',
+          `Object: <code>${src.bucket}/${key}</code> · ` +
+          `Refresh Superset over ±3 minuten voor het bijgewerkte dashboard.`,
+          100);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setState('err', 'Upload mislukt', `<code>${msg.replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]!))}</code>`);
+      }
+    }
+
+    // ── Event wiring ───────────────────────────────────────────────────────
+    fileInput?.addEventListener('change', () => {
+      const f = fileInput.files?.[0];
+      if (f) handleFile(f);
+    });
+
+    if (dropZone) {
+      ['dragenter', 'dragover'].forEach((ev) =>
+        dropZone.addEventListener(ev, (e) => {
+          e.preventDefault();
+          dropZone.classList.add('csv-drop--active');
+        }));
+      ['dragleave', 'drop'].forEach((ev) =>
+        dropZone.addEventListener(ev, (e) => {
+          e.preventDefault();
+          dropZone.classList.remove('csv-drop--active');
+        }));
+      dropZone.addEventListener('drop', (e) => {
+        const dt = (e as DragEvent).dataTransfer;
+        const f = dt?.files?.[0];
+        if (f) handleFile(f);
+      });
+    }
   </script>
 
   <style>
@@ -304,6 +499,81 @@ const defaultSource = sources[0];
       margin: 0;
     }
     .csv-meta dd { margin: 0; }
+
+    .csv-drop {
+      display: block;
+      border: 1.5px dashed var(--line);
+      border-radius: var(--radius-md);
+      background: var(--bg-elev);
+      padding: var(--space-7) var(--space-4);
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      margin: 0 0 var(--space-4);
+    }
+    .csv-drop:hover, .csv-drop--active {
+      border-color: var(--accent, var(--ink-1));
+      background: var(--bg-sunken);
+    }
+    .csv-drop[data-state="busy"]   { border-color: var(--ink-3); }
+    .csv-drop[data-state="ok"]     { border-color: #4a8a4a; }
+    .csv-drop[data-state="err"]    { border-color: #b35454; }
+    .csv-drop-inner {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      pointer-events: none;
+    }
+    .csv-drop-title {
+      color: var(--ink-1);
+      font-weight: var(--weight-medium);
+    }
+    .csv-drop-sub {
+      color: var(--ink-3);
+      font-size: var(--text-meta);
+    }
+
+    .csv-status {
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: var(--space-3) var(--space-4);
+      margin: 0 0 var(--space-4);
+    }
+    .csv-status-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-3);
+      margin-bottom: var(--space-2);
+    }
+    .csv-status-label {
+      color: var(--ink-1);
+      font-size: var(--text-meta);
+      font-weight: var(--weight-medium);
+    }
+    .csv-status-pct {
+      color: var(--ink-3);
+      font-size: var(--text-eyebrow);
+    }
+    .csv-status-detail {
+      color: var(--ink-2);
+      font-size: var(--text-meta);
+      margin: var(--space-2) 0 0;
+      word-break: break-all;
+    }
+    .csv-progress {
+      height: 4px;
+      background: var(--bg-sunken);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .csv-progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--ink-1);
+      transition: width .15s linear;
+    }
 
     .csv-actions {
       display: flex;

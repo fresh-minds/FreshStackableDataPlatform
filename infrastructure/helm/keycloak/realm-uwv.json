@@ -86,6 +86,10 @@
       {
         "name": "proactief_dienstverlener",
         "description": "Proactieve dienstverlener — UC-04 TW-eligibility-werklijst."
+      },
+      {
+        "name": "csv_uploader",
+        "description": "Mag CSV-bestanden uploaden naar uwv-staging/incoming/ via de portal. Mapt op MinIO-policy 'csv-uploader'."
       }
     ]
   },
@@ -198,8 +202,12 @@
         }
       ],
       "realmRoles": [
-        "data_steward"
-      ]
+        "data_steward",
+        "csv_uploader"
+      ],
+      "attributes": {
+        "policy": ["csv-uploader"]
+      }
     },
     {
       "username": "data.engineer",
@@ -216,8 +224,12 @@
         }
       ],
       "realmRoles": [
-        "data_engineer"
+        "data_engineer",
+        "csv_uploader"
       ],
+      "attributes": {
+        "policy": ["csv-uploader"]
+      },
       "requiredActions": [
         "CONFIGURE_TOTP"
       ]
@@ -237,8 +249,12 @@
         }
       ],
       "realmRoles": [
-        "platform_admin"
+        "platform_admin",
+        "csv_uploader"
       ],
+      "attributes": {
+        "policy": ["csv-uploader"]
+      },
       "requiredActions": [
         "CONFIGURE_TOTP"
       ]
@@ -373,10 +389,7 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": true,
       "redirectUris": [
-        "https://trino.uwv-platform.local:8443/*",
-        "https://trino.uwv-platform.local/*",
-        "http://trino.uwv-platform.local:8443/*",
-        "http://trino.uwv-platform.local/*"
+        "https://localhost:8443/*"
       ],
       "webOrigins": [
         "+"
@@ -451,10 +464,7 @@
       "secret": "uwv-dev-only-CHANGE-ME-nifi-secret",
       "standardFlowEnabled": true,
       "redirectUris": [
-        "https://nifi.uwv-platform.local:8443/*",
-        "https://nifi.uwv-platform.local/*",
-        "http://nifi.uwv-platform.local:8443/*",
-        "http://nifi.uwv-platform.local/*"
+        "https://localhost:8443/*"
       ],
       "webOrigins": [
         "+"
@@ -550,6 +560,32 @@
             "included.client.audience": "portal",
             "id.token.claim": "true",
             "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "audience-minio",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "minio",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "minio-policy",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "policy",
+            "claim.name": "policy",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "multivalued": "true"
           }
         }
       ]

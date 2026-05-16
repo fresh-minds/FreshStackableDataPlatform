@@ -37,7 +37,6 @@ voor andere rollen. Wachtwoord wijzigen bij eerste login.
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
 | **Apache Superset** | Dashboards: WW-risico, caseload, signalen | https://superset.uwv-platform.local |
-| **Trino (DBeaver/CLI)** | Ad-hoc queries op `silver.ww` en `gold.uc03_ww_risk` | https://trino.uwv-platform.local |
 | **OpenMetadata** | Begrippen, eigenaarschap, lineage | https://openmetadata.uwv-platform.local |
 
 > Je gebruikt **niet**: NiFi, Airflow, sensitive vault.
