@@ -51,6 +51,11 @@ spec:
           automountServiceAccountToken: false
           securityContext:
             runAsNonRoot: true
+            # curlimages/curl ships a named user `curl_user` (uid 100);
+            # Kubernetes' runAsNonRoot check requires a numeric uid to
+            # verify without inspecting the image, so we pin it explicitly.
+            runAsUser: 100
+            runAsGroup: 100
             seccompProfile:
               type: RuntimeDefault
           containers:
