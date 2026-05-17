@@ -38,7 +38,7 @@ data:
 
     KEYCLOAK_INTERNAL = "http://keycloak.uwv-auth.svc.cluster.local"
     # KEYCLOAK_PUBLIC is the browser-visible URL. It differs per deployment
-    # mode (k3d/kind use :8443 on .uwv-platform.local; aks uses standard 443
+    # mode (k3d uses :8443 on .uwv-platform.local; aks uses standard 443
     # on the public domain) — driven by the KEYCLOAK_PUBLIC_URL env var set
     # in deployment-hub.yaml + overlays/<mode>/.
     KEYCLOAK_PUBLIC = os.environ.get(

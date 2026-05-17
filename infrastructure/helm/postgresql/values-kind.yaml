@@ -1,7 +1,0 @@
-# PostgreSQL — kind-specific overrides.
-# kind's default StorageClass is `standard` (rancher.io/local-path is not
-# pre-installed; the in-tree hostPath provisioner is what `standard` uses).
-
-primary:
-  persistence:
-    storageClass: "standard"

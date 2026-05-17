@@ -38,7 +38,7 @@ primary:
 
   persistence:
     enabled: true
-    # storageClass is set per-mode in values-{k3d,kind,aks}.yaml.
+    # storageClass is set per-mode in values-{k3d,aks}.yaml.
     size: 8Gi
 
   # Init-script maakt extra databases en gebruikers aan voor de consumers.

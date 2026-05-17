@@ -79,4 +79,4 @@ vraag waar de eerste integration-tests aan moeten voldoen.
 ## CI
 
 Smoke draait op iedere PR via [`ci/github-actions/`](../ci/github-actions/)
-(in opzet — zie [`ci/`](../ci/) en het `kind-e2e.yml` workflow).
+(in opzet — zie [`ci/`](../ci/)).

@@ -35,17 +35,17 @@ Spark, Hive, Trino, Airflow, Superset, OPA, ZooKeeper, secret-/listener-operator
 
 ## Snelstart
 
-Het platform draait in drie deployment-modes; alle Make-targets accepteren
-`MODE={k3d|kind|aks}` (default `k3d`). De mode bepaalt:
+Het platform draait in twee deployment-modes; alle Make-targets accepteren
+`MODE={k3d|aks}` (default `k3d`). De mode bepaalt:
 
-| Aspect | k3d (default) | kind | aks |
-|---|---|---|---|
-| Cluster type | k3d serverlb + local-path | kind extraPortMappings | AKS managed-csi + LB |
-| Domain | `uwv-platform.local:8443` | `uwv-platform.local:8443` | `eu-sovereigndataplatform.com` |
-| Storage class | `local-path` | `standard` | `managed-csi` |
-| Ingress controller | DaemonSet + hostNetwork | DaemonSet + hostNetwork | Deployment + LoadBalancer |
-| Helm values | `…/values.yaml` + `values-k3d.yaml` | `…/values-kind.yaml` | `…/values-aks.yaml` |
-| Platform overlays | base (flat) | base (flat) | `platform-overlays/aks/<comp>/` |
+| Aspect | k3d (default) | aks |
+|---|---|---|
+| Cluster type | k3d serverlb + local-path | AKS managed-csi + LB |
+| Domain | `uwv-platform.local:8443` | `eu-sovereigndataplatform.com` |
+| Storage class | `local-path` | `managed-csi` |
+| Ingress controller | DaemonSet + hostNetwork | Deployment + LoadBalancer |
+| Helm values | `…/values.yaml` + `values-k3d.yaml` | `…/values-aks.yaml` |
+| Platform overlays | base (flat) | `platform-overlays/aks/<comp>/` |
 
 ### Mode 1 — k3d (developer laptop)
 
@@ -78,19 +78,7 @@ make test
 make clean
 ```
 
-### Mode 2 — kind (CI / GitHub Actions)
-
-```bash
-# kind cluster met de juiste extraPortMappings (80/443 → host) en
-# ingress-ready label (matcht infrastructure/helm/ingress-nginx/values-kind.yaml).
-kind create cluster --name uwv-platform --config infrastructure/k3d/kind-cluster.yaml
-
-make doctor MODE=kind
-make bootstrap MODE=kind
-make deploy-platform MODE=kind
-```
-
-### Mode 3 — aks (Azure productie)
+### Mode 2 — aks (Azure productie)
 
 ```bash
 # Vereist: az login, terraform, SP-secret in scripts/azure/env.sh

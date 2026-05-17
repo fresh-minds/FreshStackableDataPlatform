@@ -60,9 +60,9 @@ extraVolumeMounts:
     readOnly: true
 
 # Hostname / proxy voor ingress-nginx vóór Keycloak.
-# KC_HOSTNAME (browser-visible URL) is mode-specifiek (zie values-{k3d,kind,aks}.yaml).
+# KC_HOSTNAME (browser-visible URL) is mode-specifiek (zie values-{k3d,aks}.yaml).
 # Chart-managed ingress.hostname STAYS as keycloak.uwv-platform.local on
-# every mode — it's the in-cluster routing target (via /etc/hosts on k3d/kind,
+# every mode — it's the in-cluster routing target (via /etc/hosts on k3d,
 # or CoreDNS hosts-override on AKS). The PUBLIC AKS ingress with the LE cert
 # lives in infrastructure/azure/public-ingresses.yaml as `keycloak-public`.
 proxy: edge

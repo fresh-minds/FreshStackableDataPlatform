@@ -1,20 +1,20 @@
 # Deployment modes
 
-The UWV reference platform runs in three modes, selected via `--mode` /
+The UWV reference platform runs in two modes, selected via `--mode` /
 `DEPLOYMENT_MODE` / `make … MODE=…`. The mode is a single switch that drives
 hostnames, storage classes, ingress controller shape, and kustomize overlays
 end-to-end.
 
-| Aspect | `k3d` (default) | `kind` | `aks` |
-|---|---|---|---|
-| Cluster type | k3d serverlb | kind extraPortMappings | AKS managed |
-| Browser port | `:8443` (serverlb→443) | `:8443` | `:443` (no port) |
-| Domain | `*.uwv-platform.local` | `*.uwv-platform.local` | `*.eu-sovereigndataplatform.com` |
-| Ingress controller | DaemonSet + hostNetwork | DaemonSet + hostNetwork | Deployment + LoadBalancer |
-| Storage class | `local-path` | `standard` | `managed-csi` (`managed-csi-premium` for MinIO) |
-| TLS | cert-manager + self-signed CA | cert-manager + self-signed CA | cert-manager + Let's Encrypt |
-| CoreDNS override | none needed | none needed | `coredns-custom` ConfigMap |
-| Public DNS | `/etc/hosts` | `/etc/hosts` | Azure DNS zone (CNAMEs upserted by aks-deploy.sh) |
+| Aspect | `k3d` (default) | `aks` |
+|---|---|---|
+| Cluster type | k3d serverlb | AKS managed |
+| Browser port | `:8443` (serverlb→443) | `:443` (no port) |
+| Domain | `*.uwv-platform.local` | `*.eu-sovereigndataplatform.com` |
+| Ingress controller | DaemonSet + hostNetwork | Deployment + LoadBalancer |
+| Storage class | `local-path` | `managed-csi` (`managed-csi-premium` for MinIO) |
+| TLS | cert-manager + self-signed CA | cert-manager + Let's Encrypt |
+| CoreDNS override | none needed | `coredns-custom` ConfigMap |
+| Public DNS | `/etc/hosts` | Azure DNS zone (CNAMEs upserted by aks-deploy.sh) |
 
 ## Layers
 
@@ -44,8 +44,7 @@ end-to-end.
 │   <chart>/           │   │ platform-overlays/<mode>/<comp>/        │
 │     values.yaml      │   │   kustomization.yaml                    │
 │     values-k3d.yaml  │   │     resources: ../../../platform/<comp> │
-│     values-kind.yaml │   │     patches: [hostname patches, …]      │
-│     values-aks.yaml  │   │                                         │
+│     values-aks.yaml  │   │     patches: [hostname patches, …]      │
 └──────────────────────┘   └─────────────────────────────────────────┘
 ```
 
@@ -56,8 +55,6 @@ Each chart under `infrastructure/helm/<chart>/` has:
   resource requests, image refs)
 - `values-k3d.yaml` — k3d-specific overrides (storage class `local-path`,
   hostNetwork ingress controller, KC_HOSTNAME with :8443)
-- `values-kind.yaml` — kind variant (mostly mirrors k3d, with `standard`
-  storage class and node-selector on the ingress controller)
 - `values-aks.yaml` — AKS overrides (Azure LoadBalancer, `managed-csi`
   storage, public hostname without :8443, no self-signed CA truststore)
 
@@ -66,7 +63,7 @@ Each chart under `infrastructure/helm/<chart>/` has:
 ## Per-component kustomize overlays
 
 The platform manifests under `platform/<NN>-<comp>/` use a flat layout —
-that **is** the k3d/kind base. Mode-specific patches live in a sibling
+that **is** the k3d base. Mode-specific patches live in a sibling
 tree at `platform-overlays/<mode>/<comp>/` (a sibling tree avoids kustomize's
 "cycle detected" error that would arise if overlays lived inside their own
 base's directory).
@@ -109,4 +106,3 @@ adjusting the host strings.
 3. For every directory that has `platform-overlays/aks/<comp>/`, create
    `platform-overlays/<newmode>/<comp>/` and adjust the host strings.
 4. Update `make cluster` in `Makefile` to know how to bring up the cluster.
-5. Update `.github/workflows/kind-e2e.yml` mode input choice list.

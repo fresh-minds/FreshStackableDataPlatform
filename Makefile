@@ -12,7 +12,7 @@ SHELL := /bin/bash
 CLUSTER_NAME ?= uwv-platform
 PLATFORM_CONFIG := platform-config.yaml
 
-# Deployment mode (k3d|kind|aks). Override per invocation:  make deploy MODE=aks
+# Deployment mode (k3d|aks). Override per invocation:  make deploy MODE=aks
 # The mode propagates to every script via --mode and to helm value selection
 # via scripts/lib/mode.sh. Default = k3d (developer-laptop scenario).
 MODE ?= k3d
@@ -42,14 +42,11 @@ print-config: ## Print de actieve platform-configuratie
 ##@ Lifecycle
 
 .PHONY: cluster
-cluster: ## Maak lokale cluster aan (k3d of kind, idempotent). Voor aks: gebruik 'make aks-up'.
+cluster: ## Maak lokale cluster aan (k3d, idempotent). Voor aks: gebruik 'make aks-up'.
 	@case "$(MODE)" in \
 	  k3d)  bash scripts/cluster.sh ;; \
-	  kind) command -v kind >/dev/null || { echo "kind niet geïnstalleerd"; exit 1; }; \
-	        kind get clusters | grep -q "^$(CLUSTER_NAME)$$" \
-	          || kind create cluster --name "$(CLUSTER_NAME)" ;; \
 	  aks)  echo "MODE=aks: gebruik 'make aks-up' om een AKS cluster te provisionen"; exit 1 ;; \
-	  *)    echo "Onbekende MODE='$(MODE)' (verwacht k3d, kind, aks)"; exit 1 ;; \
+	  *)    echo "Onbekende MODE='$(MODE)' (verwacht k3d, aks)"; exit 1 ;; \
 	esac
 
 .PHONY: bootstrap
@@ -68,41 +65,29 @@ deploy: ## End-to-end deploy: cluster + bootstrap + platform + portal + smoke (m
 	bash scripts/full-deploy.sh --mode=$(MODE)
 
 .PHONY: portal-image
-portal-image: ## Build uwv-platform/portal:dev (Astro static site + nginx) en importeer in lokale cluster (k3d/kind). Skipped voor aks.
+portal-image: ## Build uwv-platform/portal:dev (Astro static site + nginx) en importeer in lokale cluster (k3d). Skipped voor aks.
 	@if [ "$(MODE)" = "aks" ]; then echo "[portal-image] mode=aks: image wordt gepublished via 'make aks-portal-publish' (ConfigMap)"; exit 0; fi
 	docker build -f portal/Dockerfile -t uwv-platform/portal:dev .
-	@case "$(MODE)" in \
-	  k3d)  k3d image import uwv-platform/portal:dev -c $(CLUSTER_NAME) ;; \
-	  kind) kind load docker-image uwv-platform/portal:dev --name $(CLUSTER_NAME) ;; \
-	esac
+	k3d image import uwv-platform/portal:dev -c $(CLUSTER_NAME)
 	@echo "[portal-image] image gebouwd + geïmporteerd (mode=$(MODE))."
 
 .PHONY: jupyter-image
 jupyter-image: ## Build uwv-platform/jupyter-kernel:dev (JupyterLab + uwv_lab helper) en importeer in lokale cluster. Skipped voor aks.
 	@if [ "$(MODE)" = "aks" ]; then echo "[jupyter-image] mode=aks: image wordt uit een registry getrokken — skip lokale build"; exit 0; fi
 	docker build -t uwv-platform/jupyter-kernel:dev -f infrastructure/jupyter/kernel-python/Dockerfile .
-	@case "$(MODE)" in \
-	  k3d)  k3d image import uwv-platform/jupyter-kernel:dev -c $(CLUSTER_NAME) ;; \
-	  kind) kind load docker-image uwv-platform/jupyter-kernel:dev --name $(CLUSTER_NAME) ;; \
-	esac
+	k3d image import uwv-platform/jupyter-kernel:dev -c $(CLUSTER_NAME)
 	@echo "[jupyter-image] image gebouwd + geïmporteerd (mode=$(MODE))."
 
 .PHONY: nanitics-image
 nanitics-image: ## Build uwv-platform/nanitics-observatory:dev (FastAPI + nanitics SDK + watcher). Skipped voor aks.
 	@if [ "$(MODE)" = "aks" ]; then echo "[nanitics-image] mode=aks: skip — pull from registry (TODO: aks-nanitics-publish target)"; exit 0; fi
-	@case "$(MODE)" in \
-	  k3d)  bash platform/19-nanitics-observatory/build-and-load.sh ;; \
-	  kind) echo "[nanitics-image] MODE=kind not wired (build-and-load.sh imports via 'k3d image import'). Build manually with 'docker build ... && kind load ...'."; exit 1 ;; \
-	esac
+	bash platform/19-nanitics-observatory/build-and-load.sh
 	@echo "[nanitics-image] image gebouwd + geïmporteerd (mode=$(MODE))."
 
 .PHONY: multica-daemon-image
 multica-daemon-image: ## Build uwv-platform/multica-daemon:dev (multica CLI + Codex bound to Foundry). Skipped voor aks.
 	@if [ "$(MODE)" = "aks" ]; then echo "[multica-daemon-image] mode=aks: skip — pull from registry (TODO: aks-multica-daemon-publish target)"; exit 0; fi
-	@case "$(MODE)" in \
-	  k3d)  bash platform/20-multica-daemon/build-and-load.sh ;; \
-	  kind) echo "[multica-daemon-image] MODE=kind not wired (build-and-load.sh imports via 'k3d image import'). Build manually with 'docker build ... && kind load ...'."; exit 1 ;; \
-	esac
+	bash platform/20-multica-daemon/build-and-load.sh
 	@echo "[multica-daemon-image] image gebouwd + geïmporteerd (mode=$(MODE))."
 
 .PHONY: portal-publish-dbt-docs
@@ -147,10 +132,7 @@ dbt-image: ## Build uwv/dbt-trino:1.9.0-uwv en importeer in lokale cluster. Voor
 	@if [ "$(MODE)" = "aks" ]; then echo "[dbt-image] mode=aks: build + push naar de Azure container registry, daarna 'helm upgrade' op de Cosmos image-tag"; exit 0; fi
 	@cp infrastructure/airflow/dbt/profiles.yml dbt/profiles.yml
 	docker build -t uwv/dbt-trino:1.9.0-uwv -f infrastructure/airflow/dbt/Dockerfile dbt
-	@case "$(MODE)" in \
-	  k3d)  k3d image import uwv/dbt-trino:1.9.0-uwv -c $(CLUSTER_NAME) ;; \
-	  kind) kind load docker-image uwv/dbt-trino:1.9.0-uwv --name $(CLUSTER_NAME) ;; \
-	esac
+	k3d image import uwv/dbt-trino:1.9.0-uwv -c $(CLUSTER_NAME)
 	@echo "Image geïmporteerd (mode=$(MODE)). Cosmos KPO sub-pods pakken 'm bij volgende dbt-task run."
 
 .PHONY: om-bridge-image

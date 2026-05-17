@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # UWV Reference Data Platform — alles-in-één deploy.
 #
-# Mode: --mode={k3d|kind|aks}  (default k3d; ook DEPLOYMENT_MODE env)
+# Mode: --mode={k3d|aks}  (default k3d; ook DEPLOYMENT_MODE env)
 #
-# Stappen voor mode=k3d/kind:
-#   1. cluster aanmaken (k3d) — overgeslagen voor kind/aks
+# Stappen voor mode=k3d:
+#   1. cluster aanmaken (k3d) — overgeslagen voor aks
 #   2. /etc/hosts patchen voor *.${PLATFORM_DOMAIN}
 #   3. bootstrap (helm charts + operators) — mode-aware
 #   4. uwv-ca-bundle ConfigMap
@@ -22,7 +22,6 @@
 #
 # Usage:
 #   ./scripts/full-deploy.sh                  # default mode=k3d
-#   ./scripts/full-deploy.sh --mode=kind
 #   ./scripts/full-deploy.sh --skip-cluster   # cluster bestaat al
 #   ./scripts/full-deploy.sh --skip-bootstrap # helm-installs overslaan
 
@@ -50,18 +49,16 @@ fail() { printf '\033[1;31m  FAIL\033[0m %s\n' "$*" >&2; exit 1; }
 
 if [[ "${IS_CLOUD}" == "yes" ]]; then
   fail "mode=${DEPLOYMENT_MODE}: gebruik 'make aks-all' (of scripts/azure/aks-bootstrap.sh + aks-deploy.sh).
-        full-deploy.sh dekt alleen k3d/kind — AKS heeft extra cloud-only stappen."
+        full-deploy.sh dekt alleen k3d — AKS heeft extra cloud-only stappen."
 fi
 
 # ---------------------------------------------------------------------- 1
 log "1/10  cluster aanmaken (mode=${DEPLOYMENT_MODE})"
 if [[ $SKIP_CLUSTER -eq 1 ]]; then
   warn "skip (--skip-cluster)"
-elif [[ "${DEPLOYMENT_MODE}" == "k3d" ]]; then
+else
   make cluster
   ok "k3d cluster up"
-else
-  warn "mode=${DEPLOYMENT_MODE}: cluster moet handmatig bestaan (geen 'make cluster')"
 fi
 require_context
 
@@ -162,10 +159,7 @@ fi
 # ---------------------------------------------------------------------- 7
 log "7/10  Portal Docker-image bouwen + in cluster laden (mode=${DEPLOYMENT_MODE})"
 docker build -f portal/Dockerfile -t uwv-platform/portal:dev . >/dev/null
-case "${DEPLOYMENT_MODE}" in
-  k3d)  k3d image import uwv-platform/portal:dev -c "${CLUSTER_NAME:-uwv-platform}" >/dev/null ;;
-  kind) kind load docker-image uwv-platform/portal:dev --name "${CLUSTER_NAME:-kind}" >/dev/null ;;
-esac
+k3d image import uwv-platform/portal:dev -c "${CLUSTER_NAME:-uwv-platform}" >/dev/null
 kubectl -n uwv-platform rollout restart deployment portal >/dev/null 2>&1 || true
 ok "portal-image gebouwd + geïmporteerd"
 

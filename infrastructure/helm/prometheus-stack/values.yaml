@@ -29,7 +29,7 @@ prometheus:
     storageSpec:
       volumeClaimTemplate:
         spec:
-          # storageClassName is set per-mode in values-{k3d,kind,aks}.yaml.
+          # storageClassName is set per-mode in values-{k3d,aks}.yaml.
           accessModes: [ReadWriteOnce]
           resources:
             requests:
@@ -44,7 +44,7 @@ grafana:
   adminPassword: "uwv-dev-only-CHANGE-ME-2026"
   persistence:
     enabled: true
-    # storageClassName is set per-mode in values-{k3d,kind,aks}.yaml.
+    # storageClassName is set per-mode in values-{k3d,aks}.yaml.
     size: 2Gi
   resources:
     requests:

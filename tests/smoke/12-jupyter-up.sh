@@ -143,8 +143,8 @@ fi
 #     runt python -c en sluit weer af).
 #
 # Op AKS is `uwv-platform/jupyter-kernel:dev` niet pullable zonder dat het
-# image naar een registry is gepusht (geen `kind load` / `k3d image import`
-# beschikbaar). Sla de check over tot er een registry-push-flow is.
+# image naar een registry is gepusht (geen `k3d image import` beschikbaar).
+# Sla de check over tot er een registry-push-flow is.
 if [[ "$DEPLOYMENT_MODE" == "aks" ]]; then
   skip "uwv_lab kernel-import — kernel-image staat niet op een registry die AKS kan pullen (TODO: ACR-push)"
 else

@@ -1,4 +1,0 @@
-# MinIO — kind-specific overrides.
-persistence:
-  storageClass: "standard"
-  size: 30Gi

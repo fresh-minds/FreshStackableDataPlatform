@@ -1,4 +1,0 @@
-# OpenSearch — kind-specific overrides.
-persistence:
-  storageClass: standard
-  size: 10Gi

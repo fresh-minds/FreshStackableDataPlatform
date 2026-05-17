@@ -38,11 +38,11 @@ platform:
 # DNS-suffix voor Listener-operator + ingresses.
 #
 # Mode-aware (zie scripts/lib/mode.sh — DEPLOYMENT_MODE / --mode):
-#   k3d / kind  -> uwv-platform.local  (port :8443 via serverlb/portmap)
-#   aks         -> eu-sovereigndataplatform.com  (port 443, public DNS)
+#   k3d  -> uwv-platform.local  (port :8443 via serverlb/portmap)
+#   aks  -> eu-sovereigndataplatform.com  (port 443, public DNS)
 #
 # Overridable per invocation via PLATFORM_DOMAIN env var. Het veld `suffix`
-# hieronder is de lokale default (k3d/kind); voor AKS wordt het overschreven.
+# hieronder is de lokale default (k3d); voor AKS wordt het overschreven.
 # Voor lokaal verwacht in /etc/hosts:
 #   127.0.0.1 keycloak.uwv-platform.local ...
 dns:

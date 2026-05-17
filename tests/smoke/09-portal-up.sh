@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Smoke test 09 — UWV Platform Portal (Astro + oauth2-proxy).
 #
-# Mode-aware. On k3d/kind the portal is the chart-style `portal` Deployment
+# Mode-aware. On k3d the portal is the chart-style `portal` Deployment
 # (locally-built uwv-platform/portal:dev image). On AKS that image isn't
 # pullable, so platform-overlays/aks/15-portal/ replaces the Deployment +
 # Service + Ingress with `platform-landing` (Astro tarball ConfigMap +

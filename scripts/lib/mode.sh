@@ -12,11 +12,11 @@
 #   require_context            -- fail fast if kubectl context disagrees with mode
 #
 # After sourcing this file, the following vars are set:
-#   DEPLOYMENT_MODE   -- one of k3d | kind | aks
-#   PLATFORM_DOMAIN   -- e.g. uwv-platform.local (k3d/kind) or
+#   DEPLOYMENT_MODE   -- one of k3d | aks
+#   PLATFORM_DOMAIN   -- e.g. uwv-platform.local (k3d) or
 #                                eu-sovereigndataplatform.com (aks)
-#   PLATFORM_PORT     -- 8443 (k3d/kind) or 443 (aks). Browser URL port.
-#   IS_LOCAL          -- "yes" for k3d/kind, "no" for aks
+#   PLATFORM_PORT     -- 8443 (k3d) or 443 (aks). Browser URL port.
+#   IS_LOCAL          -- "yes" for k3d, "no" for aks
 #   IS_CLOUD          -- inverse of IS_LOCAL
 #
 # Usage from a script:
@@ -58,13 +58,13 @@ parse_mode_args() {
   DEPLOYMENT_MODE="${DEPLOYMENT_MODE:-${MODE:-k3d}}"
 
   case "$DEPLOYMENT_MODE" in
-    k3d|kind|aks) ;;
-    *) error "Unknown --mode='$DEPLOYMENT_MODE'. Valid: k3d, kind, aks." ;;
+    k3d|aks) ;;
+    *) error "Unknown --mode='$DEPLOYMENT_MODE'. Valid: k3d, aks." ;;
   esac
 
   # Domain / port defaults per mode. Override via PLATFORM_DOMAIN env var.
   case "$DEPLOYMENT_MODE" in
-    k3d|kind)
+    k3d)
       PLATFORM_DOMAIN="${PLATFORM_DOMAIN:-uwv-platform.local}"
       PLATFORM_PORT="${PLATFORM_PORT:-8443}"
       IS_LOCAL="yes"; IS_CLOUD="no"
@@ -139,10 +139,6 @@ require_context() {
       [[ "$ctx" == k3d-* ]] \
         || error "mode=k3d but kubectl context '$ctx' is not a k3d cluster. Run 'make cluster'."
       ;;
-    kind)
-      [[ "$ctx" == kind-* ]] \
-        || error "mode=kind but kubectl context '$ctx' is not a kind cluster. Create one with 'kind create cluster'."
-      ;;
     aks)
       case "$ctx" in
         uwv-platform-aks|*aks*) ;;
@@ -159,8 +155,8 @@ require_context() {
 require_storage_class() {
   local expected
   case "$DEPLOYMENT_MODE" in
-    k3d|kind) expected="local-path" ;;
-    aks)      expected="managed-csi" ;;
+    k3d) expected="local-path" ;;
+    aks) expected="managed-csi" ;;
   esac
   if ! kubectl get storageclass "$expected" >/dev/null 2>&1; then
     warn "expected StorageClass '$expected' not found in cluster (mode=$DEPLOYMENT_MODE)."

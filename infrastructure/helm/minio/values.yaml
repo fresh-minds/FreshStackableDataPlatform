@@ -7,7 +7,7 @@
 
 mode: standalone
 
-# Storage — storageClass + size set per-mode in values-{k3d,kind,aks}.yaml.
+# Storage — storageClass + size set per-mode in values-{k3d,aks}.yaml.
 persistence:
   enabled: true
   accessMode: ReadWriteOnce

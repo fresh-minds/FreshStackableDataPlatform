@@ -97,7 +97,7 @@ en schemas je standaard mag zien — geen handmatige permissies nodig.
 
 ### Stap 2 · Log in op de portal
 
-1. Open **<https://platform.uwv-platform.local:8443>** (k3d/kind) of
+1. Open **<https://platform.uwv-platform.local:8443>** (k3d) of
    `https://platform.eu-sovereigndataplatform.com` (aks).
 2. Klik **Inloggen via Keycloak (UWV)**.
 3. Vul gebruikersnaam + wachtwoord; wijzig wachtwoord bij eerste inlog.
@@ -159,7 +159,7 @@ Lees in deze volgorde:
 
 ### Stap 3 · Tools die je gebruikt
 
-| Component | Doel | URL (k3d/kind) |
+| Component | Doel | URL (k3d) |
 |---|---|---|
 | **Airflow** | Orchestratie van dbt-runs en pipelines | `https://airflow.uwv-platform.local` |
 | **dbt-docs** | Model-lineage en docs | via portal `Mijn werkplek` |
@@ -188,7 +188,7 @@ Voor: DevOps/SRE die het cluster installeert en draaiend houdt.
 
 ### Stap 1 · Begrijp de deployment-modes
 
-Het platform draait in drie modes — `--mode={k3d|kind|aks}` — die hostnames,
+Het platform draait in twee modes — `--mode={k3d|aks}` — die hostnames,
 storage classes, ingress-shape en kustomize-overlays end-to-end aansturen.
 
 Lees: [Deployment modes](../deployment-modes.md).
@@ -277,7 +277,7 @@ zodra je PR naar `main` mergt.
 
 | Conventie | Waar gedocumenteerd? |
 |---|---|
-| Mode-aware deploys (`MODE=k3d\|kind\|aks`) | [Deployment modes](../deployment-modes.md) |
+| Mode-aware deploys (`MODE=k3d\|aks`) | [Deployment modes](../deployment-modes.md) |
 | Tabel-formaat via dbt-macro, niet hardcoded | [ADR-0006](../adr/0006-delta-chosen-for-this-implementation.md) |
 | Doelbinding-eerst access-model | [ADR-0008](../adr/0008-self-service-data-access.md) |
 | Nederlandstalige docs, Engelse identifiers | [docs/README.md § Conventies](../README.md) |
@@ -286,7 +286,7 @@ zodra je PR naar `main` mergt.
 ### Stap 6 · Cleanup
 
 ```bash
-make clean        # k3d/kind: cluster delete
+make clean        # k3d: cluster delete
 make aks-down     # aks: terraform destroy
 ```
 

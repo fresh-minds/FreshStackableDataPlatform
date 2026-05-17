@@ -2,7 +2,7 @@
 
 Provisioning + deployment of the UWV reference platform on Azure Kubernetes Service.
 
-> Mode selection: the platform now runs uniformly across k3d/kind/AKS via the
+> Mode selection: the platform now runs uniformly across k3d/AKS via the
 > `MODE` Make variable (or `--mode`/`DEPLOYMENT_MODE`). All chart values and
 > platform manifests are layered automatically — see [docs/deployment-modes.md](../../docs/deployment-modes.md).
 > The AKS path is `make deploy MODE=aks` (or `make aks-all` for the full

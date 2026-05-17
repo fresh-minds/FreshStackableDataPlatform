@@ -4,7 +4,7 @@
 # Mode-aware: per component wordt platform/<comp>/overlays/<mode>/ gebruikt
 # als die bestaat, anders platform/<comp>/ (legacy flat layout).
 # Local-only post-steps (CoreDNS hosts-rewrite voor *.${PLATFORM_DOMAIN})
-# draaien alleen op k3d/kind. Op AKS doet scripts/azure/aks-deploy.sh die.
+# draaien alleen op k3d. Op AKS doet scripts/azure/aks-deploy.sh die.
 
 set -euo pipefail
 
@@ -177,7 +177,7 @@ if [[ "${IS_LOCAL}" == "yes" ]]; then
   if [[ -z "$KC_SVC_IP" || "$KC_SVC_IP" == "None" ]]; then
     printf '\033[1;33m!!\033[0m keycloak-external Service nog niet beschikbaar; CoreDNS-override overgeslagen\n'
   else
-    # k3d/kind: rewrite *.${PLATFORM_DOMAIN} naar de keycloak-external ClusterIP
+    # k3d: rewrite *.${PLATFORM_DOMAIN} naar de keycloak-external ClusterIP
     # zodat in-cluster OIDC-discovery van MinIO/Trino/Superset/Airflow/NiFi/
     # OpenMetadata werkt zonder /etc/hosts loopback.
     coredns_zone=$(printf '%s' "$PLATFORM_DOMAIN" | sed 's/\./\\./g')

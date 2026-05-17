@@ -58,7 +58,7 @@ Kubernetes, gebruikt **uitsluitend open source**, en is volledig declaratief
    fouten.
 4. **GitOps-ready**: alle YAML in versie-beheer, Helm-values losgetrokken van charts.
 5. **Documentatie verplicht**: elke module heeft een README met wat/hoe deploy/hoe test/hoe rollback.
-6. **Werkt op een lokale `kind`/`k3s`-cluster** als minimumdoel; geschikt voor
+6. **Werkt op een lokale `k3d`/`k3s`-cluster** als minimumdoel; geschikt voor
    productie-Kubernetes als stretch.
 7. **Tabelformaat parameterizable**: zie ADR-0002. Default is **Iceberg**, maar
    álle componenten moeten via een variabele `TABLE_FORMAT` te switchen zijn naar
@@ -234,7 +234,6 @@ uwv-data-platform/
 │       ├── uc09-reint-effect.md
 │       └── uc10-gegevensdiensten.md
 ├── infrastructure/
-│   ├── kind/kind-cluster.yaml
 │   ├── helm/
 │   │   ├── cert-manager/values.yaml
 │   │   ├── keycloak/values.yaml + realm-export.json
@@ -340,7 +339,7 @@ uwv-data-platform/
 │   ├── ml_wajong_features.py
 │   └── lakehouse_maintenance.py
 ├── ci/
-│   ├── github-actions/                  ← lint, dbt-parse, opa-test, kind-e2e
+│   ├── github-actions/                  ← lint, dbt-parse, opa-test
 │   └── pre-commit-config.yaml
 ├── tests/
 │   ├── smoke/01..06.sh
@@ -365,8 +364,7 @@ uwv-data-platform/
 6. **Per use case** een spec in `docs/use-cases/uc0x-*.md` — destilleer uit referentiearchitectuur §8.
 7. Schrijf `docs/compliance-mapping.md` als skeleton: tabel met R-NORA-xx, R-AVG-xx, R-BIO-xx, R-NIS2-xx → "to be implemented in fase X".
 8. `Makefile` met targets: `cluster`, `bootstrap`, `deploy-platform`, `seed`, `test`, `clean`.
-9. `infrastructure/kind/kind-cluster.yaml`.
-10. **Maak `platform-config.yaml`** met `table_format: iceberg` (default).
+9. **Maak `platform-config.yaml`** met `table_format: iceberg` (default).
 
 ### Fase 1 — Cluster bootstrap
 1. Helm install: cert-manager, ingress-nginx (of listener-operator), Prometheus stack, MinIO, PostgreSQL, Keycloak met UWV-realm.
@@ -491,7 +489,7 @@ meta:
 Voordat je gaat bouwen, **stel deze vragen** in één bericht:
 
 1. **Tabelformaat**: Iceberg (default per ADR-0002) of Delta Lake?
-2. **Doel-Kubernetes**: lokaal `kind`/`k3s`, of doel-cluster (welk type)?
+2. **Doel-Kubernetes**: lokaal `k3d`/`k3s`, of doel-cluster (welk type)?
 3. **Image registry**: privé of publiek pullen?
 4. **Domeinnaam / DNS**: `*.uwv-platform.local` met /etc/hosts, of echte DNS?
 5. **TLS**: cert-manager self-signed (dev), Let's Encrypt, of bestaande PKI?
@@ -545,7 +543,7 @@ afweging in een markdown blok (opties + voor/tegen + voorstel) en wacht op input
 
 ## §8 Acceptatiecriteria (Definition of Done)
 
-- [ ] `make cluster && make bootstrap && make deploy-platform && make seed && make test` slaagt op schone `kind`-cluster.
+- [ ] `make cluster && make bootstrap && make deploy-platform && make seed && make test` slaagt op schone `k3d`-cluster.
 - [ ] Superset toont dashboard "WIA Funnel" voor rol `data_steward` met 7 dagen synthetische data.
 - [ ] OpenMetadata toont end-to-end lineage: synthetische bron → dbt-model → Superset chart.
 - [ ] OPA weigert query op `client_360.bsn` voor rol zonder doel "uitkering".

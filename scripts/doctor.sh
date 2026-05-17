@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Doctor — controleer of de host de vereiste tooling heeft.
 #
-# Mode-aware: --mode=k3d (default) | kind | aks bepaalt welke tools en
+# Mode-aware: --mode=k3d (default) | aks bepaalt welke tools en
 # /etc/hosts entries gecheckt worden. Voor aks zijn k3d en /etc/hosts
 # niet nodig; azure-cli is wel verplicht.
 set -euo pipefail
@@ -28,10 +28,6 @@ case "$DEPLOYMENT_MODE" in
   k3d)
     mode_required=("docker     version 24+"
                    "k3d        version 5.6+")
-    ;;
-  kind)
-    mode_required=("docker     version 24+"
-                   "kind       version 0.20+")
     ;;
   aks)
     mode_required=("az         (Azure CLI)"
@@ -125,10 +121,6 @@ else
     k3d)
       if [[ "$ctx" == k3d-* ]]; then printf "  [OK]   context '%s' past bij mode=k3d\n" "$ctx"
       else printf "  [warn] context '%s' is geen k3d-context (mode=k3d verwacht)\n" "$ctx"
-      fi ;;
-    kind)
-      if [[ "$ctx" == kind-* ]]; then printf "  [OK]   context '%s' past bij mode=kind\n" "$ctx"
-      else printf "  [warn] context '%s' is geen kind-context (mode=kind verwacht)\n" "$ctx"
       fi ;;
     aks)
       if [[ "$ctx" == *aks* ]]; then printf "  [OK]   context '%s' past bij mode=aks\n" "$ctx"

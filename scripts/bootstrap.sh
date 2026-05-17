@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bootstrap — installeer Helm-charts en Stackable-operators op een lege cluster.
 #
-# Mode: k3d (default), kind, of aks. Selectie via --mode=<mode> of
+# Mode: k3d (default) of aks. Selectie via --mode=<mode> of
 # DEPLOYMENT_MODE env. Per-chart values worden gestapeld:
 #   infrastructure/helm/<chart>/values.yaml          (mode-agnostic base)
 #   infrastructure/helm/<chart>/values-<mode>.yaml   (mode-specific overlay)
@@ -432,7 +432,7 @@ helm upgrade --install openmetadata open-metadata/openmetadata \
 # patches). Defensieve helm upgrade --set forceert de publieke URLs zodat
 # de Secret die OM gebruikt voor AUTHENTICATION_AUTHORITY / _CALLBACK_URL
 # / _PUBLIC_KEYS zeker de juiste hostname bevat — alleen voor cloud-mode.
-# Op k3d/kind blijft `*.uwv-platform.local` staan; anders krijg je
+# Op k3d blijft `*.uwv-platform.local` staan; anders krijg je
 # "Invalid parameter: redirect_uri" bij login (callback wijst dan naar
 # cloud-domein terwijl de browser op .local zit en de Keycloak-client
 # alleen *.uwv-platform.local accepteert).
