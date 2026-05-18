@@ -1,0 +1,48 @@
+# RBAC voor uc11_full_setup DAG.
+#
+# Het uc11_full_setup DAG-pad heeft tasks die K8s-resources lezen/schrijven:
+#   - ensure_streaming_bronze: read/create SparkApplication
+#   - ensure_seed             : read/create/delete Jobs
+#   - rebuild_superset_dashboard: read/create/delete Jobs
+#
+# We binden deze tasks aan ServiceAccount `uc11-orchestrator` ipv de
+# default-SA in uwv-platform (die heeft alleen configmap-leesrechten).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: uc11-orchestrator
+  namespace: uwv-platform
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: uc11-orchestrator
+  namespace: uwv-platform
+rules:
+  # Jobs: read + manage (rebuild_superset_dashboard, ensure_seed).
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "create", "delete", "patch", "watch"]
+  # SparkApplications: read + create (ensure_streaming_bronze).
+  - apiGroups: ["spark.stackable.tech"]
+    resources: ["sparkapplications"]
+    verbs: ["get", "list", "create", "watch"]
+  # Hulp: pods listen voor diagnose (geen exec/log nodig).
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: uc11-orchestrator
+  namespace: uwv-platform
+subjects:
+  - kind: ServiceAccount
+    name: uc11-orchestrator
+    namespace: uwv-platform
+roleRef:
+  kind: Role
+  name: uc11-orchestrator
+  apiGroup: rbac.authorization.k8s.io

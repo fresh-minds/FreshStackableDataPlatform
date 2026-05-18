@@ -16,6 +16,7 @@ resources:
   - ingress.yaml
   - webserver-config.yaml
   - jobs/dbt-manifest-job.yaml
+  - uc11-rbac.yaml
 
 configMapGenerator:
   # 1. DAG-aanroeperfiles. Houd dit minimaal — geen logica, alleen factory-calls.

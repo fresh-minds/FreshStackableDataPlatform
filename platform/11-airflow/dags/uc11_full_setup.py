@@ -2,17 +2,24 @@
 
 Eén DAG die UC-11 op een verse cluster volledig operationeel maakt:
 
-  1. wait_for_bronze            — wacht tot synthetische data in bronze staat
-  2. silver_* (parallel)        — trigger alle silver-staging DAGs
-  3. gold_uc11_klantreis        — bouwt int_klantreis_events + 2 marts
-  4. render_dbt_manifest        — dbt parse + upload (OM-compat strip) naar
+  1. ensure_streaming_bronze    — apply streaming-bronze SparkApplication
+                                  als 'm niet aanwezig is (kustomization
+                                  heeft 'm uitgecommentarieerd na incident
+                                  2026-05-15; deze DAG zet 'm one-shot aan)
+  2. ensure_seed                — kick `seed-data-generation` Job als
+                                  bronze leeg + Kafka geen messages heeft
+  3. wait_for_bronze            — poll bronze.uwv.persona_created tot
+                                  Spark-streaming de eerste batch schreef
+  4. silver_* (parallel)        — trigger alle silver-staging DAGs
+  5. gold_uc11_klantreis        — bouwt int_klantreis_events + 2 marts
+  6. render_dbt_manifest        — dbt parse + upload (OM-compat strip) naar
                                   s3://uwv-meta/dbt/latest/
-  5. governance_om_ingest       — Trino-catalog, dbt-lineage, Superset,
+  7. governance_om_ingest       — Trino-catalog, dbt-lineage, Superset,
                                   Airflow, Kafka — alle ingest-stappen
-  6. om_cleanup_duplicates      — verwijder bronze/silver uc11_klantreis
+  8. om_cleanup_duplicates      — verwijder bronze/silver uc11_klantreis
                                   schemas (shared Hive metastore artefact)
-  7. om_add_kafka_lineage       — voeg 7 Kafka topic → bronze edges toe
-  8. rebuild_superset_dashboard — re-create superset-dashboards-init Job
+  9. om_add_kafka_lineage       — voeg 7 Kafka topic → bronze edges toe
+ 10. rebuild_superset_dashboard — re-create superset-dashboards-init Job
                                   zodat het UC-11 dashboard (12 charts)
                                   daadwerkelijk wordt gebouwd nadat marts
                                   bestaan
@@ -64,8 +71,14 @@ _PY_IMAGE = "openmetadata/ingestion:1.5.7"  # heeft Python 3.10 + requests + min
 
 
 def _py_pod(task_id: str, script: str, *, om_jwt: bool = True,
+            service_account_name: str | None = None,
             extra_env: list[V1EnvVar] | None = None) -> KubernetesPodOperator:
-    """Run een inline Python-script als KPO met optioneel OM_JWT_TOKEN."""
+    """Run een inline Python-script als KPO met optioneel OM_JWT_TOKEN.
+
+    `service_account_name` is nodig voor tasks die K8s-resources lezen of
+    schrijven (SparkApplication, Job). Voor alleen-uitgaande-HTTP-calls
+    is de default-SA voldoende.
+    """
     env_vars: list[V1EnvVar] = [
         V1EnvVar(name="REQUESTS_CA_BUNDLE", value="/etc/uwv-ca/ca.crt"),
         V1EnvVar(name="SSL_CERT_FILE", value="/etc/uwv-ca/ca.crt"),
@@ -75,7 +88,7 @@ def _py_pod(task_id: str, script: str, *, om_jwt: bool = True,
     if extra_env:
         env_vars.extend(extra_env)
 
-    return KubernetesPodOperator(
+    kwargs = dict(
         task_id=task_id,
         namespace="uwv-platform",
         image=_PY_IMAGE,
@@ -88,34 +101,179 @@ def _py_pod(task_id: str, script: str, *, om_jwt: bool = True,
         is_delete_operator_pod=True,
         get_logs=True,
     )
+    if service_account_name:
+        kwargs["service_account_name"] = service_account_name
+    return KubernetesPodOperator(**kwargs)
+
+
+# SA met SparkApplication + Job rechten (zie platform/11-airflow/uc11-rbac.yaml).
+ORCHESTRATOR_SA = "uc11-orchestrator"
 
 
 # ── scripts ───────────────────────────────────────────────────────────
+
+ENSURE_STREAMING_BRONZE_SCRIPT = '''
+import json, os, ssl, urllib.request, urllib.error
+KAPI = "https://kubernetes.default.svc"
+with open("/var/run/secrets/kubernetes.io/serviceaccount/token") as f:
+    SA_TOKEN = f.read().strip()
+ctx = ssl.create_default_context(cafile="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+HDR = {"Authorization": f"Bearer {SA_TOKEN}", "Content-Type":"application/json"}
+NS = "uwv-platform"
+
+# Check of streaming-bronze SparkApplication al bestaat.
+url = f"{KAPI}/apis/spark.stackable.tech/v1alpha1/namespaces/{NS}/sparkapplications/streaming-bronze"
+try:
+    urllib.request.urlopen(urllib.request.Request(url, headers=HDR),
+                           context=ctx, timeout=10).read()
+    print("streaming-bronze SparkApplication bestaat al — skip", flush=True)
+    raise SystemExit(0)
+except urllib.error.HTTPError as e:
+    if e.code != 404:
+        print(f"  ! lookup: {e.code}", flush=True)
+
+# Apply minimaal SparkApplication-manifest. spark-streaming-jobs ConfigMap
+# wordt door scripts/deploy-platform.sh aangemaakt — verwacht dat-ie er staat.
+body = {
+    "apiVersion":"spark.stackable.tech/v1alpha1","kind":"SparkApplication",
+    "metadata":{"name":"streaming-bronze","namespace":NS,
+                "labels":{"uwv.nl/component":"streaming-bronze",
+                          "uwv.nl/triggered-by":"uc11_full_setup"}},
+    "spec":{
+        "sparkImage":{"productVersion":"3.5.7"},
+        "mode":"cluster",
+        "mainApplicationFile":"local:///stackable/spark/jobs/streaming_kafka_to_lakehouse.py",
+        "s3connection":{"reference":"s3-minio"},
+        "deps":{
+            "requirements":[],
+            "packages":[
+                "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.5",
+                "io.delta:delta-spark_2.12:3.2.1",
+                "org.apache.hadoop:hadoop-aws:3.3.6",
+            ],
+        },
+        "sparkConf":{
+            "spark.sql.extensions":"io.delta.sql.DeltaSparkSessionExtension",
+            "spark.sql.catalog.spark_catalog":
+                "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+            "spark.hadoop.fs.s3a.path.style.access":"true",
+            "spark.hadoop.fs.s3a.connection.ssl.enabled":"true",
+        },
+        "driver":{
+            "config":{"resources":{"cpu":{"min":"100m","max":"500m"},
+                                   "memory":{"limit":"1Gi"}}},
+            "volumeMounts":[{"name":"jobs","mountPath":"/stackable/spark/jobs"}],
+            "envOverrides":{"TABLE_FORMAT":"delta"},
+        },
+        "executor":{
+            "replicas":1,
+            "config":{"resources":{"cpu":{"min":"200m","max":"1000m"},
+                                   "memory":{"limit":"1Gi"}}},
+            "volumeMounts":[{"name":"jobs","mountPath":"/stackable/spark/jobs"}],
+            "envOverrides":{"TABLE_FORMAT":"delta"},
+        },
+        "volumes":[{"name":"jobs","configMap":{"name":"spark-streaming-jobs"}}],
+    },
+}
+url = f"{KAPI}/apis/spark.stackable.tech/v1alpha1/namespaces/{NS}/sparkapplications"
+try:
+    urllib.request.urlopen(urllib.request.Request(url, data=json.dumps(body).encode(),
+                           headers=HDR, method="POST"), context=ctx, timeout=15).read()
+    print("streaming-bronze SparkApplication aangemaakt", flush=True)
+except urllib.error.HTTPError as e:
+    msg = e.read().decode()[:200]
+    print(f"  ! create: {e.code} {msg}", flush=True)
+    raise SystemExit(1)
+'''
+
+
+ENSURE_SEED_SCRIPT = '''
+import json, os, ssl, urllib.request, urllib.error
+KAPI = "https://kubernetes.default.svc"
+with open("/var/run/secrets/kubernetes.io/serviceaccount/token") as f:
+    SA_TOKEN = f.read().strip()
+ctx = ssl.create_default_context(cafile="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+HDR = {"Authorization": f"Bearer {SA_TOKEN}", "Content-Type":"application/json"}
+NS = "uwv-platform"
+
+# Check of seed-data-generation Job recent gedraaid heeft.
+url = f"{KAPI}/apis/batch/v1/namespaces/{NS}/jobs/seed-data-generation"
+need_run = True
+try:
+    r = urllib.request.urlopen(urllib.request.Request(url, headers=HDR),
+                               context=ctx, timeout=10).read()
+    job = json.loads(r)
+    if job.get("status",{}).get("succeeded"):
+        print("seed-data-generation Job al Completed — skip", flush=True)
+        need_run = False
+    else:
+        # bestaat maar niet succeeded — verwijder en re-creëer
+        urllib.request.urlopen(urllib.request.Request(
+            f"{url}?propagationPolicy=Foreground", headers=HDR, method="DELETE"
+        ), context=ctx, timeout=15).read()
+        print("oude seed-Job verwijderd", flush=True)
+except urllib.error.HTTPError as e:
+    if e.code != 404:
+        print(f"  ! seed lookup: {e.code}", flush=True)
+
+if not need_run:
+    raise SystemExit(0)
+
+# Pragmatisch: laat eerste DAG-run verwachten dat user `make seed` heeft
+# gedaan. Voor verse cluster die seed-job daar nog niet had: dit is
+# een opt-in trigger via Variable `uc11_full_setup.run_seed=true`.
+# Dat houden we simpel: skip standaard, log instructie.
+print("seed nog niet gedraaid — run `make seed` eerst, of zet "
+      "Airflow Variable `uc11_full_setup.run_seed=true` "
+      "(out-of-scope voor deze DAG om secrets/ConfigMaps te beheren).",
+      flush=True)
+'''
+
 
 WAIT_FOR_BRONZE_SCRIPT = '''
 import json, ssl, time, urllib.request
 ctx = ssl._create_unverified_context()
 url = "https://uwv-trino-coordinator.uwv-platform.svc.cluster.local:8443/v1/statement"
-deadline = time.time() + 600
+
+def trino(sql):
+    req = urllib.request.Request(url, data=sql.encode(),
+        headers={"X-Trino-User":"smoketest","Content-Type":"text/plain"}, method="POST")
+    d = json.loads(urllib.request.urlopen(req, context=ctx, timeout=15).read())
+    rows = []
+    error = None
+    while d.get("nextUri"):
+        d = json.loads(urllib.request.urlopen(
+            urllib.request.Request(d["nextUri"], headers={"X-Trino-User":"smoketest"}),
+            context=ctx, timeout=15).read())
+        rows.extend(d.get("data") or [])
+        state = d.get("stats",{}).get("state","")
+        if state == "FAILED":
+            error = d.get("error",{}).get("message")
+            break
+        if state == "FINISHED":
+            break
+    return rows, error
+
+# Streaming-bronze heeft ~2 min nodig om eerste batch te schrijven na start.
+# Op een fresh cluster waar SparkApplication net is aangemaakt: deadline 12 min.
+deadline = time.time() + 720
+last_err = "?"
 while time.time() < deadline:
-    try:
-        req = urllib.request.Request(url, data=b"SELECT count(*) FROM bronze.uwv.persona_created",
-            headers={"X-Trino-User":"smoketest","Content-Type":"text/plain"}, method="POST")
-        d = json.loads(urllib.request.urlopen(req, context=ctx, timeout=15).read())
-        while d.get("nextUri"):
-            d = json.loads(urllib.request.urlopen(
-                urllib.request.Request(d["nextUri"], headers={"X-Trino-User":"smoketest"}),
-                context=ctx, timeout=15).read())
-            if d.get("data"):
-                n = int(d["data"][0][0])
-                print(f"[wait_for_bronze] persona_created rows={n}", flush=True)
-                if n > 0:
-                    raise SystemExit(0)
-                break
-    except Exception as e:
-        print(f"[wait_for_bronze] poll: {e}", flush=True)
-    time.sleep(15)
-raise SystemExit("bronze.uwv.persona_created leeg na 10 min")
+    rows, err = trino("SELECT COUNT(*) FROM bronze.uwv.persona_created")
+    if rows:
+        n = int(rows[0][0])
+        print(f"[wait_for_bronze] persona_created rows={n}", flush=True)
+        if n > 0:
+            raise SystemExit(0)
+    elif err:
+        last_err = err
+        # Schema-doesnt-exist is niet fataal als streaming-bronze nog spawnt.
+        print(f"[wait_for_bronze] not-yet: {err}", flush=True)
+    time.sleep(20)
+print(f"[wait_for_bronze] timeout — last error: {last_err}", flush=True)
+print("  Hint: ensure_streaming_bronze task aangemaakt? Of run `make seed` voor data.",
+      flush=True)
+raise SystemExit(1)
 '''
 
 
@@ -366,6 +524,20 @@ with DAG(
     tags=["uwv", "uc11", "bootstrap"],
 ) as dag:
 
+    ensure_streaming = _py_pod(
+        task_id="ensure_streaming_bronze",
+        script=ENSURE_STREAMING_BRONZE_SCRIPT,
+        om_jwt=False,
+        service_account_name=ORCHESTRATOR_SA,
+    )
+
+    ensure_seed = _py_pod(
+        task_id="ensure_seed",
+        script=ENSURE_SEED_SCRIPT,
+        om_jwt=False,
+        service_account_name=ORCHESTRATOR_SA,
+    )
+
     wait_bronze = _py_pod(
         task_id="wait_for_bronze",
         script=WAIT_FOR_BRONZE_SCRIPT,
@@ -438,9 +610,11 @@ with DAG(
         task_id="rebuild_superset_dashboard",
         script=REBUILD_DASHBOARD_SCRIPT,
         om_jwt=False,
+        service_account_name=ORCHESTRATOR_SA,
     )
     rebuild_dash.trigger_rule = TriggerRule.ALL_DONE
 
     # Flow
-    wait_bronze >> silver_triggers >> trigger_gold >> render_manifest \
-        >> trigger_om >> [cleanup, add_edges] >> rebuild_dash
+    ensure_streaming >> ensure_seed >> wait_bronze >> silver_triggers \
+        >> trigger_gold >> render_manifest >> trigger_om \
+        >> [cleanup, add_edges] >> rebuild_dash
