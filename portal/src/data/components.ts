@@ -19,7 +19,8 @@ export type ComponentId =
   | 'jupyter'
   | 'prometheus'
   | 'opensearch'
-  | 'multica';
+  | 'multica'
+  | 'nanitics';
 
 // Legacy "layer" — fijne granulariteit voor de oude card-tag.
 export type ComponentLayer =
@@ -311,6 +312,24 @@ export const components: PlatformComponent[] = [
     icon: '/icons/brand/multica.svg',
     url: 'https://multica.uwv-platform.local:8443',
     prometheusJob: 'multica-backend',
+    rolesUsing: ['platform_admin', 'data_engineer'],
+  },
+  {
+    id: 'nanitics',
+    name: 'Nanitics Observatory',
+    layer: 'ai-agents',
+    stage: 'agents',
+    // Runtime-lane: in-cluster FastAPI + Nanitics SDK met vier demo-agents
+    // (ReAct/ReWOO/Reflexion/LATS) plús een platform-watcher die periodiek
+    // Prometheus/K8s-events/OpenSearch leest en bevindingen als Multica-tasks
+    // filed in `platform-ops`. URL wijst naar de Observatory trace-viewer;
+    // /chat is een tweede entry voor handmatige watcher-triggers.
+    short: 'In-cluster agent-runtime + trace-viewer. Watcher monitort het platform en filed issues naar Multica.',
+    purpose: 'Bekijk watcher-runs (span tree, LLM-calls, tool-calls) en triggert handmatige investigations.',
+    // Geen eigen brand-svg; valt terug op het generieke agents-stage-icoon
+    // tot er een Nanitics-logo aan public/icons/brand/ is toegevoegd.
+    icon: '/icons/stage/agents.svg',
+    url: 'https://nanitics.uwv-platform.local:8443/api/observatory/',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
 ];

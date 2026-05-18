@@ -59,7 +59,9 @@ const isActive = (href: string): boolean => {
         // keeps pointing at the k3d-local hostname even when the portal
         // is served from the .com host — useful for components that
         // intentionally only run on the dev cluster.
-        var KEEP_LOCAL = ['multica'];
+        // - nanitics: no AKS ingress yet for nanitics-observatory; the
+        //   k3d-local URL is the only place the watcher/Observatory live.
+        var KEEP_LOCAL = ['multica', 'nanitics'];
 
         function rewriteHref(href) {
           var m = href.match(/:\/\/([a-z0-9-]+)\.uwv-platform\.local(:8443)?/);
