@@ -50,11 +50,17 @@ spec:
             - name: MULTICA_OPENCODE_MODEL
               value: "azure-foundry/gpt-5.4-nano"
             # Both codex and opencode inherit this from the process env.
+            # Optional so the daemon starts in dev clusters without an
+            # Azure key — codex/opencode will fail on first model call,
+            # but the pod itself is up. Provision via the kubectl recipe
+            # in ../19-nanitics-observatory/secret.yaml, then
+            # `kubectl rollout restart deploy/multica-daemon`.
             - name: AZURE_OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: nanitics-azure-foundry
                   key: AZURE_AI_FOUNDRY_API_KEY
+                  optional: true
             # Bootstrap PAT — used by entrypoint.sh on first boot to do
             # `multica login --token`. Empty by default; pod will refuse
             # to start until the operator provisions the Secret.

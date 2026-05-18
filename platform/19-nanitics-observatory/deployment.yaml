@@ -37,8 +37,14 @@ spec:
           envFrom:
             - configMapRef:
                 name: nanitics-observatory-config
+            # Azure AI Foundry key is out-of-band (see secret.yaml). Mark
+            # optional so the pod starts in dev clusters without an Azure
+            # key — the app will refuse AI calls but the Deployment is up.
+            # Provision with the kubectl recipe in secret.yaml, then
+            # `kubectl rollout restart deploy/nanitics-observatory`.
             - secretRef:
                 name: nanitics-azure-foundry
+                optional: true
             # Watcher's Multica bearer token. `optional: true` keeps the
             # pod startable while MULTICA_DRY_RUN=true and the real token
             # has not yet been provisioned. See secret-multica.yaml.

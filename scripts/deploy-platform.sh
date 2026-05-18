@@ -101,6 +101,24 @@ for layer in "${LAYERS[@]}"; do
     log "$layer — leeg, skip (wordt in latere fase ingevuld)"
     continue
   fi
+
+  # platform/11-airflow contains the dbt-manifest-render Job, whose
+  # git-sync initContainer reads GITSYNC_REPO from ConfigMap uwv-repo-url
+  # (optional key). Without it, git-sync exits "required flag: --repo"
+  # and the Job fails — noisy and confusing, even though the same
+  # manifest gets seeded later via the Docker-based renderer below.
+  # Seed the ConfigMap from `git remote get-url origin` so the Job runs
+  # to completion. Skip silently if git or the remote is missing.
+  if [[ "$layer" == "platform/11-airflow" ]]; then
+    repo_url="$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)"
+    if [[ -n "$repo_url" ]]; then
+      kubectl -n uwv-platform create configmap uwv-repo-url \
+        --from-literal=url="$repo_url" \
+        --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+      log "  uwv-repo-url ConfigMap geseed met ${repo_url} (voor dbt-manifest-render Job)"
+    fi
+  fi
+
   # Prefer mode-specific overlay; fall back to flat layout for components
   # that haven't been restructured yet.
   target="$(kustomize_overlay "$layer")"

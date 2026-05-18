@@ -1,0 +1,18 @@
+# k3d overlay for platform/20-multica-daemon.
+#
+# The daemon's entrypoint.sh refuses to start without AZURE_OPENAI_API_KEY
+# AND MULTICA_API_TOKEN — both are out-of-band secrets that a fresh dev
+# cluster does not have. Rather than let the pod crash-loop, scale to 0
+# in k3d so it stays out of the way.
+#
+# To bring the daemon up locally:
+#   1. Provision both secrets (see platform/19-nanitics-observatory/secret.yaml
+#      and platform/20-multica-daemon/secret-token.yaml for kubectl recipes)
+#   2. kubectl -n uwv-platform scale deploy/multica-daemon --replicas=1
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/20-multica-daemon
+replicas:
+  - name: multica-daemon
+    count: 0
