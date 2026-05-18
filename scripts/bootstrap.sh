@@ -157,6 +157,57 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   $(chart_value_args ingress-nginx) \
   --wait --timeout 5m
 
+# 3a. Extra port 8443 op de ingress-nginx-controller Service.
+# Browsers gebruiken `*.uwv-platform.local:8443` (k3d port-mapt host:8443
+# → node:443). Maar server-to-server-calls *binnen* de cluster zien geen
+# host-mapping — die hebben dezelfde URL nodig om dezelfde plek te bereiken.
+# Zonder deze patch faalt bv. OpenMetadata's OIDC-discovery naar Keycloak
+# met "Connection refused" op poort 8443.
+# Idempotent: alleen toevoegen als 8443 nog niet in de Service-spec staat.
+log "Patch ingress-nginx-controller Service: voeg poort 8443 toe (in-cluster bereikbaarheid)"
+if ! kubectl get svc -n ingress-nginx ingress-nginx-controller \
+     -o jsonpath='{.spec.ports[?(@.port==8443)].port}' 2>/dev/null | grep -q 8443; then
+  kubectl patch svc -n ingress-nginx ingress-nginx-controller --type=json \
+    -p='[{"op":"add","path":"/spec/ports/-","value":{"name":"https-8443","port":8443,"protocol":"TCP","targetPort":"https","appProtocol":"https"}}]' \
+    >/dev/null
+fi
+
+# 3b. CoreDNS-override voor *.${PLATFORM_DOMAIN}.
+# Zonder deze override resolved een pod `keycloak.uwv-platform.local` via de
+# upstream DNS van de host (de Mac's /etc/hosts), die alles naar 127.0.0.1
+# mapped. Server-side OIDC-calls vanuit pods knallen dan op localhost en
+# falen met "Connection refused".
+# Fix: een CoreDNS server-block dat wildcard-matched naar de ingress-nginx
+# Service-ClusterIP. k3s mounts coredns-custom automatisch onder
+# /etc/coredns/custom/ en het Corefile importeert *.server-files als
+# extra server-blocks. ClusterIP wordt dynamisch ingelezen (kan per
+# bootstrap variëren, k3d alloceert uit 10.43.0.0/16).
+if [[ "${IS_LOCAL:-yes}" == "yes" ]]; then
+  log "Apply CoreDNS-override voor *.${PLATFORM_DOMAIN} → ingress-nginx ClusterIP"
+  INGRESS_CLUSTERIP="$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+    -o jsonpath='{.spec.clusterIP}')"
+  kubectl apply -f - <<EOF >/dev/null
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  uwv.server: |
+    ${PLATFORM_DOMAIN}:53 {
+        errors
+        cache 30
+        template IN A ${PLATFORM_DOMAIN} {
+            match ^([a-zA-Z0-9-]+\.)?$(echo "${PLATFORM_DOMAIN}" | sed 's/\./\\\\./g')\.\$
+            answer "{{ .Name }} 60 IN A ${INGRESS_CLUSTERIP}"
+            fallthrough
+        }
+    }
+EOF
+  kubectl rollout restart -n kube-system deploy/coredns >/dev/null
+  kubectl rollout status -n kube-system deploy/coredns --timeout=60s >/dev/null
+fi
+
 # 4. PostgreSQL (shared)
 log "Install PostgreSQL ${POSTGRES_VERSION} (gedeeld)"
 kubectl create namespace uwv-data --dry-run=client -o yaml | kubectl apply -f -

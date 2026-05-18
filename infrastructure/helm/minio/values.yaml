@@ -141,16 +141,32 @@ policies:
           - "s3:PutObject"
           - "s3:AbortMultipartUpload"
           - "s3:ListMultipartUploadParts"
+      # GetBucketLocation MAG geen s3:prefix-conditie hebben (MinIO weigert
+      # de policy: "unsupported condition keys '[s3:prefix]' used for action
+      # 's3:GetBucketLocation'"). Daarom splitsen we: locate zonder
+      # conditie, list mét conditie.
       - effect: Allow
         resources:
           - "arn:aws:s3:::uwv-staging"
         actions:
           - "s3:GetBucketLocation"
+      - effect: Allow
+        resources:
+          - "arn:aws:s3:::uwv-staging"
+        actions:
           - "s3:ListBucket"
+        # NB: het MinIO chart verwacht `conditions` als LIST van single-key
+        # maps met een ruwe-JSON-string als waarde — niet een geneste map.
+        # Wrong: { StringLike: { "s3:prefix": [...] } }  (faalt in _helper_policy.tpl
+        #                                                op `lt $k $condition_len`
+        #                                                — $k is dan een string)
+        # Right: - StringLike: |
+        #           "s3:prefix": [ "incoming/*" ]
         conditions:
-          StringLike:
-            "s3:prefix":
-              - "incoming/*"
+          - StringLike: |
+              "s3:prefix": [
+                "incoming/*"
+              ]
 
 extraVolumes:
   - name: uwv-ca

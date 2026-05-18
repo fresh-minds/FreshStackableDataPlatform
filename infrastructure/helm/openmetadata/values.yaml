@@ -187,6 +187,18 @@ resources:
     cpu: 1
     memory: 2Gi
 
+# Startup is traag op een laptop-k3d (DB-migraties + OpenSearch-index init +
+# Quartz scheduler bootstrap). De chart-default geeft 5×60s = 5 min budget.
+# 30×60s = 30 min is ruim voldoende en stoort verder niks (startup probe
+# stopt zodra hij ooit slaagt).
+startupProbe:
+  periodSeconds: 60
+  failureThreshold: 30
+  successThreshold: 1
+  httpGet:
+    path: /healthcheck
+    port: http-admin
+
 replicaCount: 1
 
 # Chart-managed ingress on .uwv-platform.local for in-cluster routing.
