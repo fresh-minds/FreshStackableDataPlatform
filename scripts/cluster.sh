@@ -21,6 +21,39 @@ if k3d cluster list -o json 2>/dev/null | jq -e ".[] | select(.name==\"${CLUSTER
   else
     echo "==> k3d cluster '${CLUSTER_NAME}' bestaat maar staat stil. Starten..."
     k3d cluster start "${CLUSTER_NAME}"
+
+    # Docker's bridge network can re-assign agent IPs across stop/start cycles.
+    # k3s mints the kubelet serving cert at first boot with the IP it sees then
+    # and does not auto-detect IP changes, so post-restart `kubectl logs/exec`
+    # fails with `x509: certificate is valid for IP X, not IP Y`. We delete the
+    # cert + key on each agent and bounce them so k3s regenerates with the
+    # current IP. Adds ~15s; harmless if IPs happened to match.
+    agents=()
+    while IFS= read -r name; do
+      [[ -n "$name" ]] && agents+=("$name")
+    done < <(k3d node list -o json 2>/dev/null | \
+              jq -r ".[] | select(.role==\"agent\" and (.name | startswith(\"k3d-${CLUSTER_NAME}-\"))) | .name")
+
+    if (( ${#agents[@]} > 0 )); then
+      echo "==> Refreshing kubelet serving certs on ${#agents[@]} agent(s) to match current Docker IPs"
+      for agent in "${agents[@]}"; do
+        docker exec "$agent" rm -f \
+          /var/lib/rancher/k3s/agent/serving-kubelet.crt \
+          /var/lib/rancher/k3s/agent/serving-kubelet.key 2>/dev/null || true
+      done
+      docker restart "${agents[@]}" >/dev/null
+      echo "==> Waiting for kubelet to report current IPs in node status..."
+      # Wait until each agent's reported InternalIP matches its current Docker IP.
+      # Ready alone is not enough — the Ready condition flips back to True before
+      # the kubelet patches its status with the new IP, and kubectl logs/exec
+      # would still hit the stale IP for several seconds.
+      for agent in "${agents[@]}"; do
+        docker_ip="$(docker inspect "$agent" -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')"
+        until [[ "$(kubectl get node "$agent" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null)" == "$docker_ip" ]]; do
+          sleep 2
+        done
+      done
+    fi
   fi
 else
   echo "==> Cluster aanmaken vanaf $CONFIG"
