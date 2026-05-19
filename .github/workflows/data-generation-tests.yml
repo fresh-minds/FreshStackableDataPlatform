@@ -32,4 +32,6 @@ jobs:
 
       - name: Run lint
         working-directory: data-generation
-        run: ruff check generators/ load_to_kafka.py
+        # `ruff check .` honors pyproject.toml's [tool.ruff] include/exclude
+        # — robuust tegen toekomstige rename/move van load_to_*.py.
+        run: ruff check .

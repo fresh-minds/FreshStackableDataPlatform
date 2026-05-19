@@ -187,6 +187,7 @@ nav:
       - UC-10 · Gegevensdiensten-API: use-cases/uc10-gegevensdiensten.md
       - UC-11 · Integrale klantreis: use-cases/uc11-klantreis.md
       - UC-11 · Walkthrough: use-cases/uc11-klantreis-walkthrough.md
+      - UC-12 · FOCUS FinOps: use-cases/uc12-focus-finops.md
   - Beslissingen:
       - Overzicht: adr/index.md
       - ADR-0001 · Stackable als basis: adr/0001-stackable-as-base.md

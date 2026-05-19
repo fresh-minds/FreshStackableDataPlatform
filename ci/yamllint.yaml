@@ -25,6 +25,12 @@ rules:
     forbid: false
     min-spaces-inside: 0
     max-spaces-inside: 1
+  # Helm-rendered manifests + hand-aligned configs gebruiken vaak
+  # extra spaces na `:` of `,` voor visuele uitlijning van values.
+  # Niet substantieel — schakel uit zodat lint niet rood loopt op puur
+  # cosmetische whitespace.
+  colons: disable
+  commas: disable
 
 ignore: |
   **/charts/
