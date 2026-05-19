@@ -73,6 +73,7 @@ configMapGenerator:
       - sources/crm.yml
       - sources/fez.yml
       - sources/klanttevredenheid.yml
+      - sources/focus.yml
 
   # 4. Loader-scripts voor KubernetesPodOperator-tasks (csv_ingest_factory).
   #    Gemount op /opt/uwv/airflow/jobs/ in de KPO-pod.
