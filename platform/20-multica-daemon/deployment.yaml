@@ -44,15 +44,10 @@ spec:
             # this var is Multica's override and wins.
             - name: MULTICA_CODEX_MODEL
               value: "gpt-5.4-nano"
-            # Same idea for opencode — provider/model format from
-            # `opencode models` listing. Multica's `MULTICA_OPENCODE_MODEL`
-            # env overrides what opencode picks by default.
-            - name: MULTICA_OPENCODE_MODEL
-              value: "azure-foundry/gpt-5.4-nano"
-            # Both codex and opencode inherit this from the process env.
+            # Codex inherits this from the process env.
             # Optional so the daemon starts in dev clusters without an
-            # Azure key — codex/opencode will fail on first model call,
-            # but the pod itself is up. Provision via the kubectl recipe
+            # Azure key — codex will fail on first model call, but the
+            # pod itself is up. Provision via the kubectl recipe
             # in ../19-nanitics-observatory/secret.yaml, then
             # `kubectl rollout restart deploy/multica-daemon`.
             - name: AZURE_OPENAI_API_KEY
