@@ -22,24 +22,27 @@ import os
 import sys
 import time
 import uuid
-from datetime import datetime, timezone
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import click
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, "/app")
 
-from generators import (  # noqa: E402
+from generators import (
     crm,
     fez,
-    persona as persona_mod,
     polisadministratie,
     wajong,
     wia,
     ww,
     zw,
+)
+from generators import (
+    persona as persona_mod,
 )
 
 
@@ -71,7 +74,7 @@ class _S3Writer:
         body = buf.getvalue().encode("utf-8")
         if not body:
             return 0
-        dt = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        dt = datetime.now(UTC).strftime("%Y-%m-%d")
         ts = int(time.time())
         key = (
             f"{_stream_to_path(stream)}/dt={dt}/"
@@ -130,8 +133,8 @@ def main(count: int, seed: int, bucket: str, endpoint: str, region: str, insecur
     batch_id = uuid.uuid4().hex[:8]
 
     if not dry_run:
-        import boto3  # noqa: PLC0415
-        from botocore.config import Config  # noqa: PLC0415
+        import boto3
+        from botocore.config import Config
 
         access_key = os.environ.get("S3_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID")
         secret_key = os.environ.get("S3_SECRET_KEY") or os.environ.get("AWS_SECRET_ACCESS_KEY")
@@ -140,7 +143,7 @@ def main(count: int, seed: int, bucket: str, endpoint: str, region: str, insecur
                 "Vereist S3_ACCESS_KEY/S3_SECRET_KEY (of AWS_*) env vars voor non-dry-run."
             )
         if insecure or endpoint.startswith("https://"):
-            import urllib3  # noqa: PLC0415
+            import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         s3 = boto3.client(
             "s3",

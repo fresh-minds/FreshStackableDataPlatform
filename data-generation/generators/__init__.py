@@ -4,14 +4,14 @@ SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
 """
 
 __all__ = [
-    "persona",
-    "polisadministratie",
-    "ww",
-    "wia",
-    "wajong",
-    "zw",
     "crm",
     "fez",
+    "persona",
+    "polisadministratie",
+    "wajong",
+    "wia",
+    "ww",
+    "zw",
 ]
 
 SYNTHETIC_HEADER = (

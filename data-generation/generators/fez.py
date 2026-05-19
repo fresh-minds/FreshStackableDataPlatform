@@ -1,12 +1,12 @@
 """FEZ-aggregaten stub. SYNTHETIC — NOT FOR REAL USE.
 
-Geaggregeerde uitkeringslast per wet × maand × regio. Geen PII.
+Geaggregeerde uitkeringslast per wet x maand x regio. Geen PII.
 """
 from __future__ import annotations
 
-import random
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass
-from typing import Any, Iterator
+from typing import Any
 
 from ._common import envelope, make_rng
 
@@ -29,7 +29,7 @@ _REGIOS = ["AMS", "RTM", "DHN", "UTR", "EHV", "GRO", "ZWO", "ARN", "BRD"]
 
 
 def generate_fez_aggregaten(seed: int | None = None) -> Iterator[UitkeringslastAggregaat]:
-    """Maandelijkse aggregaten 2023-2025 per wet × regio."""
+    """Maandelijkse aggregaten 2023-2025 per wet x regio."""
     rng = make_rng(seed)
     for jaar in (2023, 2024, 2025):
         for maand in range(1, 13):

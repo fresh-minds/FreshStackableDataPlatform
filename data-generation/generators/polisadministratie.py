@@ -8,8 +8,9 @@ de structuur eisen (UC-07 datakwaliteit als anchor).
 from __future__ import annotations
 
 import random
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass
-from typing import Any, Iterator
+from typing import Any
 
 from ._common import envelope, make_faker, make_rng
 
@@ -73,8 +74,7 @@ def generate_ikvs(persona_bsns: list[str], seed: int | None = None) -> Iterator[
     rng = make_rng(seed)
     fake = make_faker(seed=seed)
     for bsn in persona_bsns:
-        for ikv in generate_ikvs_for_persona(rng, fake, bsn):
-            yield ikv
+        yield from generate_ikvs_for_persona(rng, fake, bsn)
 
 
 def to_kafka_envelope(ikv: IKV) -> dict[str, Any]:

@@ -41,7 +41,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: shellcheck (best-effort)
+        # `-S error` houdt info/warning/style-checks zichtbaar in de log maar
+        # laat ze de build niet falen. Past bij "pragmatisch dev-niveau" uit
+        # ci/yamllint.yaml — focus op echte bugs, niet op stijl/style-nits.
         run: |
           shellcheck --version
           find scripts/ tests/smoke/ tests/e2e/ -name '*.sh' \
-            -exec shellcheck -e SC1091,SC2086 {} +
+            -exec shellcheck -e SC1091,SC2086 -S error {} +

@@ -6,8 +6,9 @@ UC-02 hoog-risico AI is in deze referentie placeholder; deze generator levert
 from __future__ import annotations
 
 import random
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass
-from typing import Any, Iterator
+from typing import Any
 
 from ._common import envelope, make_rng
 

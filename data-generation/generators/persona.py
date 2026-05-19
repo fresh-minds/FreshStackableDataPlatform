@@ -8,11 +8,12 @@ Elke BSN doorstaat de 11-proef (zie `is_valid_bsn`).
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, asdict
+from collections.abc import Iterator
+from dataclasses import asdict, dataclass
 from datetime import date, timedelta
-from typing import Any, Iterator
+from typing import Any
 
-from ._common import make_faker, make_rng, envelope
+from ._common import envelope, make_faker, make_rng
 
 # 11-proef-gewichten voor BSN. BSN ABCDEFGHI:
 #   (9*A + 8*B + 7*C + 6*D + 5*E + 4*F + 3*G + 2*H - 1*I) mod 11 == 0
@@ -133,8 +134,8 @@ def to_kafka_envelope(persona: Persona) -> dict[str, Any]:
 
 # CLI voor lokale tests
 if __name__ == "__main__":
-    import json
     import argparse
+    import json
 
     p = argparse.ArgumentParser(description="Genereer synthetische personas (test-BSN).")
     p.add_argument("--count", type=int, default=10)

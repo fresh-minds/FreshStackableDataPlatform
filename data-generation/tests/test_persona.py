@@ -31,8 +31,8 @@ def test_persona_fields_present() -> None:
     for p in generate_personas(5, seed=1):
         d = p.to_dict()
         assert "bsn" in d and len(d["bsn"]) == 9
-        assert "voornaam" in d and d["voornaam"]
-        assert "achternaam" in d and d["achternaam"]
+        assert d.get("voornaam")
+        assert d.get("achternaam")
         assert d["geslacht"] in ("M", "V", "X")
         assert d["geboortedatum"].count("-") == 2
         assert isinstance(d["huisnummer"], int)

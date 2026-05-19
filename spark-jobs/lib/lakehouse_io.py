@@ -92,7 +92,6 @@ def write_stream_to_table(df: "DataFrame", table_name: str, checkpoint_path: str
                           partition_by: list[str] | None = None,
                           trigger_seconds: int = 30):
     """Streaming write naar Delta/Iceberg tabel. Returnt StreamingQuery."""
-    from pyspark.sql.streaming import Trigger  # noqa: PLC0415
 
     writer = (
         df.writeStream

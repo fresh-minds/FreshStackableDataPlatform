@@ -17,7 +17,6 @@ from generators.persona import (
     is_valid_bsn,
 )
 
-
 # Publieke testvoorbeelden uit literatuur (geen echte BSN's).
 KNOWN_VALID = ["111222333", "123456782"]
 
