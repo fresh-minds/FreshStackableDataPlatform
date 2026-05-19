@@ -176,6 +176,14 @@ data:
         toegepast bij re-deploy zonder dat we charts handmatig hoeven te
         deleten.
         """
+        # Echarts `pie` leest `form_data.metric` (single), niet `metrics`
+        # (list). Met alleen `metrics` rendert de chart "Unexpected error";
+        # de query_context-data klopt wél. We normaliseren hier zodat de
+        # chart-specs uniform `metrics: [...]` mogen blijven gebruiken.
+        if viz_type == "pie" and "metrics" in params and "metric" not in params:
+            params = {**params, "metric": params["metrics"][0]}
+            params.pop("metrics", None)
+
         body_payload = {
             "datasource_id": dataset_id,
             "datasource_type": "table",
