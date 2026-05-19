@@ -7,31 +7,25 @@ source:
   sourceConfig:
     config:
       type: Profiler
-      profileSample: 30  # 30% sample voor scaled-down k3d
+      # 5% sample i.p.v. 30%: profiler-runs van >5min crashen de Airflow
+      # executor-pod (state mismatch op de Airflow 3 SDK heartbeat) en
+      # zetten de shared Postgres onder druk. Voor een synthetic-data
+      # reference-platform is een lichtere sample voldoende om
+      # auto-PII + null-fractie + distinct-count te demonstreren.
+      profileSample: 5
       # `generateSampleData` is verwijderd in OM 1.6+
+      # Schema-filter beperkt tot de schemas die echt data hebben in de
+      # synthetic-load — voorkomt verloren tijd op lege schemas en
+      # houdt de OM-PATCH-volume binnen wat de shared Postgres trekt.
       schemaFilterPattern:
         includes:
-          # Bronze + silver staging
-          - polisadm
+          # Silver staging (anchor-domains met substantieel volume)
           - persoon
-          - ww
-          - wia
-          - zw
-          - wajong
-          - crm
-          - fez
-          - klantcontact
+          - polisadm
           - intermediate
-          # Gold UC marts
-          - uc01_wia_funnel
-          - uc04_tw_eligibility
-          - uc05_client_360
-          - uc06_lastprognose
-          - uc07_dq_polisadm
-          - uc09_reint_effect
+          # Gold UC marts (UC11 = primary klantreis-anchor; UC07 = DQ)
           - uc11_klantreis
-          - uc_klant_tev
-          - dq_overview
+          - uc07_dq_polisadm
 processor:
   type: orm-profiler
   config:
