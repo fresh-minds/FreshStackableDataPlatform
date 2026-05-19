@@ -131,32 +131,29 @@ data:
             "custom_params": {},
             "custom_form_data": {},
         }
-        if params.get("granularity_sqla"):
-            # granularity + time_grain_sqla zijn nodig zodat Superset's
-            # time-range-handling werkt (anders: "Datetime column not provided
-            # as part table configuration"). Vereist ook dat de dataset
-            # `main_dttm_col = <kolom>` heeft (zie init-job sync_columns_postgres).
-            query["granularity"] = params["granularity_sqla"]
-            query["time_grain_sqla"] = params.get("time_grain_sqla", "P1D")
-            # is_timeseries triggert tijd-buckets in de query; zonder dit
-            # vouwt Superset alle rijen samen tot 1 totaal-meting (line
-            # chart toont dan 1 punt). Tijdsbereik = "no filter" zodat de
-            # historische data zichtbaar is in dit dev-dataset.
-            query["is_timeseries"] = True
+        # Time series: alleen BASE_AXIS, géén granularity_sqla/is_timeseries.
+        # Combinatie van beide gaf in 4.x SQL met dubbele tijd-kolom én
+        # `event_ts` in GROUP BY zonder time-grain → 1000 ongebucked rows en
+        # "Unexpected error" in de UI:
+        #   SELECT event_ts AS __timestamp,
+        #          date_trunc('month', CAST(event_ts AS TIMESTAMP)) AS event_ts, ...
+        #   GROUP BY date_trunc(...), domein, event_ts
+        # Modern echarts viz_types (`echarts_timeseries_line` etc.) lezen het
+        # BASE_AXIS-resultaat direct; geen `__timestamp` kolom nodig.
+        time_col = params.get("x_axis") or params.get("granularity_sqla")
+        if time_col:
             query["time_range"] = "No filter"
             time_axis = {
                 "timeGrain": params.get("time_grain_sqla", "P1D"),
                 "columnType": "BASE_AXIS",
-                "sqlExpression": params["granularity_sqla"],
-                "label": params["granularity_sqla"],
+                "sqlExpression": time_col,
+                "label": time_col,
                 "expressionType": "SQL",
             }
-            # Multi-series: BASE_AXIS time-as-eerste, daarna groupby-dimensies.
-            # Zonder dit overschreven we groupby met alleen time-axis →
-            # de UI verwacht series maar de query bevat ze niet → render fail.
+            # Multi-series: BASE_AXIS-tijd eerst, daarna groupby-dimensies.
             extra_dims = [
                 g for g in params.get("groupby", [])
-                if g and g != params["granularity_sqla"]
+                if g and g != time_col
             ]
             query["columns"] = [time_axis, *extra_dims]
 
@@ -359,8 +356,8 @@ data:
                     ("Totaal WIA aanvragen", "big_number_total", {
                         "metric": metric("n_aanvragen", "SUM", "INTEGER", "Totaal"),
                     }),
-                    ("WIA aanvragen per dag", "line", {
-                        "granularity_sqla": "aanvraag_datum",
+                    ("WIA aanvragen per dag", "echarts_timeseries_line", {
+                        "x_axis": "aanvraag_datum",
                         "time_grain_sqla": "P1D",
                         "metrics": [metric("n_aanvragen", "SUM", "INTEGER", "Aanvragen")],
                         "groupby": [],
@@ -564,8 +561,11 @@ data:
                         "width": 3, "height": 30}),
 
                     # ── Rij 2: Temporal ── (2 × width 6)
-                    ("Events per maand — alle domeinen", "line", {
-                        "granularity_sqla": "event_ts",
+                    # `echarts_timeseries_line` ipv legacy `line`:
+                    # de NVD3 `line` viz verwacht een `__timestamp`-kolom; de
+                    # BASE_AXIS-query levert die niet → "Unexpected error".
+                    ("Events per maand — alle domeinen", "echarts_timeseries_line", {
+                        "x_axis": "event_ts",
                         "time_grain_sqla": "P1M",
                         "metrics": [{"expressionType": "SIMPLE",
                                      "column": {"column_name": "event_seq", "type": "BIGINT"},
@@ -575,8 +575,8 @@ data:
                         "color_scheme": "preset_ui_1",
                         "show_legend": True,
                     }, {"width": 6, "height": 50}),
-                    ("Nieuwe fases per maand", "line", {
-                        "granularity_sqla": "fase_start_ts",
+                    ("Nieuwe fases per maand", "echarts_timeseries_line", {
+                        "x_axis": "fase_start_ts",
                         "time_grain_sqla": "P1M",
                         "metrics": [{"expressionType": "SIMPLE",
                                      "column": {"column_name": "bsn", "type": "VARCHAR"},
