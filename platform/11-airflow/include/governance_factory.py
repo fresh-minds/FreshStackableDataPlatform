@@ -3,7 +3,8 @@
 Bouwt twee soorten governance-DAGs:
 
   - om_ingest:    OpenMetadata-ingestion voor alle UWV-services
-                  (Trino + lineage + profiler, Superset, Airflow, Kafka, dbt).
+                  (Trino catalog + lineage + profiler, Superset, Airflow,
+                  MinIO storage, dbt-artifacts + enricher).
                   Service-/workflow-YAMLs komen uit ConfigMap
                   `openmetadata-uwv-config` (zie
                   platform/13-openmetadata-config/kustomization.yaml).
@@ -32,8 +33,17 @@ DEFAULT_ARGS = {
     "owner": "data-steward",
     "depends_on_past": False,
     "email_on_failure": False,
-    "retries": 1,
+    # 3 retries met exponentiele backoff zodat transient pressure op de
+    # shared Postgres (Hive/OM/Airflow/Superset delen één instance,
+    # max_connections=100) of korte OM-API hapering niet meteen het hele
+    # DAG-run laat falen. Max delay 30min houdt het redelijk.
+    "retries": 3,
     "retry_delay": timedelta(minutes=5),
+    "retry_exponential_backoff": True,
+    "max_retry_delay": timedelta(minutes=30),
+    # Hard cap zodat een hangende OM-ingest niet uren in queued/running blijft
+    # staan en de volgende scheduled-run blokkeert (max_active_runs=1).
+    "execution_timeout": timedelta(minutes=20),
 }
 
 OM_INGESTION_IMAGE = "openmetadata/ingestion:1.12.8"
@@ -122,38 +132,56 @@ def _om_enrich_task() -> KubernetesPodOperator:
 
 
 def build_om_ingest_dag() -> DAG:
-    """Run alle OM-ingests sequentieel — service first, dan lineage/profiler/dbt.
+    """Run de OM-ingests in een diamond-topologie rond Trino-catalog.
 
-    Volgorde:
-      1. Trino service + tabellen   (services/trino-service.yaml)
-      2. Trino lineage              (services/trino-lineage.yaml)
-      3. Trino profiler + auto-PII  (services/trino-profiler.yaml)
-      4. Superset dashboards        (services/superset-service.yaml)
-      5. Airflow pipelines          (services/airflow-service.yaml)
-      6. MinIO buckets (storage)    (services/minio-storage.yaml)
-      7. dbt artifacts (lineage)    (services/dbt-workflow.yaml)
-      8. dbt-meta enricher          (enrich_from_dbt_meta.py)
+    Topologie:
 
-    dbt LAATST omdat het tabellen + columns nodig heeft die door Trino-ingest
-    worden aangemaakt; Trino-lineage/profiler na de basis-catalog om
-    duplicate-table errors te vermijden. Enricher als sluitstuk: tabellen +
-    dbt-models bestaan op dit punt, dus mapping van meta → tags/glossary/
-    owner/tier/domain/dataProduct kan PATCHen zonder 404's.
+                          ┌─ ingest_trino_lineage
+                          ├─ ingest_trino_profiler
+        ingest_trino_     ├─ ingest_superset
+          catalog  ──────▶├─ ingest_airflow
+        (must-succeed)    ├─ ingest_minio_storage
+                          └─ ingest_dbt_artifacts ──▶ enrich_om_from_dbt_meta
+
+    Workflow-YAMLs in `openmetadata-uwv-config` ConfigMap (zie
+    platform/13-openmetadata-config/services/).
+
+    Catalog is de gedeelde voorwaarde: lineage/profiler hebben tabellen
+    nodig om aan te koppelen; superset/airflow lineage refereren naar
+    Trino-tables; dbt-models koppelen aan Trino-tabellen; enricher PATCH't
+    /tables met dbt-meta-mapping. Catalog faalt → niets te ingesten →
+    upstream_failed is correct.
+
+    Side-services parallel ipv sequentieel: bij vorig ontwerp killde één
+    profiler-failure de hele rest van de chain inclusief enricher (die juist
+    de zichtbare governance-output produceert). Nu is iedere ingest een
+    onafhankelijke tak; alleen enricher hangt op dbt-success.
+
+    max_active_tasks=3 spreidt de fan-out zodat Trino/OM/Postgres niet
+    tegelijk door 6 KPO-pods worden geraakt (shared Postgres heeft krappe
+    max_connections=100).
     """
     with DAG(
         dag_id="governance_om_ingest",
         description=(
             "OpenMetadata-ingest van alle UWV-services: Trino (catalog + "
-            "lineage + profiler), Superset, Airflow en dbt-artifacts."
+            "lineage + profiler), Superset, Airflow, MinIO en dbt-artifacts "
+            "+ dbt-meta enricher."
         ),
         default_args=DEFAULT_ARGS,
-        schedule=timedelta(hours=1),
+        # 4-uurs schema ipv hourly: synthetic data verandert nauwelijks
+        # tussen runs, en hourly ingest + profiler genereerde te veel druk
+        # op de gedeelde Postgres (zie failure-log van 2026-05-19).
+        schedule=timedelta(hours=4),
         start_date=datetime(2026, 5, 1),
         catchup=False,
         max_active_runs=1,
+        # Cap de parallelle fan-out na catalog — voorkomt dat 6 KPO-pods
+        # tegelijk de shared Postgres / OM API saturate.
+        max_active_tasks=3,
         # uc11_full_setup triggert deze DAG op een verse cluster; zonder
         # is_paused_upon_creation=False blijft die call queued op een paused
-        # DAG. catchup=False voorkomt backfill-explosie van het @1h-schema.
+        # DAG. catchup=False voorkomt backfill-explosie van het schema.
         is_paused_upon_creation=False,
         tags=["uwv", "governance", "openmetadata"],
     ) as dag:
@@ -190,16 +218,13 @@ def build_om_ingest_dag() -> DAG:
         )
         enrich = _om_enrich_task()
 
-        # Sequentieel: catalog eerst, dan derivatives, dan side-services,
-        # dan dbt-lineage, dan enricher (PATCH /tables met dbt-meta-mapping).
-        (
-            ingest_trino
-            >> ingest_trino_lineage
-            >> ingest_trino_profiler
-            >> ingest_superset
-            >> ingest_airflow
-            >> ingest_minio
-            >> ingest_dbt
-            >> enrich
-        )
+        ingest_trino >> [
+            ingest_trino_lineage,
+            ingest_trino_profiler,
+            ingest_superset,
+            ingest_airflow,
+            ingest_minio,
+            ingest_dbt,
+        ]
+        ingest_dbt >> enrich
     return dag
