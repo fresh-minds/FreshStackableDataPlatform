@@ -672,6 +672,143 @@ data:
                     }, {"width": 12, "height": 60}),
                 ],
             },
+            # ─────────────── UC-12 FinOps / FOCUS billing ───────────────
+            # Multi-mart dashboard met 5 datasources (spend_monthly als
+            # default; service_breakdown, commitment_utilization, savings,
+            # top_resources als per-chart override). Layout volgt UC-11:
+            # KPI-strip, trends, breakdowns, drill-downs, detail-tabel.
+            {
+                "slug": "uc12-focus-finops",
+                "title": "UC-12 — Cloud Cost (FOCUS / FinOps)",
+                "dataset": "mart_uc12_focus_spend_monthly",
+                "charts": [
+                    # ── Rij 1: KPI-strip ── (4 × width 3)
+                    ("Totale effective cost", "big_number_total", {
+                        "metric": metric("effective_cost", "SUM", "DECIMAL",
+                                         "EUR effective"),
+                    }, {"width": 3, "height": 30}),
+                    ("Totale list cost", "big_number_total", {
+                        "metric": metric("list_cost", "SUM", "DECIMAL",
+                                         "EUR list"),
+                    }, {"width": 3, "height": 30}),
+                    ("Totale savings", "big_number_total", {
+                        "metric": metric("savings_amount", "SUM", "DECIMAL",
+                                         "EUR savings"),
+                    }, {"dataset": "mart_uc12_focus_savings",
+                        "width": 3, "height": 30}),
+                    ("Commitment coverage (gem.)", "big_number_total", {
+                        "metric": metric("commitment_coverage_pct", "AVG",
+                                         "DOUBLE", "Coverage"),
+                    }, {"dataset": "mart_uc12_focus_commitment_utilization",
+                        "width": 3, "height": 30}),
+
+                    # ── Rij 2: Trends ── (2 × width 6)
+                    ("Effective cost per maand — per provider",
+                     "echarts_timeseries_line", {
+                        "x_axis": "billing_month",
+                        "time_grain_sqla": "P1M",
+                        "metrics": [metric("effective_cost", "SUM", "DECIMAL",
+                                           "EUR")],
+                        "groupby": ["provider"],
+                        "color_scheme": "preset_ui_1",
+                        "show_legend": True,
+                        "adhoc_filters": [{
+                            "expressionType": "SIMPLE",
+                            "subject": "charge_category",
+                            "operator": "==",
+                            "comparator": "Usage",
+                            "clause": "WHERE",
+                        }],
+                    }, {"width": 6, "height": 50}),
+                    ("Commitment coverage % per maand",
+                     "echarts_timeseries_line", {
+                        "x_axis": "billing_month",
+                        "time_grain_sqla": "P1M",
+                        "metrics": [metric("commitment_coverage_pct", "AVG",
+                                           "DOUBLE", "Coverage")],
+                        "groupby": ["service_category"],
+                        "color_scheme": "preset_ui_1",
+                        "show_legend": True,
+                    }, {"dataset": "mart_uc12_focus_commitment_utilization",
+                        "width": 6, "height": 50}),
+
+                    # ── Rij 3: Breakdowns ── (3 × width 4)
+                    ("Spend per service-categorie", "pie", {
+                        "metrics": [metric("effective_cost", "SUM", "DECIMAL",
+                                           "EUR")],
+                        "groupby": ["service_category"],
+                        "color_scheme": "preset_ui_1",
+                        "show_legend": True,
+                        "label_type": "key_percent",
+                        "adhoc_filters": [{
+                            "expressionType": "SIMPLE",
+                            "subject": "charge_category",
+                            "operator": "==",
+                            "comparator": "Usage",
+                            "clause": "WHERE",
+                        }],
+                    }, {"width": 4, "height": 50}),
+                    ("Spend per regio", "pie", {
+                        "metrics": [metric("effective_cost", "SUM", "DECIMAL",
+                                           "EUR")],
+                        "groupby": ["region"],
+                        "color_scheme": "preset_ui_1",
+                        "show_legend": True,
+                        "label_type": "key_percent",
+                    }, {"dataset": "mart_uc12_focus_service_breakdown",
+                        "width": 4, "height": 50}),
+                    ("Spend per environment", "pie", {
+                        "metrics": [metric("effective_cost", "SUM", "DECIMAL",
+                                           "EUR")],
+                        "groupby": ["environment"],
+                        "color_scheme": "preset_ui_1",
+                        "show_legend": True,
+                        "label_type": "key_percent",
+                    }, {"dataset": "mart_uc12_focus_service_breakdown",
+                        "width": 4, "height": 50}),
+
+                    # ── Rij 4: Drill-downs ── (2 × width 6)
+                    ("Top 10 services op spend", "dist_bar", {
+                        "metrics": [metric("effective_cost", "SUM", "DECIMAL",
+                                           "EUR")],
+                        "groupby": ["service_name"],
+                        "row_limit": 10,
+                        "order_desc": True,
+                        "color_scheme": "preset_ui_1",
+                    }, {"dataset": "mart_uc12_focus_service_breakdown",
+                        "width": 6, "height": 55}),
+                    ("Spend per applicatie (tagged)", "dist_bar", {
+                        "metrics": [metric("effective_cost", "SUM", "DECIMAL",
+                                           "EUR")],
+                        "groupby": ["application"],
+                        "row_limit": 15,
+                        "order_desc": True,
+                        "color_scheme": "preset_ui_1",
+                    }, {"dataset": "mart_uc12_focus_service_breakdown",
+                        "width": 6, "height": 55}),
+
+                    # ── Rij 5: Detail-tabel ── (1 × width 12)
+                    ("Top 50 resources op spend (deze maand)", "table", {
+                        "metrics": [metric("effective_cost", "SUM", "DECIMAL",
+                                           "EUR effective")],
+                        "groupby": ["resource_name", "resource_type",
+                                    "service_name", "region", "application",
+                                    "environment"],
+                        "row_limit": 50,
+                        "order_desc": True,
+                        "include_search": True,
+                        "query_mode": "aggregate",
+                        "adhoc_filters": [{
+                            "expressionType": "SIMPLE",
+                            "subject": "rank_in_month",
+                            "operator": "<=",
+                            "comparator": "50",
+                            "clause": "WHERE",
+                        }],
+                    }, {"dataset": "mart_uc12_focus_top_resources",
+                        "width": 12, "height": 60}),
+                ],
+            },
             # Detail-dashboard: 1 rij per (UC × check), gevoed door
             # mart_dq_violations. Apart dashboard zodat steward kan
             # drillen na het zien van een rood blok in het overzicht.

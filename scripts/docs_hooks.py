@@ -36,7 +36,6 @@ EXTERNAL_REPO_ROOTS: tuple[str, ...] = (
     "spark-jobs",
     "tests",
     "ci",
-    "deckwork",
     "logs",
 )
 
