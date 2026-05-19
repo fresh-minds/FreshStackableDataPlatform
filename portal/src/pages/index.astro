@@ -9,7 +9,7 @@ import { DOCS_URL } from '../data/external-links';
 
 // Components surfaced in the hero status card. These are the ones a
 // platform user is most likely to spot a regression on.
-const statusHighlightIds = ['keycloak', 'nifi', 'kafka', 'trino', 'superset', 'prometheus'];
+const statusHighlightIds = ['keycloak', 'trino', 'superset', 'prometheus'];
 const statusHighlights = statusHighlightIds
   .map((id) => components.find((c) => c.id === id))
   .filter((c): c is NonNullable<typeof c> => Boolean(c));
