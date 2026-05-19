@@ -87,7 +87,7 @@ if [[ "$IS_LOCAL" == "yes" ]]; then
   echo
   echo "== /etc/hosts check (*.${PLATFORM_DOMAIN}) =="
   hosts=(
-    trino keycloak superset airflow nifi minio minio-console
+    trino keycloak superset airflow minio minio-console
     openmetadata grafana spark jupyter
   )
   for sub in "${hosts[@]}"; do

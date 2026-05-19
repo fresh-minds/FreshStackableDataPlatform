@@ -4,9 +4,8 @@ schema_version: 1
 name: wia
 domain: wia
 
-kafka:
-  topic: uwv.wia.aanvraag
-  partitions: 3
+stream:
+  name: uwv.wia.aanvraag
   key: bsn
 
 bronze:

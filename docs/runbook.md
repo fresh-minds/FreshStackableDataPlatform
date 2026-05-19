@@ -41,12 +41,10 @@ make clean          # k3d cluster delete uwv-platform
 | k3d nodes | `kubectl get nodes` |
 | Stackable operators | `kubectl get pods -n stackable-operators` |
 | Trino | `kubectl get trinocluster -A` |
-| Kafka | `kubectl get kafkacluster -A` |
 | Hive Metastore | `kubectl get hivecluster -A` |
 | OPA | `kubectl get opacluster -A` |
 | Airflow | `kubectl get airflowcluster -A` |
 | Superset | `kubectl get supersetcluster -A` |
-| NiFi | `kubectl get nificluster -A` |
 | OpenMetadata | `kubectl get pods -n uwv-meta` |
 | Keycloak | `kubectl get pods -n uwv-auth` |
 
@@ -125,8 +123,72 @@ TODO (fase 9): troubleshooting "policy lijkt niet actief".
 - Grafana: `https://grafana.uwv-platform.local:8443`
 - OpenSearch Dashboards: `https://opensearch.uwv-platform.local:8443`
 - OpenMetadata: `https://openmetadata.uwv-platform.local:8443`
+- Prometheus: `https://prometheus.uwv-platform.local:8443`
+- Alertmanager: in-cluster only — `kubectl -n uwv-monitoring port-forward svc/prometheus-kube-prometheus-alertmanager 9093:9093`
+- MailHog (k3d-only, dev-SMTP-sink): `https://mailhog.uwv-platform.local:8443/`
 
 TODO (fase 1/8): default-credentials uit secrets ophalen, voorbeeld-queries.
+
+### 9.1 Alert-pipeline overzicht
+
+```
+metrics  → Prometheus → AlertmanagerConfig → email (SMTP) → MailHog (k3d) / UWV-relay (aks)
+logs     → Vector log_to_metric → Prometheus → ↑                          └→ Slack #uwv-data-platform
+```
+
+Definities:
+- Metric-rules: [`platform/14-monitoring/prometheusrule-uwv.yaml`](../platform/14-monitoring/prometheusrule-uwv.yaml)
+- Log-rules:    [`platform/14-monitoring/vector-log-alerts.yaml`](../platform/14-monitoring/vector-log-alerts.yaml)
+- Receivers:    [`platform/14-monitoring/alertmanager-config.yaml`](../platform/14-monitoring/alertmanager-config.yaml) (k3d) / `platform-overlays/aks/14-monitoring/` (aks)
+- Vector-config: [`infrastructure/helm/vector/values.yaml`](../infrastructure/helm/vector/values.yaml) (transforms `detect_alert_events` + `log_to_metric`)
+
+### 9.2 Alert komt niet aan (debug-checklist)
+
+1. **Is Alertmanager actief?** `kubectl -n uwv-monitoring get pods -l app.kubernetes.io/name=alertmanager` — verwacht `Running`.
+2. **Is de AlertmanagerConfig geladen?** `kubectl -n uwv-monitoring get alertmanagerconfig uwv-platform-receivers -o yaml` — geen `status.error`.
+3. **Vuren de regels?** `kubectl -n uwv-monitoring port-forward svc/prometheus-kube-prometheus-prometheus 9090:9090` → http://localhost:9090/alerts.
+4. **Komt Alertmanager bij de SMTP-host?** Alertmanager-pod-logs: `kubectl -n uwv-monitoring logs -l app.kubernetes.io/name=alertmanager --tail=100 | grep -i smtp`.
+5. **MailHog in k3d** — UI op `https://mailhog.uwv-platform.local:8443/`. Geen mails? Check `kubectl -n uwv-monitoring logs deploy/mailhog`.
+
+### 9.3 End-to-end alert-test
+
+```bash
+# Stuur synthetische warning-alert
+make alert-test
+
+# Critical-severity (route gaat ook naar Slack)
+make alert-test ACTION=critical
+
+# Resolve
+make alert-test-resolve
+```
+
+Verwacht resultaat:
+- k3d : verschijnt binnen ~30s in MailHog UI
+- aks : verschijnt binnen ~30s in `platform-alerts@uwv.nl`
+
+### 9.4 Log-based alert: OpaDecisionDenySpike
+
+- Vector detecteert `"result":false` in OPA-logs (zie `detect_alert_events` in helm-values).
+- Tellt counter `vector_uwv_alert_event_total{event="opa_deny"}`.
+- PrometheusRule `uwv-log-events` vuurt op `rate(...) > 0.2/s` over 5m.
+- Onderzoek: query OpenSearch op `uwv-logs-audit-*` met `result: false` filter, of zoek in Trino coordinator-logs welke gebruiker / catalog gewerd.
+
+### 9.5 Log-based alert: JvmOutOfMemory
+
+- Vector matcht `java.lang.OutOfMemoryError` ongeacht container.
+- Critical-severity (geen `for:`-window) — vuurt direct na 1e OOM-event in 10m.
+- Onderzoek: `kubectl -n {{namespace}} describe pod {{container}}` voor restart-count, vraag heap-size verhogen in de Stackable-CR (`spec.coordinator.config.resources.memory.limit` etc.).
+
+### 9.6 Log-based alert: KeycloakLoginErrorSpike
+
+- Vector matcht event-type `LOGIN_ERROR` in Keycloak-logs.
+- Verwacht: doorgaans < 5 fails per minuut.
+- Onderzoek: Keycloak admin-console → Events → filter op `LOGIN_ERROR`. Bij brute-force: zet rate-limit aan op ingress-nginx (`nginx.ingress.kubernetes.io/limit-rpm: "60"`).
+
+### 9.7 Alert-pipeline end-to-end test
+
+Zie §9.3. Zelfreferentie zodat alert-template-links niet 404 geven.
 
 ---
 

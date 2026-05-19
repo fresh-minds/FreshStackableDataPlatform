@@ -36,7 +36,6 @@ configMapGenerator:
       - services/dbt-workflow.yaml
       - services/superset-service.yaml
       - services/airflow-service.yaml
-      - services/kafka-service.yaml
       - services/minio-storage.yaml
 
 generatorOptions:

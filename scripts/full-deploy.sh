@@ -64,7 +64,7 @@ require_context
 
 # ---------------------------------------------------------------------- 2
 log "2/10  /etc/hosts patchen voor *.${PLATFORM_DOMAIN}"
-HOST_SUBDOMAINS=(platform keycloak superset airflow trino nifi minio minio-console \
+HOST_SUBDOMAINS=(platform keycloak superset airflow trino minio minio-console \
                  openmetadata grafana prometheus opensearch spark jupyter)
 HOSTS_LINE="127.0.0.1"
 for sub in "${HOST_SUBDOMAINS[@]}"; do
@@ -210,7 +210,7 @@ curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/client-scopes\" 2>/dev/null | grep 
 PROFILE=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/client-scopes\" | tr '{' '\\n' | grep '\"name\":\"profile\"' | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
 EMAIL=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/client-scopes\" | tr '{' '\\n' | grep '\"name\":\"email\"' | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
 ROLES=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/client-scopes\" | tr '{' '\\n' | grep '\"name\":\"roles\"' | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
-for c in superset airflow nifi openmetadata minio; do
+for c in superset airflow openmetadata minio; do
   CID=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/clients?clientId=\$c\" 2>/dev/null | grep -oE '\"id\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)
   [ -z \"\$CID\" ] && continue
   for s in \$PROFILE \$EMAIL \$ROLES; do

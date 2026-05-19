@@ -3,11 +3,9 @@
 Eén DAG die UC-11 op een verse cluster volledig operationeel maakt:
 
   1. ensure_streaming_bronze    — apply streaming-bronze SparkApplication
-                                  als 'm niet aanwezig is (kustomization
-                                  heeft 'm uitgecommentarieerd na incident
-                                  2026-05-15; deze DAG zet 'm one-shot aan)
-  2. ensure_seed                — kick `seed-data-generation` Job als
-                                  bronze leeg + Kafka geen messages heeft
+                                  (Spark file source: leest s3a://uwv-raw/)
+  2. ensure_seed                — kick `seed-data-generation` Job die
+                                  JSONL-files naar s3a://uwv-raw/ schrijft
   3. wait_for_bronze            — poll bronze.uwv.persona_created tot
                                   Spark-streaming de eerste batch schreef
   4. silver_* (parallel)        — trigger alle silver-staging DAGs
@@ -15,11 +13,10 @@ Eén DAG die UC-11 op een verse cluster volledig operationeel maakt:
   6. render_dbt_manifest        — dbt parse + upload (OM-compat strip) naar
                                   s3://uwv-meta/dbt/latest/
   7. governance_om_ingest       — Trino-catalog, dbt-lineage, Superset,
-                                  Airflow, Kafka — alle ingest-stappen
+                                  Airflow — alle ingest-stappen
   8. om_cleanup_duplicates      — verwijder bronze/silver uc11_klantreis
                                   schemas (shared Hive metastore artefact)
-  9. om_add_kafka_lineage       — voeg 7 Kafka topic → bronze edges toe
- 10. rebuild_superset_dashboard — re-create superset-dashboards-init Job
+  9. rebuild_superset_dashboard — re-create superset-dashboards-init Job
                                   zodat het UC-11 dashboard (12 charts)
                                   daadwerkelijk wordt gebouwd nadat marts
                                   bestaan
@@ -33,7 +30,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.utils.trigger_rule import TriggerRule
@@ -55,7 +51,9 @@ DEFAULT_ARGS = {
 }
 
 # Silver-DAGs die UC-11 nodig heeft. Parallel triggeren is OK; ze hebben
-# geen inter-dependency.
+# geen inter-dependency. Deze + gold_uc11_klantreis + governance_om_ingest
+# worden door hun factories met is_paused_upon_creation=False aangemaakt,
+# zodat TriggerDagRunOperator-calls niet queued blijven op een verse cluster.
 UC11_SILVER_DAGS = [
     "silver_persoon",
     "silver_polisadm",
@@ -66,36 +64,6 @@ UC11_SILVER_DAGS = [
     "silver_crm",
 ]
 
-# Alle DAGs die we triggeren — moeten unpaused zijn anders blijven runs queued.
-DAGS_TO_UNPAUSE = UC11_SILVER_DAGS + [
-    "gold_uc11_klantreis",
-    "governance_om_ingest",
-]
-
-
-def _unpause_dependencies(**_) -> None:
-    """Unpause alle DAGs die we triggeren.
-
-    Fresh-cluster default: `dags_are_paused_at_creation=True`. Zonder
-    unpause blijft elke TriggerDagRunOperator-call queued want de
-    scheduler skipt paused DAGs.
-    """
-    from airflow.models import DagModel
-    from airflow.utils.session import create_session
-
-    with create_session() as s:
-        rows = (s.query(DagModel)
-                 .filter(DagModel.dag_id.in_(DAGS_TO_UNPAUSE))
-                 .all())
-        for r in rows:
-            if r.is_paused:
-                print(f"  unpausing {r.dag_id}")
-                r.is_paused = False
-        s.commit()
-        found = {r.dag_id for r in rows}
-        missing = set(DAGS_TO_UNPAUSE) - found
-        if missing:
-            print(f"  WARN: {len(missing)} DAGs niet in DB (parsing-issue?): {missing}")
 
 # ── helper: minimaal KPO-skelet voor onze Python-pods ────────────────
 
@@ -168,14 +136,13 @@ body = {
                 "labels":{"uwv.nl/component":"streaming-bronze",
                           "uwv.nl/triggered-by":"uc11_full_setup"}},
     "spec":{
-        "sparkImage":{"productVersion":"3.5.7"},
+        "sparkImage":{"productVersion":"3.5.8"},
         "mode":"cluster",
-        "mainApplicationFile":"local:///stackable/spark/jobs/streaming_kafka_to_lakehouse.py",
+        "mainApplicationFile":"local:///stackable/spark/jobs/streaming_files_to_lakehouse.py",
         "s3connection":{"reference":"s3-minio"},
         "deps":{
             "requirements":[],
             "packages":[
-                "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.5",
                 "io.delta:delta-spark_2.12:3.2.1",
                 "org.apache.hadoop:hadoop-aws:3.3.6",
             ],
@@ -191,7 +158,7 @@ body = {
             "config":{"resources":{"cpu":{"min":"100m","max":"500m"},
                                    "memory":{"limit":"1Gi"}}},
             "volumeMounts":[{"name":"jobs","mountPath":"/stackable/spark/jobs"}],
-            "envOverrides":{"TABLE_FORMAT":"delta"},
+            "envOverrides":{"TABLE_FORMAT":"delta","RAW_PATH":"s3a://uwv-raw/"},
         },
         "executor":{
             "replicas":1,
@@ -416,54 +383,6 @@ for fqn in [
 '''
 
 
-KAFKA_LINEAGE_SCRIPT = '''
-import json, os, urllib.parse, urllib.request, urllib.error
-OM = "http://openmetadata.uwv-meta.svc.cluster.local:8585"
-JWT = os.environ["OM_JWT_TOKEN"]
-HDR = {"Authorization": f"Bearer {JWT}", "Content-Type":"application/json"}
-
-MAPPINGS = [
-    ('uwv-kafka."uwv.persona.created"',  "uwv-trino.bronze.uwv.persona_created"),
-    ('uwv-kafka."uwv.polisadm.ikv"',     "uwv-trino.bronze.uwv.polisadm_ikv"),
-    ('uwv-kafka."uwv.ww.aanvraag"',      "uwv-trino.bronze.uwv.ww_aanvraag"),
-    ('uwv-kafka."uwv.zw.melding"',       "uwv-trino.bronze.uwv.zw_melding"),
-    ('uwv-kafka."uwv.wia.aanvraag"',     "uwv-trino.bronze.uwv.wia_aanvraag"),
-    ('uwv-kafka."uwv.wajong.dossier"',   "uwv-trino.bronze.uwv.wajong_dossier"),
-    ('uwv-kafka."uwv.crm.contact"',      "uwv-trino.bronze.uwv.crm_contact"),
-]
-
-def get_id(kind, fqn):
-    enc = urllib.parse.quote(fqn, safe="")
-    try:
-        r = urllib.request.urlopen(urllib.request.Request(
-            f"{OM}/api/v1/{kind}/name/{enc}", headers=HDR), timeout=15).read()
-        return json.loads(r).get("id")
-    except urllib.error.HTTPError as e:
-        print(f"  ! {kind} {fqn}: {e.code}", flush=True)
-        return None
-
-added = 0
-for topic_fqn, table_fqn in MAPPINGS:
-    tid = get_id("topics", topic_fqn)
-    bid = get_id("tables", table_fqn)
-    if not (tid and bid):
-        continue
-    body = json.dumps({"edge": {
-        "fromEntity": {"id": tid, "type": "topic"},
-        "toEntity":   {"id": bid, "type": "table"},
-    }}).encode()
-    try:
-        urllib.request.urlopen(urllib.request.Request(
-            f"{OM}/api/v1/lineage", data=body, headers=HDR, method="PUT"
-        ), timeout=15).read()
-        added += 1
-        print(f"  ✓ {topic_fqn} → {table_fqn}", flush=True)
-    except urllib.error.HTTPError as e:
-        print(f"  ! edge {topic_fqn} → {table_fqn}: {e.code}", flush=True)
-print(f"[kafka_lineage] {added}/{len(MAPPINGS)} edges aangemaakt", flush=True)
-'''
-
-
 # Re-creates de superset-dashboards-init Job zodat het UC-11 dashboard
 # pas WORDT GEBOUWD nadat onze gold-marts bestaan. We hergebruiken het
 # bestaande `superset-dashboards-init-script` ConfigMap.
@@ -547,8 +466,8 @@ with DAG(
     dag_id="uc11_full_setup",
     description=(
         "UC-11 Integrale Klantreis — eind-tot-eind bootstrap. "
-        "Chain't silver-builds → gold-mart → OM-ingest → cleanup + "
-        "Kafka-edges → Superset-dashboard."
+        "Chain't silver-builds → gold-mart → OM-ingest → cleanup → "
+        "Superset-dashboard."
     ),
     default_args=DEFAULT_ARGS,
     schedule=None,        # alleen manueel — dit is een one-shot bootstrap
@@ -557,11 +476,6 @@ with DAG(
     max_active_runs=1,
     tags=["uwv", "uc11", "bootstrap"],
 ) as dag:
-
-    unpause_deps = PythonOperator(
-        task_id="unpause_dependencies",
-        python_callable=_unpause_dependencies,
-    )
 
     ensure_streaming = _py_pod(
         task_id="ensure_streaming_bronze",
@@ -639,7 +553,7 @@ with DAG(
         wait_for_completion=True,
         poke_interval=30,
         # Idem als silver — sommige ingest-tasks kunnen flakey-falen
-        # (kafka-ingest op kubelet-proxy 502) maar de rest landt wel in OM.
+        # (kubelet-proxy 502) maar de rest landt wel in OM.
         allowed_states=["success", "failed"],
         failed_states=[],
     )
@@ -647,11 +561,6 @@ with DAG(
     cleanup = _py_pod(
         task_id="om_cleanup_duplicates",
         script=CLEANUP_DUPS_SCRIPT,
-    )
-
-    add_edges = _py_pod(
-        task_id="om_add_kafka_lineage",
-        script=KAFKA_LINEAGE_SCRIPT,
     )
 
     rebuild_dash = _py_pod(
@@ -663,6 +572,6 @@ with DAG(
     rebuild_dash.trigger_rule = TriggerRule.ALL_DONE
 
     # Flow
-    unpause_deps >> ensure_streaming >> ensure_seed >> wait_bronze \
+    ensure_streaming >> ensure_seed >> wait_bronze \
         >> silver_triggers >> trigger_gold >> render_manifest >> trigger_om \
-        >> [cleanup, add_edges] >> rebuild_dash
+        >> cleanup >> rebuild_dash

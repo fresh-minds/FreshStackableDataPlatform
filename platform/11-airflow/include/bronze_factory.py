@@ -6,7 +6,7 @@ Bouwt één DAG die de Spark-streaming-output bevestigt en per bron een
 Alternatieven die we NIET kiezen:
   - Per bron een eigen DAG: te veel ruis, alle bronnen worden door dezelfde
     Spark-job geschreven.
-  - Een sensor per individuele Kafka-partition: niet nodig — Spark commit
+  - Een sensor per individueel JSONL-bestand: niet nodig — Spark commit
     pas Delta-bestanden bij geslaagde batch.
 
 Concreet: één DAG `bronze_watch`, draait elke `BRONZE_TICK_SECONDS`,
@@ -23,7 +23,7 @@ from airflow.providers.trino.hooks.trino import TrinoHook
 from airflow.decorators import task
 
 from datasets import bronze_dataset
-from sources_loader import SourceSpec, kafka_sources
+from sources_loader import SourceSpec, stream_sources
 from trino_helpers import TRINO_CONN_ID
 
 DEFAULT_ARGS = {
@@ -38,7 +38,7 @@ DEFAULT_ARGS = {
 def _check_bronze_freshness_callable(source: SourceSpec):
     """Closure: returnt een task-functie die deze bron controleert."""
     sql = (
-        f"SELECT count(*) AS n, max(kafka_ts) AS max_ts "
+        f"SELECT count(*) AS n, max(source_ts) AS max_ts "
         f"FROM {source.bronze.fqn} "
         f"WHERE event_date >= current_date - INTERVAL '1' DAY"
     )
@@ -64,16 +64,16 @@ def _check_bronze_freshness_callable(source: SourceSpec):
 
 
 def build_bronze_watch_dag() -> DAG:
-    """Eén DAG met één freshness-task per Kafka-bron, publiceert bron-Dataset.
+    """Eén DAG met één freshness-task per stream-bron, publiceert bron-Dataset.
 
-    csv_batch-bronnen (handmatige CSV-upload) hebben geen Kafka-pad en publiceren
+    csv_batch-bronnen (handmatige CSV-upload) hebben geen stream-pad en publiceren
     hun bronze-Dataset zelf via csv_ingest_factory; we filteren ze hier weg
     zodat ze niet als 'stale' worden geflagd.
     """
     with DAG(
         dag_id="bronze_watch",
         description=(
-            "Bevestigt Spark-streaming-output per Kafka-bron en publiceert "
+            "Bevestigt Spark-streaming-output per stream-bron en publiceert "
             "bronze-Datasets als trigger voor silver-DAGs. csv_batch-bronnen "
             "worden door ingest_csv_<bron> afgehandeld. Zie ADR-0007."
         ),
@@ -87,7 +87,7 @@ def build_bronze_watch_dag() -> DAG:
         start = EmptyOperator(task_id="start")
         end = EmptyOperator(task_id="end")
 
-        for source in kafka_sources():
+        for source in stream_sources():
             check = task(
                 task_id=f"check_{source.name}",
                 outlets=[bronze_dataset(source)],

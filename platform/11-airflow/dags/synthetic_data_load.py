@@ -1,9 +1,8 @@
 """DAG: synthetic-data laden via een Kubernetes Job.
 
 Roept hetzelfde mechanisme aan als `make seed`: ConfigMaps voor de
-generator-code, dan een Job die `load_to_kafka.py` draait. Productie
-zou dit met een dedicated container-image doen; dev is python:3.11-slim
-met pip-install at runtime.
+generator-code, dan een Job die `load_to_s3.py` draait. Schrijft JSONL
+naar `s3a://uwv-raw/`; Spark file-source streaming pikt het op.
 
 Gebruikt KubernetesJobOperator (Airflow 2.10+) met inline-spec.
 
@@ -11,7 +10,7 @@ SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from airflow import DAG
 from airflow.models import Variable
@@ -21,11 +20,13 @@ from kubernetes.client.models import (
     V1ConfigMapVolumeSource,
     V1Container,
     V1EnvVar,
+    V1EnvVarSource,
     V1JobSpec,
     V1ObjectMeta,
     V1PodSpec,
     V1PodTemplateSpec,
     V1ResourceRequirements,
+    V1SecretKeySelector,
     V1Volume,
     V1VolumeMount,
 )
@@ -34,8 +35,17 @@ DEFAULT_ARGS = {
     "owner": "data-engineer",
     "depends_on_past": False,
     "email_on_failure": False,
-    "retries": 0,  # Idempotent via topic-partitioning; geen retries op seed.
+    "retries": 0,
 }
+
+
+def _secret_env(name: str, secret_name: str, secret_key: str) -> V1EnvVar:
+    return V1EnvVar(
+        name=name,
+        value_from=V1EnvVarSource(
+            secret_key_ref=V1SecretKeySelector(name=secret_name, key=secret_key),
+        ),
+    )
 
 
 def build_seed_job(client_count: int = 10000, seed: int = 2026) -> V1JobSpec:
@@ -45,18 +55,22 @@ def build_seed_job(client_count: int = 10000, seed: int = 2026) -> V1JobSpec:
         image="python:3.11-slim",
         command=["bash", "-euo", "pipefail", "-c"],
         args=[
-            "pip install --quiet --disable-pip-version-check faker kafka-python click && "
+            "pip install --quiet --disable-pip-version-check faker boto3 click urllib3 && "
             "cd /app && "
-            'python load_to_kafka.py --count "$COUNT" --seed "$SEED" '
-            '--bootstrap "$KAFKA_BOOTSTRAP"'
+            'python load_to_s3.py --count "$COUNT" --seed "$SEED" '
+            '--bucket "$S3_BUCKET" --endpoint "$S3_ENDPOINT" --insecure'
         ],
         env=[
             V1EnvVar(name="COUNT", value=str(client_count)),
             V1EnvVar(name="SEED", value=str(seed)),
+            V1EnvVar(name="S3_BUCKET", value="uwv-raw"),
             V1EnvVar(
-                name="KAFKA_BOOTSTRAP",
-                value="uwv-kafka-bootstrap.uwv-platform.svc.cluster.local:9092",
+                name="S3_ENDPOINT",
+                value="https://minio.uwv-platform.svc.cluster.local:9000",
             ),
+            V1EnvVar(name="S3_REGION", value="us-east-1"),
+            _secret_env("S3_ACCESS_KEY", "minio-s3-credentials", "accessKey"),
+            _secret_env("S3_SECRET_KEY", "minio-s3-credentials", "secretKey"),
             V1EnvVar(name="PYTHONPATH", value="/app"),
         ],
         resources=V1ResourceRequirements(
@@ -96,10 +110,10 @@ with DAG(
     dag_id="synthetic_data_load",
     description="Genereer en laad synthetische data via Kubernetes Job.",
     default_args=DEFAULT_ARGS,
-    schedule=None,  # Manueel triggerbaar; geen recurring run.
+    schedule=None,
     start_date=datetime(2026, 5, 1),
     catchup=False,
-    tags=["seed", "uwv", "fase-6"],
+    tags=["seed", "uwv"],
 ) as dag:
     start = EmptyOperator(task_id="start")
     end = EmptyOperator(task_id="end")
@@ -108,7 +122,7 @@ with DAG(
     seed_value = int(Variable.get("uwv_seed_value", default_var="2026"))
 
     seed_task = KubernetesJobOperator(
-        task_id="seed_data_to_kafka",
+        task_id="seed_data_to_s3",
         namespace="uwv-platform",
         job_template=V1ObjectMeta(name="seed-data-generation"),
         full_pod_spec=None,

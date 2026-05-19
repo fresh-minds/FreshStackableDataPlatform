@@ -7,7 +7,6 @@ in calling jobs.
 Vereisten op Spark-image (via SparkApplication.deps.packages):
   - delta:    io.delta:delta-spark_2.12:3.2.x
   - iceberg:  org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.6.x
-  - kafka:    org.apache.spark:spark-sql-kafka-0-10_2.12:<spark-version>
   - s3a:      hadoop-aws + aws-sdk-bundle (in Stackable-image meestal aanwezig)
 """
 from __future__ import annotations

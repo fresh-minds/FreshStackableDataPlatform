@@ -11,9 +11,11 @@ stacks:
   uwv-platform:
     description: |
       UWV referentie-implementatie van het data- en analyticsplatform.
-      Bevat: ZooKeeper, Hive Metastore, Kafka, NiFi, Spark, Trino, OPA,
-      Airflow, Superset. OpenMetadata wordt apart via Helm geïnstalleerd
+      Bevat: Hive Metastore, Spark, Trino, OPA, Airflow, Superset.
+      OpenMetadata wordt apart via Helm geïnstalleerd
       (zie infrastructure/helm/openmetadata/values.yaml).
+      Kafka/NiFi/ZooKeeper zijn uitgeschakeld; UC11 gebruikt S3 raw zone
+      i.p.v. een message bus.
     stackableRelease: uwv-platform-26.3
     labels:
       - uwv
@@ -25,10 +27,7 @@ stacks:
       - plainYaml: platform/01-secrets/
       - plainYaml: platform/02-authentication/
       - plainYaml: platform/03-storage/
-      - plainYaml: platform/04-zookeeper/
       - plainYaml: platform/05-hive-metastore/
-      - plainYaml: platform/06-kafka/
-      - plainYaml: platform/07-nifi/
       - plainYaml: platform/08-spark/
       - plainYaml: platform/09-trino/
       - plainYaml: platform/10-opa/

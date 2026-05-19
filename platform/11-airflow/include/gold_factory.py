@@ -83,6 +83,10 @@ def build_gold_dag(uc: dict) -> DAG:
         start_date=datetime(2026, 5, 1),
         catchup=False,
         max_active_runs=1,
+        # uc11_full_setup triggert UC-11 op een verse cluster; alle gold-DAGs
+        # mogen onpaused starten — gold runt alleen als hun silver-deps
+        # binnenkomen, dus geen automatische scheduler-runs op cold start.
+        is_paused_upon_creation=False,
         tags=["uwv", "gold", "cosmos", f"usecase:{uc['id']}", f"owner:{uc['owner']}"],
     )
 

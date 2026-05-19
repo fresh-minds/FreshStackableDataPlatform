@@ -4,11 +4,10 @@
 # te schalen.
 #
 # NB: De Stackable-operatoren genereren zelf PDB's voor de producten die ze
-# beheren (kafka-broker, hive-metastore, zookeeper-server, trino-coordinator,
-# trino-worker, nifi-node, airflow-scheduler, airflow-webserver,
-# superset-node). Eigen PDB's daarvoor leveren `MultiplePodDisruptionBudgets`-
-# waarschuwingen op (incident 2026-05-15). Hier alleen PDB's voor componenten
-# die de operatoren NIET zelf afdekken.
+# beheren (hive-metastore, trino-coordinator, trino-worker, airflow-scheduler,
+# airflow-webserver, superset-node). Eigen PDB's daarvoor leveren
+# `MultiplePodDisruptionBudgets`-waarschuwingen op (incident 2026-05-15).
+# Hier alleen PDB's voor componenten die de operatoren NIET zelf afdekken.
 #
 # Convention: minAvailable: 1 voor alle workloads die data hebben.
 ---

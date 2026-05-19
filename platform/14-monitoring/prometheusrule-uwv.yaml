@@ -73,23 +73,6 @@ spec:
           annotations:
             summary: "OPA-pod down — Trino weigert ALLE queries (default-deny)"
 
-    - name: uwv-spark-streaming
-      interval: 1m
-      rules:
-        - alert: SparkStreamingLagHigh
-          expr: |
-            kafka_consumergroup_lag_sum{
-              consumergroup=~".*streaming-bronze.*"
-            } > 10000
-          for: 10m
-          labels:
-            severity: warning
-            component: spark
-          annotations:
-            summary: "Spark streaming-bronze >10k berichten achter op Kafka"
-            description: "Streaming-pijp loopt achter; bronze-tabel mist data. Check Spark-driver + executor-logs."
-            runbook_url: "/docs/runbook.md#43-streaming-job-blijft-hangen"
-
     - name: uwv-postgres
       interval: 1m
       rules:

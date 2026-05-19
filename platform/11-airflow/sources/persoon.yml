@@ -12,13 +12,12 @@ schema_version: 1
 name: persoon
 domain: persoon
 
-# Kafka — geproduceerd door data-generation/load_to_kafka.py
-kafka:
-  topic: uwv.persona.created
-  partitions: 3
+# Stream — JSONL-bestanden geproduceerd door data-generation/load_to_s3.py
+stream:
+  name: uwv.persona.created
   key: bsn
 
-# Bronze — Spark streaming schrijft hier
+# Bronze — Spark Structured Streaming (file source) schrijft hier
 bronze:
   catalog: bronze
   schema: uwv

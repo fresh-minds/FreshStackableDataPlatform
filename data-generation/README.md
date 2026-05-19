@@ -27,7 +27,7 @@ deterministische seeding.
 
 | Script | Doel |
 |---|---|
-| `load_to_kafka.py` | Publiceert generator-output naar Kafka topics `uwv.<domain>.<event>`. |
+| `load_to_s3.py` | Schrijft generator-output als JSONL naar `s3://uwv-raw/<domain>/<entity>/dt=YYYY-MM-DD/*.jsonl`. Spark Structured Streaming (file source) pikt dit op. |
 | `load_to_minio_staging.py` | Schrijft batch-output naar `s3://uwv-staging/` als CSV (placeholder). |
 
 ## Lokaal draaien
@@ -48,5 +48,5 @@ uv run ruff check generators/    # lint
 ## In-cluster (via seed-job)
 
 `scripts/seed.sh` past `data-generation/k8s/seed-job.yaml` toe op het cluster.
-De Job mount de generator-code via twee ConfigMaps en draait `load_to_kafka.py`
-tegen de in-cluster Kafka-bootstrap.
+De Job mount de generator-code via twee ConfigMaps en draait `load_to_s3.py`
+tegen de in-cluster MinIO (`s3://uwv-raw/`).

@@ -1,3 +1,8 @@
 # Skip Kubernetes ConfigMap atomic-update artefacten
-# (..2026_..., ..data) — Airflow loopt anders in een symlink-cycle.
-\.\..*
+# (..2026_..., ..data) — Airflow 3.x DAG-walker volgt followlinks=True en
+# detecteert het projected-volume timestamp-dir + ..data-symlink als
+# recursive loop ("Detected recursive loop when walking DAG directory").
+#
+# Airflow 3.0+ DEFAULT dag_ignore_file_syntax = glob (was regexp in 2.x);
+# vandaar de glob-stijl `..*` i.p.v. de regex `\.\..*`.
+..*

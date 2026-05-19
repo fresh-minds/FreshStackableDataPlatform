@@ -4,9 +4,8 @@ schema_version: 1
 name: wajong
 domain: wajong
 
-kafka:
-  topic: uwv.wajong.dossier
-  partitions: 3
+stream:
+  name: uwv.wajong.dossier
   key: bsn
 
 bronze:

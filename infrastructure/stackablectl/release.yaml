@@ -19,12 +19,16 @@ products:
     operatorVersion: 26.3.0
   hive:
     operatorVersion: 26.3.0
-  kafka:
-    operatorVersion: 26.3.0
+  # kafka / nifi / zookeeper operators are disabled — UC11 uses S3 raw zone
+  # + Spark file-source streaming i.p.v. een message bus. Re-enable indien
+  # je een Kafka- of NiFi-CR herintroduceert (zie git history voor laatste
+  # werkende manifests in platform/04-zookeeper, /06-kafka, /07-nifi).
+  # kafka:
+  #   operatorVersion: 26.3.0
   listener:
     operatorVersion: 26.3.0
-  nifi:
-    operatorVersion: 26.3.0
+  # nifi:
+  #   operatorVersion: 26.3.0
   opa:
     operatorVersion: 26.3.0
   secret:
@@ -35,5 +39,5 @@ products:
     operatorVersion: 26.3.0
   trino:
     operatorVersion: 26.3.0
-  zookeeper:
-    operatorVersion: 26.3.0
+  # zookeeper:
+  #   operatorVersion: 26.3.0

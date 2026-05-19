@@ -121,6 +121,10 @@ def build_silver_dag(source: SourceSpec) -> DAG:
         start_date=datetime(2026, 5, 1),
         catchup=False,
         max_active_runs=1,
+        # uc11_full_setup triggert deze DAG op een verse cluster; zonder
+        # is_paused_upon_creation=False blijft de eerste run queued tot
+        # iemand handmatig unpaust. Zie ADR-0007.
+        is_paused_upon_creation=False,
         tags=source.airflow_tags + ["silver", "cosmos"],
         # Publiceer silver-Dataset zodat gold-DAGs triggeren.
         # Cosmos plaatst outlets op de eindknoop via een end-task.

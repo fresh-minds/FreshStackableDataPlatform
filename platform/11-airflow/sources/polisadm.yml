@@ -4,9 +4,8 @@ schema_version: 1
 name: polisadm
 domain: polisadm
 
-kafka:
-  topic: uwv.polisadm.ikv
-  partitions: 3
+stream:
+  name: uwv.polisadm.ikv
   key: bsn
 
 bronze:

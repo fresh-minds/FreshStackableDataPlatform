@@ -1,9 +1,10 @@
-# Kubernetes Job die data-generation in-cluster runt en publiceert naar Kafka.
+# Kubernetes Job die data-generation in-cluster runt en JSONL files
+# publiceert naar de S3 raw zone (`s3a://uwv-raw/...`).
 #
 # ConfigMaps `data-generation-generators` en `data-generation-scripts` worden
 # door scripts/seed.sh aangemaakt vanuit data-generation/. Job gebruikt
-# python:3.11-slim en pip-installeert deps; daarna runt load_to_kafka.py
-# tegen de in-cluster Kafka-bootstrap.
+# python:3.11-slim en pip-installeert deps; daarna runt load_to_s3.py
+# tegen de in-cluster MinIO.
 #
 # Idempotent: scripts/seed.sh deletet de oude Job vóór apply.
 ---
@@ -31,22 +32,36 @@ spec:
           args:
             - |
               echo "==> pip install runtime deps"
-              pip install --quiet --disable-pip-version-check faker kafka-python click
-              echo "==> running load_to_kafka.py"
+              pip install --quiet --disable-pip-version-check faker boto3 click urllib3
+              echo "==> running load_to_s3.py"
               cd /app
-              python load_to_kafka.py \
+              python load_to_s3.py \
                 --count "${COUNT:-10000}" \
                 --seed "${SEED:-2026}" \
-                --bootstrap "${KAFKA_BOOTSTRAP:-uwv-kafka-broker-default-bootstrap.uwv-platform.svc.cluster.local:9092}"
+                --bucket "${S3_BUCKET:-uwv-raw}" \
+                --endpoint "${S3_ENDPOINT:-https://minio.uwv-platform.svc.cluster.local:9000}" \
+                --insecure
           env:
             - name: COUNT
               value: "10000"
             - name: SEED
               value: "2026"
-            - name: KAFKA_BOOTSTRAP
-              value: "uwv-kafka-broker-default-bootstrap.uwv-platform.svc.cluster.local:9093"
-            - name: KAFKA_SSL_CAFILE
-              value: "/stackable/tls-kafka/ca.crt"
+            - name: S3_BUCKET
+              value: "uwv-raw"
+            - name: S3_ENDPOINT
+              value: "https://minio.uwv-platform.svc.cluster.local:9000"
+            - name: S3_REGION
+              value: "us-east-1"
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-s3-credentials
+                  key: accessKey
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-s3-credentials
+                  key: secretKey
             - name: PYTHONPATH
               value: "/app"
           resources:
@@ -61,8 +76,6 @@ spec:
               mountPath: /app
             - name: generators
               mountPath: /app/generators
-            - name: tls-kafka
-              mountPath: /stackable/tls-kafka
       volumes:
         - name: scripts
           configMap:
@@ -70,17 +83,3 @@ spec:
         - name: generators
           configMap:
             name: data-generation-generators
-        - name: tls-kafka
-          ephemeral:
-            volumeClaimTemplate:
-              metadata:
-                annotations:
-                  secrets.stackable.tech/class: tls
-                  secrets.stackable.tech/scope: pod
-                  secrets.stackable.tech/format: tls-pem
-              spec:
-                accessModes: [ReadWriteOnce]
-                storageClassName: secrets.stackable.tech
-                resources:
-                  requests:
-                    storage: "1"

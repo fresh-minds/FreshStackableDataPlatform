@@ -6,9 +6,8 @@ schema_version: 1
 name: fez
 domain: fez
 
-kafka:
-  topic: uwv.fez.uitkeringslast
-  partitions: 1
+stream:
+  name: uwv.fez.uitkeringslast
   key: jaar_maand_wet_regio   # composite, niet per persoon
 
 bronze:

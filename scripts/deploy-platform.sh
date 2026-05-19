@@ -25,7 +25,7 @@ python3 "$ROOT/scripts/render-trino-catalogs.py"
 # load-restrictor=None, dus we kopieren naar platform/08-spark/scripts/.
 log "Syncing spark-jobs/ -> platform/08-spark/scripts/"
 mkdir -p "$ROOT/platform/08-spark/scripts"
-cp "$ROOT/spark-jobs/streaming_kafka_to_lakehouse.py" "$ROOT/platform/08-spark/scripts/"
+cp "$ROOT/spark-jobs/streaming_files_to_lakehouse.py" "$ROOT/platform/08-spark/scripts/"
 cp "$ROOT/spark-jobs/lib/lakehouse_io.py"             "$ROOT/platform/08-spark/scripts/"
 
 # Bootstrap dev-placeholder secrets for layers that need them. Same pattern
@@ -70,10 +70,8 @@ LAYERS=(
   "platform/01-secrets"
   "platform/02-authentication"
   "platform/03-storage"
-  "platform/04-zookeeper"
+  # 04-zookeeper, 06-kafka, 07-nifi disabled — UC11 leest uit s3a://uwv-raw/
   "platform/05-hive-metastore"
-  "platform/06-kafka"
-  "platform/07-nifi"
   "platform/08-spark"
   "platform/09-trino"
   "platform/10-opa"

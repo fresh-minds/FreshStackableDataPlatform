@@ -4,9 +4,8 @@ schema_version: 1
 name: zw
 domain: zw
 
-kafka:
-  topic: uwv.zw.melding
-  partitions: 3
+stream:
+  name: uwv.zw.melding
   key: bsn
 
 bronze:

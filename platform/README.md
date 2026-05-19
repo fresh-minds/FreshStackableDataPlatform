@@ -16,11 +16,8 @@ nummers. `scripts/deploy-platform.sh` past de mappen in deze volgorde toe.
 | 01 | [secrets](01-secrets/README.md) | Stackable `SecretClass`-CRD's + dev-only `Secret`-objects (Postgres, MinIO, Keycloak admin). | 00 |
 | 02 | [authentication](02-authentication/README.md) | `AuthenticationClass` voor Keycloak-OIDC + interne TLS-CA-secretclass. | 00, 01 |
 | 03 | [storage](03-storage/README.md) | `S3Connection` voor MinIO + bucket-init Job. | 00, 01 |
-| 04 | [zookeeper](04-zookeeper/README.md) | ZooKeeper voor Kafka-coördinatie. | 00 |
 | 05 | [hive-metastore](05-hive-metastore/README.md) | Hive Metastore — catalog backend voor zowel Delta als Iceberg. | 00, 01, 03 |
-| 06 | [kafka](06-kafka/README.md) | Kafka event-backbone (NiFi → Kafka → Spark). | 00, 04 |
-| 07 | [nifi](07-nifi/README.md) | Apache NiFi via `NiFiCluster`-CRD. | 00, 04 |
-| 08 | [spark](08-spark/README.md) | Spark-on-Kubernetes via `SparkApplication`-CRD. | 00, 03, 05, 06 |
+| 08 | [spark](08-spark/README.md) | Spark-on-Kubernetes via `SparkApplication`-CRD; leest JSONL uit s3a://uwv-raw/. | 00, 03, 05 |
 | 09 | [trino](09-trino/README.md) | Trino — distributed SQL engine met OPA-authz + OIDC. | 00, 02, 03, 05, 10 |
 | 10 | [opa](10-opa/README.md) | Open Policy Agent — authorisatielaag voor Trino. | 00 |
 | 11 | [airflow](11-airflow/README.md) | Apache Airflow via `AirflowCluster`-CRD; orkestreert dbt + maintenance. | 00, 02, 09 |

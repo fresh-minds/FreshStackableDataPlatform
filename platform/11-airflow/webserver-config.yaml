@@ -1,4 +1,4 @@
-# Custom webserver_config.py voor Airflow.
+# Custom webserver_config.py voor Airflow 3.0.6.
 #
 # Waarom: Stackable Airflow 26.3 genereert een minimale webserver_config.py
 # zonder role-mapping. `configOverrides.webserver_config.py` op de
@@ -9,6 +9,13 @@
 # Bovendien definieert Stackable géén custom get_oauth_user_info() →
 # FAB's default leest het Keycloak `roles` userinfo-claim niet als
 # role_keys, dus AUTH_ROLES_MAPPING zou alsnog leeg blijven.
+#
+# Airflow 3.x: de security-manager is verhuisd naar het FAB-provider
+# (apache-airflow-providers-fab); we erven van
+# FabAirflowSecurityManagerOverride i.p.v. de oude
+# airflow.www.security.AirflowSecurityManager (die bestaat niet meer).
+# Setting heet nu FAB_SECURITY_MANAGER_CLASS — een string-pad naar de
+# class, niet de class zelf.
 #
 # Oplossing: we mounten deze ConfigMap via subPath bovenop
 # /stackable/app/config/webserver_config.py (zie airflowcluster.yaml
@@ -35,7 +42,9 @@ data:
     """
     import os
 
-    from airflow.www.security import AirflowSecurityManager
+    from airflow.providers.fab.auth_manager.security_manager.override import (
+        FabAirflowSecurityManagerOverride,
+    )
     from flask_appbuilder.const import AUTH_OAUTH
 
     basedir = os.path.abspath(os.path.dirname(__file__))
@@ -88,7 +97,7 @@ data:
     ]
 
 
-    class UWVAirflowSecurityManager(AirflowSecurityManager):
+    class UWVAirflowSecurityManager(FabAirflowSecurityManagerOverride):
         """Leest Keycloak's `roles` userinfo-claim als FAB role_keys.
 
         FAB's default get_oauth_user_info kent voor de keycloak-provider
@@ -109,4 +118,7 @@ data:
             }
 
 
-    SECURITY_MANAGER_CLASS = UWVAirflowSecurityManager
+    # Airflow 3.x: FAB-provider verwacht de class als import-pad-string,
+    # niet als class-referentie. De class moet importable zijn vanaf
+    # PYTHONPATH — deze file zelf is dat (Flask laadt 'm via importlib).
+    FAB_SECURITY_MANAGER_CLASS = "webserver_config.UWVAirflowSecurityManager"

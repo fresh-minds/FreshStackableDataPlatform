@@ -22,7 +22,7 @@ resources:
 configMapGenerator:
   - name: spark-streaming-jobs
     files:
-      - scripts/streaming_kafka_to_lakehouse.py
+      - scripts/streaming_files_to_lakehouse.py
       - scripts/lakehouse_io.py
 
 generatorOptions:

@@ -4,9 +4,8 @@ schema_version: 1
 name: crm
 domain: crm
 
-kafka:
-  topic: uwv.crm.contact
-  partitions: 3
+stream:
+  name: uwv.crm.contact
   key: bsn
 
 bronze:

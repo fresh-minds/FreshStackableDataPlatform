@@ -16,7 +16,6 @@ service-connection definities voor Trino / dbt / Superset / Airflow / Kafka.
 | [services/dbt-workflow.yaml](services/dbt-workflow.yaml) | dbt-manifest workflow (leest s3://uwv-meta/dbt/latest/). |
 | [services/superset-service.yaml](services/superset-service.yaml) | Dashboard-ingestion. |
 | [services/airflow-service.yaml](services/airflow-service.yaml) | Pipeline-ingestion. |
-| [services/kafka-service.yaml](services/kafka-service.yaml) | Topic-ingestion. |
 | [init-job.yaml](init-job.yaml) | ConfigMap + Job die classifications + glossary toepast via OM REST API. |
 | [kustomization.yaml](kustomization.yaml) | Bundelt alles + bouwt ConfigMap `openmetadata-uwv-config`. |
 

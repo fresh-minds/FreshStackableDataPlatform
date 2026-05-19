@@ -3,7 +3,8 @@
 #
 # Stappen:
 #   1. ConfigMaps maken uit data-generation/generators/ en data-generation/*.py
-#   2. Job submitten (data-generation/k8s/seed-job.yaml)
+#   2. Job submitten (data-generation/k8s/seed-job.yaml) — schrijft JSONL
+#      naar s3a://uwv-raw/ (Spark Structured Streaming pikt het op)
 #   3. Wachten tot Job complete
 #   4. Logs printen voor inspectie
 set -euo pipefail
@@ -22,34 +23,25 @@ fi
 
 command -v kubectl >/dev/null || fail "kubectl niet gevonden"
 
-# Wacht tot Kafka echt bereikbaar is. `make deploy-platform` returnt zodra
-# kustomize klaar is, maar de KafkaCluster pod heeft daarna nog tijd nodig:
-# Stackable operator moet de StatefulSet maken, pod moet ~370MB image pullen,
-# Kafka moet ZooKeeper-quorum vinden. Als seed daarvoor draait, krijgt-ie
-# `NoBrokersAvailable` en faalt de Job na backoffLimit=1.
-log "Wacht tot Kafka broker Ready is (max 10 min)"
-if ! kubectl -n "$NS" rollout status statefulset/uwv-kafka-broker-default \
-       --timeout=10m >/dev/null 2>&1; then
-  warn "Kafka broker StatefulSet niet Ready binnen 10 min — seed gaat waarschijnlijk falen."
-fi
-# Extra: bootstrap-service moet endpoints hebben voor de Kafka API.
-log "Wacht tot uwv-kafka-broker-default-bootstrap endpoints heeft"
-for i in {1..60}; do
-  eps=$(kubectl -n "$NS" get endpoints uwv-kafka-broker-default-bootstrap \
+# MinIO moet bereikbaar zijn voor de seed-Job. minio-s3-credentials secret
+# is door 01-secrets aangemaakt; de Job mount die rechtstreeks.
+log "Wacht tot MinIO bereikbaar is (max 5 min)"
+for i in {1..30}; do
+  eps=$(kubectl -n "$NS" get endpoints minio \
           -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
   [[ -n "$eps" ]] && break
-  sleep 5
+  sleep 10
 done
-[[ -z "${eps:-}" ]] && warn "Bootstrap-service nog steeds zonder endpoints — seed kan falen."
+[[ -z "${eps:-}" ]] && warn "minio service zonder endpoints — seed kan falen."
 
 log "ConfigMap data-generation-generators (uit data-generation/generators/)"
 kubectl -n "$NS" create configmap data-generation-generators \
   --from-file="$ROOT/data-generation/generators/" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-log "ConfigMap data-generation-scripts (load_to_kafka.py + load_to_minio_staging.py)"
+log "ConfigMap data-generation-scripts (load_to_s3.py + load_to_minio_staging.py)"
 kubectl -n "$NS" create configmap data-generation-scripts \
-  --from-file=load_to_kafka.py="$ROOT/data-generation/load_to_kafka.py" \
+  --from-file=load_to_s3.py="$ROOT/data-generation/load_to_s3.py" \
   --from-file=load_to_minio_staging.py="$ROOT/data-generation/load_to_minio_staging.py" \
   --dry-run=client -o yaml | kubectl apply -f -
 
@@ -72,4 +64,4 @@ fi
 log "Job-logs:"
 kubectl -n "$NS" logs job/seed-data-generation --tail=50
 
-log "Klaar. Spark-streaming-job pikt nu de Kafka-events op (kan 1-2 min duren voor batch verschijnt)."
+log "Klaar. Spark file-streaming-job pikt JSONL-files uit s3a://uwv-raw/ op (kan 1-2 min duren voor batch verschijnt)."

@@ -66,14 +66,14 @@ def test_exactly_one_anchor_source():
     assert anchors[0].name == "persoon"
 
 
-def test_no_duplicate_topics_or_tables():
+def test_no_duplicate_streams_or_tables():
     """sources_loader._validate_uniqueness draait al — deze test fixt het contract."""
     from sources_loader import load_all_sources
 
     specs = load_all_sources()
-    topics = [s.kafka.topic for s in specs]
+    streams = [s.stream.name for s in specs if s.stream is not None]
     bronze = [s.bronze.fqn for s in specs]
-    assert len(topics) == len(set(topics))
+    assert len(streams) == len(set(streams))
     assert len(bronze) == len(set(bronze))
 
 

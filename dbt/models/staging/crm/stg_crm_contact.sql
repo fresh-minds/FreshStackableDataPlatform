@@ -1,7 +1,7 @@
 {{ config(materialized='view') }}
 
 with src as (
-    select payload, kafka_ts, event_date
+    select payload, source_ts, event_date
     from {{ source('bronze', 'crm_contact') }}
 )
 
@@ -14,6 +14,6 @@ select
     -- from_iso8601_timestamp() pakt het wel; resultaat is timestamp(3) with time zone.
     from_iso8601_timestamp(json_extract_scalar(payload, '$.payload.timestamp')) as contact_ts,
     cast(json_extract_scalar(payload, '$.payload.duur_seconden') as integer) as duur_seconden,
-    kafka_ts                                                          as ingestion_kafka_ts,
+    source_ts                                                          as ingestion_source_ts,
     event_date
 from src

@@ -130,10 +130,9 @@ def build_om_ingest_dag() -> DAG:
       3. Trino profiler + auto-PII  (services/trino-profiler.yaml)
       4. Superset dashboards        (services/superset-service.yaml)
       5. Airflow pipelines          (services/airflow-service.yaml)
-      6. Kafka topics               (services/kafka-service.yaml)
-      7. MinIO buckets (storage)    (services/minio-storage.yaml)
-      8. dbt artifacts (lineage)    (services/dbt-workflow.yaml)
-      9. dbt-meta enricher          (enrich_from_dbt_meta.py)
+      6. MinIO buckets (storage)    (services/minio-storage.yaml)
+      7. dbt artifacts (lineage)    (services/dbt-workflow.yaml)
+      8. dbt-meta enricher          (enrich_from_dbt_meta.py)
 
     dbt LAATST omdat het tabellen + columns nodig heeft die door Trino-ingest
     worden aangemaakt; Trino-lineage/profiler na de basis-catalog om
@@ -145,13 +144,17 @@ def build_om_ingest_dag() -> DAG:
         dag_id="governance_om_ingest",
         description=(
             "OpenMetadata-ingest van alle UWV-services: Trino (catalog + "
-            "lineage + profiler), Superset, Airflow, Kafka en dbt-artifacts."
+            "lineage + profiler), Superset, Airflow en dbt-artifacts."
         ),
         default_args=DEFAULT_ARGS,
         schedule=timedelta(hours=1),
         start_date=datetime(2026, 5, 1),
         catchup=False,
         max_active_runs=1,
+        # uc11_full_setup triggert deze DAG op een verse cluster; zonder
+        # is_paused_upon_creation=False blijft die call queued op een paused
+        # DAG. catchup=False voorkomt backfill-explosie van het @1h-schema.
+        is_paused_upon_creation=False,
         tags=["uwv", "governance", "openmetadata"],
     ) as dag:
         ingest_trino = _om_ingest_task(
@@ -177,10 +180,6 @@ def build_om_ingest_dag() -> DAG:
             task_id="ingest_airflow",
             workflow_yaml="/config/airflow-service.yaml",
         )
-        ingest_kafka = _om_ingest_task(
-            task_id="ingest_kafka",
-            workflow_yaml="/config/kafka-service.yaml",
-        )
         ingest_minio = _om_ingest_task(
             task_id="ingest_minio_storage",
             workflow_yaml="/config/minio-storage.yaml",
@@ -199,7 +198,6 @@ def build_om_ingest_dag() -> DAG:
             >> ingest_trino_profiler
             >> ingest_superset
             >> ingest_airflow
-            >> ingest_kafka
             >> ingest_minio
             >> ingest_dbt
             >> enrich

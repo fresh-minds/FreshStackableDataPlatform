@@ -5,8 +5,10 @@ Eén bron van waarheid voor alle DAG-factories. Leest YAML's uit
 SourceSpec objecten terug. Zie docs/adr/0007-airflow-pipeline-architecture.md.
 
 Twee soorten bronnen:
-  - Kafka/streaming (default): `kafka:` blok verplicht, mode = streaming|batch.
-  - CSV-upload (mode = csv_batch): `kafka:` mag ontbreken, in plaats daarvan
+  - Stream/streaming (default): `stream:` blok verplicht, mode = streaming|batch.
+    Producer schrijft JSONL naar s3://uwv-raw/<stream-path>/dt=…, Spark
+    Structured Streaming (file source) leest die en schrijft naar bronze.
+  - CSV-upload (mode = csv_batch): `stream:` mag ontbreken, in plaats daarvan
     een `ingest:` blok dat staging-bucket + CSV-schema beschrijft. Wordt door
     csv_ingest_factory naar bronze geschreven via een KubernetesPodOperator.
 """
@@ -24,16 +26,22 @@ SOURCES_DIR_ENV = "UWV_SOURCES_DIR"
 DEFAULT_SOURCES_DIR = "/opt/uwv/airflow/sources"
 
 # SLA-mode constanten — gebruikt door factories om zich anders te gedragen
-# voor csv_batch bronnen (skip Kafka/Spark-paden, eigen ingest-DAG).
+# voor csv_batch bronnen (skip stream-paden, eigen ingest-DAG).
 MODE_STREAMING = "streaming"
 MODE_BATCH = "batch"
 MODE_CSV_BATCH = "csv_batch"
 
 
 @dataclass(frozen=True)
-class KafkaSpec:
-    topic: str
-    partitions: int
+class StreamSpec:
+    """Stream-identifier voor JSONL-bestanden in s3://uwv-raw/<path>/.
+
+    `name` is de logische stream (bv. 'uwv.persona.created'); de Spark-job
+    leidt het S3-pad af door punten te vervangen door slashes. `key` is het
+    natuurlijke partition-key voor downstream silver-modellen (geen invloed
+    op file-layout).
+    """
+    name: str
     key: str
 
 
@@ -113,7 +121,7 @@ class SourceSpec:
     used_by_use_cases: tuple[str, ...]
     anchor: bool
     # Optioneel — afhankelijk van het pad waarmee de bron binnenkomt.
-    kafka: KafkaSpec | None = None
+    stream: StreamSpec | None = None
     csv_ingest: CsvIngestSpec | None = None
 
     # Voor Airflow tags op de gegenereerde DAGs.
@@ -160,7 +168,7 @@ def _coerce_csv_ingest(d: dict) -> CsvIngestSpec:
 
 def _coerce(d: dict) -> SourceSpec:
     sla = SLASpec(**d["sla"])
-    kafka_block = d.get("kafka")
+    stream_block = d.get("stream")
     ingest_block = d.get("ingest")
 
     # Validatie per mode — vroeg falen i.p.v. cryptische DAG-runtime-errors.
@@ -168,17 +176,17 @@ def _coerce(d: dict) -> SourceSpec:
         if not ingest_block:
             raise ValueError(f"{d.get('name')}: mode=csv_batch vereist `ingest:` blok")
     else:
-        if not kafka_block:
+        if not stream_block:
             raise ValueError(
-                f"{d.get('name')}: mode={sla.mode!r} vereist `kafka:` blok "
-                "(alleen csv_batch mag kafka weglaten)"
+                f"{d.get('name')}: mode={sla.mode!r} vereist `stream:` blok "
+                "(alleen csv_batch mag stream weglaten)"
             )
 
     return SourceSpec(
         schema_version=int(d["schema_version"]),
         name=d["name"],
         domain=d["domain"],
-        kafka=KafkaSpec(**kafka_block) if kafka_block else None,
+        stream=StreamSpec(**stream_block) if stream_block else None,
         csv_ingest=_coerce_csv_ingest(ingest_block) if ingest_block else None,
         bronze=BronzeSpec(**d["bronze"]),
         silver=SilverSpec(**d["silver"]),
@@ -231,23 +239,23 @@ def csv_batch_sources() -> tuple[SourceSpec, ...]:
     return tuple(s for s in load_all_sources() if s.sla.mode == MODE_CSV_BATCH)
 
 
-def kafka_sources() -> tuple[SourceSpec, ...]:
-    """Bronnen die via Kafka/Spark-streaming binnenkomen — voor bronze_watch."""
-    return tuple(s for s in load_all_sources() if s.kafka is not None)
+def stream_sources() -> tuple[SourceSpec, ...]:
+    """Bronnen die via stream-files (S3 raw) binnenkomen — voor bronze_watch."""
+    return tuple(s for s in load_all_sources() if s.stream is not None)
 
 
 def _validate_uniqueness(specs: list[SourceSpec]) -> None:
     seen_names: set[str] = set()
-    seen_topics: set[str] = set()
+    seen_streams: set[str] = set()
     seen_bronze: set[str] = set()
     for s in specs:
         if s.name in seen_names:
             raise ValueError(f"Duplicate source name: {s.name}")
-        if s.kafka and s.kafka.topic in seen_topics:
-            raise ValueError(f"Duplicate kafka topic: {s.kafka.topic}")
+        if s.stream and s.stream.name in seen_streams:
+            raise ValueError(f"Duplicate stream name: {s.stream.name}")
         if s.bronze.fqn in seen_bronze:
             raise ValueError(f"Duplicate bronze table: {s.bronze.fqn}")
         seen_names.add(s.name)
-        if s.kafka:
-            seen_topics.add(s.kafka.topic)
+        if s.stream:
+            seen_streams.add(s.stream.name)
         seen_bronze.add(s.bronze.fqn)

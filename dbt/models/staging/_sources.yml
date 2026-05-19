@@ -1,15 +1,20 @@
 version: 2
 
-# Bronze sources — geschreven door spark-jobs/streaming_kafka_to_lakehouse.py.
-# Eén tabel per Kafka-topic; payload is raw JSON envelope.
+# Bronze sources — geschreven door spark-jobs/streaming_files_to_lakehouse.py.
+# Eén tabel per stream-identifier (uwv.<domain>.<entity>); payload is raw JSON envelope.
+#
+# De `silver`-source verderop is Fabric-only: bedoeld als input voor
+# int_klantreis_events wanneer dbt-fabricspark draait. Op Trino blijft int
+# refereren naar stg_* views (JSON-extractie uit bronze).
 
 sources:
   - name: bronze
     database: bronze
     schema: uwv
     description: |
-      Raw Kafka envelopes. Per `uwv.<domain>.<entity>` Kafka-topic één Delta-tabel.
-      Schema: `payload (string), topic, kafka_partition, kafka_offset, kafka_ts, ingestion_ts, event_date`.
+      Raw JSONL envelopes uit s3a://uwv-raw/<domain>/<entity>/. Per stream
+      één Delta-tabel.
+      Schema: `payload (string), stream, source_file, source_ts, ingestion_ts, event_date`.
     loader: spark-streaming
     meta:
       bio_classificatie: vertrouwelijk
@@ -41,3 +46,80 @@ sources:
         meta:
           bio_classificatie: intern
           bewaartermijn_jaren: 5
+
+  # ─────────────────────────────────────────────────────────────────
+  # Silver source — alleen voor Fabric (uc11 multi-platform demo).
+  #
+  # Op Trino wordt deze source niet gerefereerd: int_klantreis_events
+  # gebruikt {{ ref('stg_*') }} (views op bronze met JSON-extractie).
+  # Op Fabric (target.type == 'fabricspark') schakelt int_klantreis_events
+  # over op {{ source('silver', X) }} omdat het seed_bronze + silver
+  # notebook al flat tabellen schrijft (geen JSON payload).
+  #
+  # database/schema = lakehouse-naam: non-schema Fabric Lakehouse heeft
+  # één namespace; dbt-fabricspark zet database=schema=lakehouse.
+  # ─────────────────────────────────────────────────────────────────
+  - name: silver
+    database: "{{ env_var('FABRIC_LAKEHOUSE_NAME', 'uc11_lakehouse') }}"
+    schema: "{{ env_var('FABRIC_LAKEHOUSE_NAME', 'uc11_lakehouse') }}"
+    description: |
+      Pre-parsed silver Delta-tabellen in het Fabric Lakehouse, geschreven
+      door uc11_silver.ipynb (later: dbt staging-equivalent voor Fabric).
+      Identifier `silver_<entity>` matcht de tabel in `Tables/`.
+
+    tables:
+      - name: persona
+        identifier: silver_persona
+        description: "Persoon-records (BSN, naam, geboorte, adres). Equivalent van stg_persona."
+      - name: polisadm_ikv
+        identifier: silver_polisadm_ikv
+        description: "Inkomstenverhoudingen. Equivalent van stg_polisadm_ikv."
+      - name: ww_aanvraag
+        identifier: silver_ww_aanvraag
+        description: "WW-aanvragen. Equivalent van stg_ww_aanvraag."
+      - name: zw_melding
+        identifier: silver_zw_melding
+        description: "Ziektewet-meldingen. Equivalent van stg_zw_melding."
+      - name: wia_aanvraag
+        identifier: silver_wia_aanvraag
+        description: "WIA-aanvragen. Equivalent van stg_wia_aanvraag."
+      - name: wajong_dossier
+        identifier: silver_wajong_dossier
+        description: "Wajong-dossiers. Equivalent van stg_wajong_dossier."
+      - name: crm_contact
+        identifier: silver_crm_contact
+        description: "Klantcontact-events. Equivalent van stg_crm_contact."
+
+  # ─────────────────────────────────────────────────────────────────
+  # Silver source voor Databricks (Unity Catalog).
+  #
+  # Tabellen worden geschreven door uc11_silver.ipynb in de Databricks
+  # workspace → uwv_databricks.silver.<name>. Schema is dezelfde als de
+  # `silver` source voor Fabric, alleen ander adres.
+  #
+  # int_klantreis_events.sql schakelt naar deze source als target.type ==
+  # 'databricks' (zie macro klantreis_entity).
+  # ─────────────────────────────────────────────────────────────────
+  - name: silver_uc
+    database: "{{ env_var('DATABRICKS_CATALOG', 'uwv_databricks') }}"
+    schema: silver
+    description: |
+      Pre-parsed silver Delta-tabellen in Databricks Unity Catalog,
+      geschreven door uc11_silver.ipynb. Identifier matcht de tabel-naam
+      onder uwv_databricks.silver.*.
+
+    tables:
+      - name: persona
+        description: "Persoon-records. Equivalent van stg_persona."
+      - name: polisadm_ikv
+        description: "Inkomstenverhoudingen. Equivalent van stg_polisadm_ikv."
+      - name: ww_aanvraag
+        description: "WW-aanvragen. Equivalent van stg_ww_aanvraag."
+      - name: zw_melding
+        description: "Ziektewet-meldingen. Equivalent van stg_zw_melding."
+      - name: wia_aanvraag
+        description: "WIA-aanvragen. Equivalent van stg_wia_aanvraag."
+      - name: wajong_dossier
+        description: "Wajong-dossiers. Equivalent van stg_wajong_dossier."
+      - name: crm_contact
+        description: "Klantcontact-events. Equivalent van stg_crm_contact."

@@ -1,7 +1,7 @@
 {{ config(materialized='view') }}
 
 with src as (
-    select payload, kafka_ts, event_date
+    select payload, source_ts, event_date
     from {{ source('bronze', 'wia_aanvraag') }}
 )
 
@@ -14,6 +14,6 @@ select
     json_extract_scalar(payload, '$.payload.regio_code')                   as regio_code,
     json_extract_scalar(payload, '$.payload.status')                       as status,
     cast(json_extract_scalar(payload, '$.payload.arbeidsongeschikt_pct') as integer) as arbeidsongeschikt_pct,
-    kafka_ts                                                                as ingestion_kafka_ts,
+    source_ts                                                                as ingestion_source_ts,
     event_date
 from src

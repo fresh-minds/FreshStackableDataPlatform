@@ -28,6 +28,9 @@ resources:
 
 # Buckets aanmaken via een post-install Job (werkt op standalone mode)
 buckets:
+  - name: uwv-raw
+    policy: none
+    purge: false
   - name: uwv-bronze
     policy: none
     purge: false

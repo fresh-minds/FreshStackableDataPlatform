@@ -24,7 +24,7 @@ metadata:
   namespace: uwv-platform
 spec:
   image:
-    productVersion: "2.9.3"
+    productVersion: "3.0.6"
   clusterConfig:
     # 26.3: database/executor/listenerClass uit clusterConfig.
     # Database-config zit in credentialsSecret (zie secret).
@@ -40,25 +40,27 @@ spec:
   webservers:
     roleConfig:
       listenerClass: cluster-internal
-    # Airflow draait achter TLS-terminating ingress-nginx. De webserver
-    # bouwt de OAuth redirect_uri — zonder BASE_URL + proxy-fix wordt
-    # dat http://...:8443 → nginx 400 "plain HTTP request was sent to
-    # HTTPS port". REQUESTS_CA_BUNDLE/SSL_CERT_FILE zijn voor de OAuth
+    # Airflow draait achter TLS-terminating ingress-nginx. Airflow 3.x
+    # splitst de webserver in een API-server (issuer/redirect-URI) +
+    # FAB-UI; vandaar AIRFLOW__API__BASE_URL én AIRFLOW__FAB__BASE_URL.
+    # Zonder die twee bouwt Flask de OAuth redirect_uri als
+    # http://...:8443 → nginx 400 "plain HTTP request was sent to HTTPS
+    # port". REQUESTS_CA_BUNDLE/SSL_CERT_FILE zijn voor de OAuth
     # token-exchange naar https://keycloak.uwv-platform.local:8443
     # (cert-manager self-signed CA).
-    # NB: airflow.cfg dump op disk toont nog defaults
-    # (base_url=http://localhost:8080, enable_proxy_fix=False).
-    # `airflow config get-value webserver base_url` geeft echter de
-    # ECHTE waarde uit env-vars terug — die overschrijven cfg op runtime.
+    # NB: airflow.cfg dump op disk toont nog defaults; env-vars
+    # overschrijven cfg op runtime. Verifieer met
+    # `airflow config get-value api base_url` in een verse pod.
     envOverrides:
       REQUESTS_CA_BUNDLE: "/etc/uwv-ca/ca.crt"
       SSL_CERT_FILE: "/etc/uwv-ca/ca.crt"
-      AIRFLOW__WEBSERVER__BASE_URL: "https://airflow.uwv-platform.local:8443"
-      AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: "True"
-      AIRFLOW__WEBSERVER__PROXY_FIX_X_PROTO: "1"
-      AIRFLOW__WEBSERVER__PROXY_FIX_X_HOST: "1"
-      AIRFLOW__WEBSERVER__PROXY_FIX_X_PORT: "1"
-      AIRFLOW__WEBSERVER__PROXY_FIX_X_PREFIX: "1"
+      AIRFLOW__API__BASE_URL: "https://airflow.uwv-platform.local:8443"
+      AIRFLOW__FAB__BASE_URL: "https://airflow.uwv-platform.local:8443"
+      AIRFLOW__FAB__ENABLE_PROXY_FIX: "True"
+      AIRFLOW__FAB__PROXY_FIX_X_PROTO: "1"
+      AIRFLOW__FAB__PROXY_FIX_X_HOST: "1"
+      AIRFLOW__FAB__PROXY_FIX_X_PORT: "1"
+      AIRFLOW__FAB__PROXY_FIX_X_PREFIX: "1"
       # ADR-0007: include/ + cosmos op PYTHONPATH zodat factory-imports werken.
       # Include zelf + cosmos VOOR system-paths zodat factory-imports voorrang hebben.
       # Stackable's eigen log_config + dags-folder achteraan om defaults te behouden.
@@ -77,8 +79,10 @@ spec:
     # role-mapping via een subPath-mount bovenop de gegenereerde file
     # (zie webserver-config.yaml ConfigMap + volume mount onderaan
     # roleGroups.default.podOverrides). Dat geeft ons ook ruimte om
-    # een custom SECURITY_MANAGER_CLASS te zetten — nodig omdat FAB's
-    # default get_oauth_user_info het Keycloak `roles` claim niet leest.
+    # een custom FAB_SECURITY_MANAGER_CLASS te zetten — nodig omdat
+    # FAB's default get_oauth_user_info het Keycloak `roles` claim
+    # niet leest. (Airflow 3: setting heet FAB_SECURITY_MANAGER_CLASS
+    # en accepteert een import-pad-string ipv een class.)
     config:
       logging:
         enableVectorAgent: false
@@ -86,8 +90,10 @@ spec:
         cpu:
           min: "100m"
           max: "500m"
+        # Airflow 3 api-server (Uvicorn + FAB-UI) + Cosmos imports vragen
+        # meer dan 2.x's webserver. 1Gi was te krap; OOMKilled bij CLI-load.
         memory:
-          limit: "1Gi"
+          limit: "1500Mi"
     roleGroups:
       default:
         replicas: 1
@@ -97,46 +103,33 @@ spec:
             # de airflow-container wordt gemount op PYTHONPATH.
             initContainers:
               - name: cosmos-init
-                # Match Python-versie van Stackable airflow image (3.9)
-                # zodat cp-wheels met C-extensies (msgpack, pyyaml) laden.
-                image: python:3.9-slim
+                # Match Python-versie van Stackable airflow 3.0.6 image
+                # (Python 3.12) zodat C-extensies (msgpack, pyyaml) laden.
+                image: python:3.12-slim
                 command:
-                  - bash
-                  - -euo
-                  - pipefail
-                  - -c
+                  - sh
+                  - -ec
                   - |
-                    # Stackable Airflow 2.9.3 image draait op Python 3.9.
-                    # Cosmos 1.7+ vereist Python 3.10+, dus pin op 1.6.0.
-                    # --no-deps voorkomt dat pip airflow 3.x meeneemt
-                    # (wat Python 3.10+ vereist en de system-airflow shadowt).
-                    # Stackable Airflow 2.9.3 = Python 3.9 + SQLAlchemy 1.4 +
-                    # apache-airflow 2.9.3 (system). Wij installeren cosmos
-                    # MET --no-deps zodat we GEEN sqlalchemy/airflow shadow
-                    # introduceren die het system kapot maakt.
-                    # Trino-driver hoeft hier ook niet — Cosmos LoadMode.DBT_MANIFEST
-                    # vereist geen DB-connectie bij parse; trino runs gebeuren in
-                    # dbt-trino pods die hun eigen image hebben.
+                    # /cosmos-pkgs staat op PYTHONPATH VÓÓR site-packages, dus
+                    # een transitief geïnstalleerd `airflow` of `apache_airflow*`
+                    # shadowt de system Airflow. --no-deps voorkomt dat pip
+                    # apache-airflow als transitive dep meeneemt.
                     pip install --disable-pip-version-check \
                       --target=/cosmos-pkgs --no-deps \
-                      "astronomer-cosmos==1.6.0"
+                      "astronomer-cosmos==1.12.0"
+                    # Cosmos-runtime deps die NIET in het Stackable airflow image
+                    # zitten. attrs/jinja2/pendulum/pluggy/packaging/typing_ext
+                    # zijn airflow-standaard — alleen aenum + methodtools (+ pure-
+                    # python wirerope dep) hebben we nodig.
                     pip install --disable-pip-version-check \
                       --target=/cosmos-pkgs \
-                      "PyYAML==6.0.2" \
-                      "msgpack==1.0.8" \
-                      "aenum>=3.1"
-                    # Defensieve cleanup: nooit airflow/sqlalchemy/jinja/attrs
-                    # shadowen — die zitten in system airflow met de juiste versie.
+                      "aenum>=3.1" "methodtools>=0.4.7"
+                    # Defensieve cleanup: als pip toch een airflow/provider-
+                    # shadow naar /cosmos-pkgs schreef, weg ermee.
                     cd /cosmos-pkgs
-                    for pkg in airflow apache_airflow* airflow_providers_* \
-                               sqlalchemy SQLAlchemy* alembic flask werkzeug \
-                               jinja2 markupsafe attrs attr deprecated requests \
-                               urllib3 certifi charset_normalizer idna; do
-                      rm -rf "$pkg" "${pkg}-"*.dist-info "${pkg}.py" 2>/dev/null || true
-                    done
+                    rm -rf airflow apache_airflow apache_airflow-*.dist-info \
+                           airflow_providers_* 2>/dev/null || true
                     touch /cosmos-pkgs/.ready
-                    echo "cosmos-init done. /cosmos-pkgs contents:"
-                    ls /cosmos-pkgs
                 volumeMounts:
                   - name: cosmos-pkgs
                     mountPath: /cosmos-pkgs
@@ -247,15 +240,16 @@ spec:
     envOverrides:
       REQUESTS_CA_BUNDLE: "/etc/uwv-ca/ca.crt"
       SSL_CERT_FILE: "/etc/uwv-ca/ca.crt"
-      # Airflow draait achter TLS-terminating ingress-nginx. Zonder deze
-      # twee bouwt Flask de OAuth redirect_uri als http://...:8443 →
-      # nginx 400 "plain HTTP request was sent to HTTPS port".
-      AIRFLOW__WEBSERVER__BASE_URL: "https://airflow.uwv-platform.local:8443"
-      AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: "True"
-      AIRFLOW__WEBSERVER__PROXY_FIX_X_PROTO: "1"
-      AIRFLOW__WEBSERVER__PROXY_FIX_X_HOST: "1"
-      AIRFLOW__WEBSERVER__PROXY_FIX_X_PORT: "1"
-      AIRFLOW__WEBSERVER__PROXY_FIX_X_PREFIX: "1"
+      # Airflow 3.x: [webserver] is gesplitst in [api] + [fab]. Zelfde
+      # set als webservers — de scheduler genereert ook redirect_uri's
+      # voor task-logs / Cosmos-callbacks die door nginx terug komen.
+      AIRFLOW__API__BASE_URL: "https://airflow.uwv-platform.local:8443"
+      AIRFLOW__FAB__BASE_URL: "https://airflow.uwv-platform.local:8443"
+      AIRFLOW__FAB__ENABLE_PROXY_FIX: "True"
+      AIRFLOW__FAB__PROXY_FIX_X_PROTO: "1"
+      AIRFLOW__FAB__PROXY_FIX_X_HOST: "1"
+      AIRFLOW__FAB__PROXY_FIX_X_PORT: "1"
+      AIRFLOW__FAB__PROXY_FIX_X_PREFIX: "1"
       # ADR-0007 — zelfde set als webservers; scheduler parseert DAGs en
       # heeft cosmos + sources_loader nodig.
       # Include zelf + cosmos VOOR system-paths zodat factory-imports voorrang hebben.
@@ -276,8 +270,11 @@ spec:
         cpu:
           min: "100m"
           max: "1000m"
+        # Airflow 3.x draait scheduler + dag-processor in dezelfde container
+        # (Stackable 26.3 startup-script start beide processen). Cosmos
+        # serialiseert ~100 task-instances per DAG. 1Gi → OOM-kill.
         memory:
-          limit: "1Gi"
+          limit: "2Gi"
     roleGroups:
       default:
         replicas: 1
@@ -285,41 +282,22 @@ spec:
           spec:
             initContainers:
               - name: cosmos-init
-                # Match Python-versie van Stackable airflow image (3.9)
-                # zodat cp-wheels met C-extensies (msgpack, pyyaml) laden.
-                image: python:3.9-slim
+                image: python:3.12-slim
                 command:
-                  - bash
-                  - -euo
-                  - pipefail
-                  - -c
+                  - sh
+                  - -ec
                   - |
-                    # Zie webservers-blok hierboven — zelfde Python 3.9 caveat.
-                    # Stackable Airflow 2.9.3 = Python 3.9 + SQLAlchemy 1.4 +
-                    # apache-airflow 2.9.3 (system). Wij installeren cosmos
-                    # MET --no-deps zodat we GEEN sqlalchemy/airflow shadow
-                    # introduceren die het system kapot maakt.
-                    # Trino-driver hoeft hier ook niet — Cosmos LoadMode.DBT_MANIFEST
-                    # vereist geen DB-connectie bij parse; trino runs gebeuren in
-                    # dbt-trino pods die hun eigen image hebben.
+                    # Zie webservers blok voor uitleg --no-deps + cleanup.
                     pip install --disable-pip-version-check \
                       --target=/cosmos-pkgs --no-deps \
-                      "astronomer-cosmos==1.6.0"
+                      "astronomer-cosmos==1.12.0"
                     pip install --disable-pip-version-check \
                       --target=/cosmos-pkgs \
-                      "PyYAML==6.0.2" \
-                      "msgpack==1.0.8" \
-                      "aenum>=3.1"
+                      "aenum>=3.1" "methodtools>=0.4.7"
                     cd /cosmos-pkgs
-                    for pkg in airflow apache_airflow* airflow_providers_* \
-                               sqlalchemy SQLAlchemy* alembic flask werkzeug \
-                               jinja2 markupsafe attrs attr deprecated requests \
-                               urllib3 certifi charset_normalizer idna; do
-                      rm -rf "$pkg" "${pkg}-"*.dist-info "${pkg}.py" 2>/dev/null || true
-                    done
+                    rm -rf airflow apache_airflow apache_airflow-*.dist-info \
+                           airflow_providers_* 2>/dev/null || true
                     touch /cosmos-pkgs/.ready
-                    echo "cosmos-init done. /cosmos-pkgs contents:"
-                    ls /cosmos-pkgs
                 volumeMounts:
                   - name: cosmos-pkgs
                     mountPath: /cosmos-pkgs
@@ -416,28 +394,21 @@ spec:
       spec:
         initContainers:
           - name: cosmos-init
-            image: python:3.9-slim
+            image: python:3.12-slim
             command:
-              - bash
-              - -euo
-              - pipefail
-              - -c
+              - sh
+              - -ec
               - |
+                # Zie webservers/schedulers blok voor uitleg --no-deps + cleanup.
                 pip install --disable-pip-version-check \
                   --target=/cosmos-pkgs --no-deps \
-                  "astronomer-cosmos==1.6.0"
+                  "astronomer-cosmos==1.12.0"
                 pip install --disable-pip-version-check \
                   --target=/cosmos-pkgs \
-                  "PyYAML==6.0.2" \
-                  "msgpack==1.0.8" \
-                  "aenum>=3.1"
+                  "aenum>=3.1" "methodtools>=0.4.7"
                 cd /cosmos-pkgs
-                for pkg in airflow apache_airflow* airflow_providers_* \
-                           sqlalchemy SQLAlchemy* alembic flask werkzeug \
-                           jinja2 markupsafe attrs attr deprecated requests \
-                           urllib3 certifi charset_normalizer idna; do
-                  rm -rf "$pkg" "${pkg}-"*.dist-info "${pkg}.py" 2>/dev/null || true
-                done
+                rm -rf airflow apache_airflow apache_airflow-*.dist-info \
+                       airflow_providers_* 2>/dev/null || true
                 touch /cosmos-pkgs/.ready
             volumeMounts:
               - name: cosmos-pkgs

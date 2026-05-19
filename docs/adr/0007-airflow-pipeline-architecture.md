@@ -1,10 +1,30 @@
 # ADR-0007: Airflow pipeline-architectuur — Cosmos, Datasets, YAML-registry
 
-| Status | **Geaccepteerd** |
+| Status | **Geaccepteerd** (deels gewijzigd 2026-05-19) |
 |---|---|
 | Datum | 2026-05-05 |
 | Beslissers | Platform Architect, Data Engineering |
 | Gerelateerd | [ADR-0001](0001-stackable-as-base.md) (Stackable), [ADR-0005](0005-dbt-trino-as-transform.md) (dbt-trino), [ADR-0004](0004-openmetadata-as-catalog.md) (OpenMetadata) |
+
+> **2026-05-19 update**: Airflow 2.9.3 → 3.0.6 (LTS). Stackable operator
+> 26.3.0 ondersteunt 3.0.6 LTS én 3.1.6; we kiezen LTS voor de langere
+> security-backport-horizon (R-BIO-19, R-NIS2-03). Stackable's 3.0.6 image
+> draait op Python 3.12, waardoor de oorspronkelijke `astronomer-cosmos
+> ≥ 1.7` aanname uit dit ADR nu daadwerkelijk haalbaar is — we pinnen op
+> **1.12.0** en hebben de `--no-deps` + package-rm cleanup-toren uit de
+> drie cosmos-init containers verwijderd. Daarnaast: FAB-security-manager
+> komt nu uit `airflow.providers.fab.auth_manager.security_manager.override`
+> (was `airflow.www.security`), env-vars `AIRFLOW__WEBSERVER__*` zijn
+> hernoemd naar `AIRFLOW__API__*` / `AIRFLOW__FAB__*`, en de directe
+> `DagModel`-ORM unpause in `uc11_full_setup.py` is vervangen door
+> `is_paused_upon_creation=False` op de getriggerde DAGs.
+>
+> **2026-05-18 update**: Kafka + NiFi zijn verwijderd uit de referentie-stack.
+> De `kafka:` blokken in `platform/11-airflow/sources/*.yml` heten nu `stream:`,
+> de Spark-streaming-job leest JSONL uit `s3a://uwv-raw/` i.p.v. Kafka-topics,
+> en de bronze-tabellen hebben `source_ts`/`source_file` i.p.v.
+> `kafka_ts`/`kafka_partition`/`kafka_offset`. Alle Cosmos/Dataset/YAML-registry-
+> mechanismen blijven ongewijzigd.
 
 ---
 
@@ -105,14 +125,14 @@ in plaats van één pod per dbt-run. Voordelen:
 - `ExecutionMode.KUBERNETES` — image `ghcr.io/dbt-labs/dbt-trino:1.9.0`,
   identiek aan huidige setup.
 
-### Cosmos installeren op Stackable Airflow 2.9.3
+### Cosmos installeren op Stackable Airflow 3.0.6
 
 Twee paden, beiden gedocumenteerd:
 
 | Pad | Wanneer | Hoe |
 |---|---|---|
-| **A. initContainer + shared volume** (default voor dev) | k3d, geen registry | Init-container `python:3.11-slim` doet `pip install --target=/cosmos-pkgs astronomer-cosmos==1.7.1`. Airflow-containers krijgen `PYTHONPATH=/cosmos-pkgs:...`. Trade-off: ~20s extra startup per pod. |
-| **B. Custom image** (productie) | OCI-registry beschikbaar | Build `infrastructure/airflow/Dockerfile` met `FROM docker.stackable.tech/.../airflow:2.9.3-...` + `RUN pip install astronomer-cosmos==1.7.1`. Push naar interne registry; verwijs ernaar via `spec.image.custom`. |
+| **A. initContainer + shared volume** (default voor dev) | k3d, geen registry | Init-container `python:3.12-slim` doet `pip install --target=/cosmos-pkgs astronomer-cosmos==1.12.0`. Airflow-containers krijgen `PYTHONPATH=/cosmos-pkgs:...`. Cold-start kost ~5s op cached pip-wheels. |
+| **B. Custom image** (productie) | OCI-registry beschikbaar | Build `infrastructure/airflow/Dockerfile` met `FROM docker.stackable.tech/.../airflow:3.0.6-...` + `RUN pip install astronomer-cosmos==1.12.0`. Push naar interne registry; verwijs ernaar via `spec.image.custom`. |
 
 Pad A is geactiveerd. Pad B wordt voorbereid (Dockerfile + README) maar niet
 gebouwd in deze referentie.
@@ -180,8 +200,9 @@ Mounts in pod:
 
 ### Negatief / mitigatie
 
-- **Cosmos-versie pinnen**: 1.7.x serie heeft breaking changes geïntroduceerd
-  vs 1.5; pin op `astronomer-cosmos==1.7.1` met regression-test in CI.
+- **Cosmos-versie pinnen**: 1.7.x serie introduceerde breaking changes vs 1.5
+  (en 1.12+ vereist Airflow 3.x); pin op `astronomer-cosmos==1.12.0` met
+  regression-test in CI.
 - **Manifest-staleness**: bij dbt-model-wijziging moet manifest opnieuw
   worden gerenderd. Mitigatie: pre-commit hook + `make airflow-manifest`
   target + Airflow Variable `dbt_manifest_version` voor cache-busting.

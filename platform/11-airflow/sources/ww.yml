@@ -4,9 +4,8 @@ schema_version: 1
 name: ww
 domain: ww
 
-kafka:
-  topic: uwv.ww.aanvraag
-  partitions: 3
+stream:
+  name: uwv.ww.aanvraag
   key: bsn
 
 bronze:
