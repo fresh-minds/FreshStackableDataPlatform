@@ -16,20 +16,175 @@ import { docsArchitectureUrl } from '../data/external-links';
 // `csv-uploader`-policy als z'n Keycloak user-attribute `policy` daarop
 // gemapt staat (zie infrastructure/helm/keycloak/realm-uwv.json).
 
-const sources = [
+type Layer = 'bronze' | 'silver' | 'gold';
+type TrinoTarget = { table: string; supersetDb: string; note: string };
+type ColumnSpec = { name: string; type: string; required: boolean };
+type Source = {
+  name: string;
+  title: string;
+  description: string;
+  bucket: string;
+  prefix: string;
+  dagId: string;
+  // Voorbeeld-bestandsnaam voor de mc-snippet (per bron — gebruiker herkent
+  // de eigen file beter dan een generieke placeholder).
+  exampleFileName: string;
+  // Verwacht CSV-schema. Wordt browser-side gevalideerd vóór upload
+  // (header-check) én getoond in een "Verwacht schema"-collapse.
+  expectedColumns: ColumnSpec[];
+  trino: Record<Layer, TrinoTarget>;
+  // Voorbeeld-SQL voor "Open in Superset SQL Lab" — query op gold-mart.
+  exampleSql: string;
+  // Optioneel — als de bron al een Superset-dashboard heeft, toon link.
+  dashboardSlug?: string;
+  dashboardTitle?: string;
+};
+
+const sources: Source[] = [
   {
     name: 'klanttevredenheid',
     title: 'Klanttevredenheid',
     description:
-      'Klanttevredenheid-metingen per kanaal. Verwacht kolommen: meting_datum, ' +
-      'kanaal, doelgroep, score (1–5), n_respondenten, opmerking.',
+      'Klanttevredenheid-metingen per kanaal × doelgroep. Demo-bron voor de ' +
+      'CSV-batch upload-flow.',
     bucket: 'uwv-staging',
     prefix: 'incoming/klanttevredenheid',
     dagId: 'ingest_csv_klanttevredenheid',
+    exampleFileName: 'klanttevredenheid-2026Q1.csv',
+    expectedColumns: [
+      { name: 'meting_datum',   type: 'date',    required: true },
+      { name: 'kanaal',         type: 'varchar', required: true },
+      { name: 'doelgroep',      type: 'varchar', required: true },
+      { name: 'score',          type: 'integer', required: true },
+      { name: 'n_respondenten', type: 'integer', required: true },
+      { name: 'opmerking',      type: 'varchar', required: false },
+    ],
+    trino: {
+      bronze: {
+        table: 'bronze.uwv.klanttevredenheid',
+        supersetDb: 'uwv-trino-bronze',
+        note: 'Raw delta-tabel, één rij per CSV-regel (partitie op event_date).',
+      },
+      silver: {
+        table: 'silver.klantcontact.stg_klanttevredenheid',
+        supersetDb: 'uwv-trino-silver',
+        note: 'dbt staging-view; types gecast, kolomnamen genormaliseerd.',
+      },
+      gold: {
+        table: 'gold.uc_klant_tev.mart_uc_klant_tev_kanaal_maand',
+        supersetDb: 'uwv-trino-gold',
+        note: 'Mart: gewogen gemiddelde score per kanaal × maand.',
+      },
+    },
+    exampleSql:
+      'SELECT maand,\n' +
+      '       kanaal,\n' +
+      '       n_respondenten,\n' +
+      '       gemid_score_gewogen\n' +
+      'FROM   gold.uc_klant_tev.mart_uc_klant_tev_kanaal_maand\n' +
+      'ORDER  BY maand DESC, gemid_score_gewogen DESC\n' +
+      'LIMIT  50;',
+  },
+  {
+    name: 'focus_billing',
+    title: 'FOCUS billing (FinOps)',
+    description:
+      'Cloud-cost billing volgens de FinOps Open Cost and Usage Specification (FOCUS 1.x). ' +
+      '49 kolommen — 39 FOCUS-core + 10 oci_* vendor-extensies. Typische upload: één maand ' +
+      'OCI-export. Zie scripts/finops-generate-focus-csv.py voor een test-CSV.',
+    bucket: 'uwv-staging',
+    prefix: 'incoming/focus',
+    dagId: 'ingest_csv_focus',
+    exampleFileName: 'focus-2026-04.csv',
+    expectedColumns: [
+      // FOCUS 1.x core (39 kolommen) — moet exact matchen met
+      // platform/11-airflow/sources/focus.yml schema.
+      { name: 'BillingAccountId',           type: 'varchar',   required: true  },
+      { name: 'BillingAccountName',         type: 'varchar',   required: false },
+      { name: 'BillingCurrency',            type: 'varchar',   required: true  },
+      { name: 'BillingPeriodStart',         type: 'timestamp', required: true  },
+      { name: 'BillingPeriodEnd',           type: 'timestamp', required: true  },
+      { name: 'ChargePeriodStart',          type: 'timestamp', required: true  },
+      { name: 'ChargePeriodEnd',            type: 'timestamp', required: true  },
+      { name: 'ChargeCategory',             type: 'varchar',   required: true  },
+      { name: 'ChargeSubcategory',          type: 'varchar',   required: false },
+      { name: 'ChargeDescription',          type: 'varchar',   required: false },
+      { name: 'ChargeFrequency',            type: 'varchar',   required: false },
+      { name: 'BilledCost',                 type: 'decimal',   required: true  },
+      { name: 'EffectiveCost',              type: 'decimal',   required: true  },
+      { name: 'ListCost',                   type: 'decimal',   required: false },
+      { name: 'ListUnitPrice',              type: 'decimal',   required: false },
+      { name: 'PricingCategory',            type: 'varchar',   required: false },
+      { name: 'PricingQuantity',            type: 'decimal',   required: false },
+      { name: 'PricingUnit',                type: 'varchar',   required: false },
+      { name: 'UsageQuantity',              type: 'decimal',   required: false },
+      { name: 'UsageUnit',                  type: 'varchar',   required: false },
+      { name: 'CommitmentDiscountCategory', type: 'varchar',   required: false },
+      { name: 'CommitmentDiscountId',       type: 'varchar',   required: false },
+      { name: 'CommitmentDiscountName',     type: 'varchar',   required: false },
+      { name: 'CommitmentDiscountType',     type: 'varchar',   required: false },
+      { name: 'Provider',                   type: 'varchar',   required: true  },
+      { name: 'Publisher',                  type: 'varchar',   required: false },
+      { name: 'InvoiceIssuer',              type: 'varchar',   required: false },
+      { name: 'ServiceCategory',            type: 'varchar',   required: false },
+      { name: 'ServiceName',                type: 'varchar',   required: true  },
+      { name: 'ResourceId',                 type: 'varchar',   required: false },
+      { name: 'ResourceName',               type: 'varchar',   required: false },
+      { name: 'ResourceType',               type: 'varchar',   required: false },
+      { name: 'Region',                     type: 'varchar',   required: false },
+      { name: 'AvailabilityZone',           type: 'varchar',   required: false },
+      { name: 'SkuId',                      type: 'varchar',   required: false },
+      { name: 'SkuPriceId',                 type: 'varchar',   required: false },
+      { name: 'SubAccountId',               type: 'varchar',   required: false },
+      { name: 'SubAccountName',             type: 'varchar',   required: false },
+      { name: 'Tags',                       type: 'varchar',   required: false },
+      // OCI vendor-extensies (10 kolommen) — optioneel voor non-OCI uploads.
+      { name: 'oci_ReferenceNumber',        type: 'varchar',   required: false },
+      { name: 'oci_CompartmentId',          type: 'varchar',   required: false },
+      { name: 'oci_CompartmentName',        type: 'varchar',   required: false },
+      { name: 'oci_OverageFlag',            type: 'varchar',   required: false },
+      { name: 'oci_UnitPriceOverage',       type: 'decimal',   required: false },
+      { name: 'oci_BilledQuantityOverage',  type: 'decimal',   required: false },
+      { name: 'oci_CostOverage',            type: 'decimal',   required: false },
+      { name: 'oci_AttributedUsage',        type: 'decimal',   required: false },
+      { name: 'oci_AttributedCost',         type: 'decimal',   required: false },
+      { name: 'oci_BackReferenceNumber',    type: 'varchar',   required: false },
+    ],
+    trino: {
+      bronze: {
+        table: 'bronze.uwv.focus_billing',
+        supersetDb: 'uwv-trino-bronze',
+        note: 'Raw delta-tabel met alle 49 FOCUS-kolommen (partitie op event_date = upload-datum).',
+      },
+      silver: {
+        table: 'silver.finops.stg_focus_billing',
+        supersetDb: 'uwv-trino-silver',
+        note: 'dbt staging-view: snake_case, tags JSON-parse, afgeleide billing_month + savings_amount.',
+      },
+      gold: {
+        table: 'gold.uc12_focus_finops.mart_uc12_focus_spend_monthly',
+        supersetDb: 'uwv-trino-gold',
+        note: 'Primaire spend-mart: kosten per maand × provider × service-categorie. (4 andere marts beschikbaar voor breakdowns.)',
+      },
+    },
+    exampleSql:
+      'SELECT billing_month,\n' +
+      '       provider,\n' +
+      '       service_category,\n' +
+      '       SUM(effective_cost) AS spend_eur,\n' +
+      '       SUM(savings_amount) AS savings_eur\n' +
+      'FROM   gold.uc12_focus_finops.mart_uc12_focus_spend_monthly\n' +
+      "WHERE  charge_category = 'Usage'\n" +
+      'GROUP  BY billing_month, provider, service_category\n' +
+      'ORDER  BY billing_month DESC, spend_eur DESC\n' +
+      'LIMIT  50;',
+    dashboardSlug: 'uc12-focus-finops',
+    dashboardTitle: 'UC-12 — Cloud Cost (FOCUS / FinOps)',
   },
 ];
 
 const defaultSource = sources[0];
+const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
 ---
 <Layout title="CSV upload">
   <section class="csv-hero">
@@ -62,7 +217,21 @@ const defaultSource = sources[0];
                   data-bucket={s.bucket}
                   data-prefix={s.prefix}
                   data-dag={s.dagId}
-                  data-desc={s.description}>
+                  data-desc={s.description}
+                  data-example-file={s.exampleFileName}
+                  data-columns={JSON.stringify(s.expectedColumns)}
+                  data-dashboard-slug={s.dashboardSlug ?? ''}
+                  data-dashboard-title={s.dashboardTitle ?? ''}
+                  data-trino-bronze={s.trino.bronze.table}
+                  data-trino-silver={s.trino.silver.table}
+                  data-trino-gold={s.trino.gold.table}
+                  data-superset-db-bronze={s.trino.bronze.supersetDb}
+                  data-superset-db-silver={s.trino.silver.supersetDb}
+                  data-superset-db-gold={s.trino.gold.supersetDb}
+                  data-trino-note-bronze={s.trino.bronze.note}
+                  data-trino-note-silver={s.trino.silver.note}
+                  data-trino-note-gold={s.trino.gold.note}
+                  data-example-sql={s.exampleSql}>
             {s.title}
           </option>
         ))}
@@ -84,7 +253,34 @@ const defaultSource = sources[0];
         <dt class="mono">DAG</dt>
         <dd><code id="src-dag">{defaultSource.dagId}</code></dd>
       </div>
+      <div class="csv-meta-row">
+        <dt class="mono">KOLOMMEN</dt>
+        <dd><span id="src-col-count">{defaultSource.expectedColumns.length}</span> · <span id="src-col-required">{defaultSource.expectedColumns.filter(c => c.required).length}</span> verplicht</dd>
+      </div>
     </dl>
+
+    <details class="csv-schema">
+      <summary>Verwacht CSV-schema — kolomnamen + types</summary>
+      <p class="csv-step-note">
+        Je CSV-header moet deze kolomnamen bevatten (exact, hoofdletter-gevoelig).
+        Ontbrekende verplichte kolommen worden vóór upload gemeld; extra
+        kolommen worden door de ingest-job genegeerd.
+      </p>
+      <table class="csv-schema-table" id="src-schema-table">
+        <thead>
+          <tr><th>Kolom</th><th>Type</th><th>Verplicht</th></tr>
+        </thead>
+        <tbody id="src-schema-tbody">
+          {defaultSource.expectedColumns.map((c) => (
+            <tr>
+              <td class="mono">{c.name}</td>
+              <td class="mono">{c.type}</td>
+              <td>{c.required ? 'ja' : 'optioneel'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
   </section>
 
   <section class="csv-step">
@@ -118,7 +314,7 @@ const defaultSource = sources[0];
       <p class="csv-step-note">Stel éénmalig de alias in:</p>
       <pre class="csv-pre"><code>mc alias set minio-uwv https://minio.uwv-platform.local:8443 uwvadmin 'uwv-dev-only-CHANGE-ME-2026' --insecure</code></pre>
       <p class="csv-step-note">Daarna uploaden:</p>
-      <pre class="csv-pre"><code id="mc-cmd">mc cp ./mijn-meting.csv minio-uwv/{defaultSource.bucket}/{defaultSource.prefix}/$(date -u +%Y%m%dT%H%M%S).csv --insecure</code></pre>
+      <pre class="csv-pre"><code id="mc-cmd">mc cp ./{defaultSource.exampleFileName} minio-uwv/{defaultSource.bucket}/{defaultSource.prefix}/$(date -u +%Y%m%dT%H%M%S).csv --insecure</code></pre>
       <p class="csv-step-note">
         De DAG wordt automatisch getriggerd binnen 2 minuten — een handmatige Airflow-trigger is niet nodig.
       </p>
@@ -126,7 +322,76 @@ const defaultSource = sources[0];
   </section>
 
   <section class="csv-step">
-    <Eyebrow>02 · Resultaat</Eyebrow>
+    <Eyebrow>02 · Bekijken in Trino</Eyebrow>
+    <h2>Waar landt de data?</h2>
+    <p class="csv-step-body">
+      Na ingest staat de data in drie lagen. Klik op een tabelnaam om te
+      kopiëren; gebruik de knop onderaan om Superset SQL Lab te openen — de
+      voorbeeldquery staat dan al op je klembord.
+    </p>
+
+    <ol class="csv-layers">
+      <li class="csv-layer" data-layer="bronze">
+        <header class="csv-layer-head">
+          <span class="csv-layer-tag mono">BRONZE</span>
+          <button class="csv-table-btn mono" type="button" data-copy-target="trino-bronze">
+            <code id="trino-bronze">{defaultSource.trino.bronze.table}</code>
+            <span class="csv-copy-hint">kopieer</span>
+          </button>
+        </header>
+        <p class="csv-layer-note" id="trino-note-bronze">{defaultSource.trino.bronze.note}</p>
+        <span class="csv-layer-meta">Superset-database: <code id="superset-db-bronze">{defaultSource.trino.bronze.supersetDb}</code></span>
+      </li>
+
+      <li class="csv-layer" data-layer="silver">
+        <header class="csv-layer-head">
+          <span class="csv-layer-tag mono">SILVER</span>
+          <button class="csv-table-btn mono" type="button" data-copy-target="trino-silver">
+            <code id="trino-silver">{defaultSource.trino.silver.table}</code>
+            <span class="csv-copy-hint">kopieer</span>
+          </button>
+        </header>
+        <p class="csv-layer-note" id="trino-note-silver">{defaultSource.trino.silver.note}</p>
+        <span class="csv-layer-meta">Superset-database: <code id="superset-db-silver">{defaultSource.trino.silver.supersetDb}</code></span>
+      </li>
+
+      <li class="csv-layer" data-layer="gold">
+        <header class="csv-layer-head">
+          <span class="csv-layer-tag mono">GOLD</span>
+          <button class="csv-table-btn mono" type="button" data-copy-target="trino-gold">
+            <code id="trino-gold">{defaultSource.trino.gold.table}</code>
+            <span class="csv-copy-hint">kopieer</span>
+          </button>
+        </header>
+        <p class="csv-layer-note" id="trino-note-gold">{defaultSource.trino.gold.note}</p>
+        <span class="csv-layer-meta">Superset-database: <code id="superset-db-gold">{defaultSource.trino.gold.supersetDb}</code></span>
+      </li>
+    </ol>
+
+    <h3 class="csv-sql-h">Voorbeeldquery</h3>
+    <p class="csv-step-note">
+      Klik op <em>Open Superset SQL Lab</em> — de query wordt automatisch naar
+      je klembord gekopieerd. Selecteer in SQL Lab de juiste database
+      (bv. <code>uwv-trino-gold</code>) en plak (⌘V / Ctrl+V).
+    </p>
+    <pre class="csv-pre"><code id="example-sql">{defaultSource.exampleSql}</code></pre>
+
+    <div class="csv-actions">
+      <a id="open-sqllab" class="btn btn--accent"
+         href="https://superset.uwv-platform.local:8443/sqllab/"
+         target="_blank" rel="noopener noreferrer">
+        <span class="btn-label">Open Superset SQL Lab</span>
+        <span class="btn-arrow" aria-hidden="true">↗</span>
+      </a>
+      <button id="copy-sql-btn" type="button" class="btn" data-copy-target="example-sql">
+        <span class="btn-label">Kopieer SQL</span>
+      </button>
+    </div>
+    <p class="csv-copy-feedback" id="copy-feedback" role="status" aria-live="polite"></p>
+  </section>
+
+  <section class="csv-step">
+    <Eyebrow>03 · Resultaat</Eyebrow>
     <h2>Wat gebeurt er daarna?</h2>
     <ul class="csv-result">
       <li>
@@ -135,22 +400,35 @@ const defaultSource = sources[0];
       </li>
       <li>
         <span class="mono">BRONZE</span>
-        <span>Delta-tabel in <code>bronze.uwv.&lt;bron&gt;</code> (Trino).</span>
+        <span>Delta-tabel <code id="result-bronze">{defaultSource.trino.bronze.table}</code> in Trino.</span>
       </li>
       <li>
         <span class="mono">SILVER</span>
-        <span>Getriggerd door bronze-Dataset; dbt staging-view.</span>
+        <span>Getriggerd door bronze-Dataset; dbt staging-view <code id="result-silver">{defaultSource.trino.silver.table}</code>.</span>
       </li>
       <li>
         <span class="mono">GOLD</span>
-        <span>Getriggerd door silver-Dataset; dbt mart-tabel.</span>
+        <span>Getriggerd door silver-Dataset; dbt mart-tabel <code id="result-gold">{defaultSource.trino.gold.table}</code>.</span>
       </li>
       <li>
         <span class="mono">SUPERSET</span>
-        <span>Dashboard <em>Klanttevredenheid trend</em>.</span>
+        <span id="result-superset">{defaultSource.dashboardSlug
+          ? <>Dashboard <em>{defaultSource.dashboardTitle}</em> beschikbaar.</>
+          : <>Geen kant-en-klaar dashboard — gebruik SQL Lab.</>
+        }</span>
       </li>
     </ul>
     <div class="csv-actions">
+      <a id="open-dashboard"
+         class="btn btn--accent"
+         href={defaultSource.dashboardSlug
+                ? `https://superset.uwv-platform.local:8443/superset/dashboard/${defaultSource.dashboardSlug}/`
+                : 'https://superset.uwv-platform.local:8443'}
+         target="_blank" rel="noopener noreferrer"
+         hidden={!defaultSource.dashboardSlug}>
+        <span class="btn-label" id="open-dashboard-label">Open dashboard</span>
+        <span class="btn-arrow" aria-hidden="true">↗</span>
+      </a>
       <Button href="https://superset.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">Superset</Button>
       <Button href="https://airflow.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">Airflow</Button>
       <Button href="https://openmetadata.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">OpenMetadata</Button>
@@ -176,21 +454,101 @@ const defaultSource = sources[0];
     const dag2 = document.getElementById('src-dag-2');
     const path1 = document.getElementById('src-path-1');
     const mc   = document.getElementById('mc-cmd');
+    const sqlEl = document.getElementById('example-sql');
 
-    type Src = { description: string; bucket: string; prefix: string; dagId: string };
+    type Layer = 'bronze' | 'silver' | 'gold';
+    type ColumnSpec = { name: string; type: string; required: boolean };
+    type Src = {
+      description: string; bucket: string; prefix: string; dagId: string;
+      exampleFileName: string;
+      expectedColumns: ColumnSpec[];
+      dashboardSlug: string;
+      dashboardTitle: string;
+      trino: Record<Layer, { table: string; supersetDb: string; note: string }>;
+      exampleSql: string;
+    };
+    const layers: Layer[] = ['bronze', 'silver', 'gold'];
+
+    function parseColumns(raw: string | undefined): ColumnSpec[] {
+      if (!raw) return [];
+      try { return JSON.parse(raw); } catch { return []; }
+    }
+
     const collected: Record<string, Src> = {};
     Array.from(sel?.options ?? []).forEach((opt) => {
       collected[opt.value] = {
-        description: opt.dataset.desc   ?? '',
-        bucket:      opt.dataset.bucket ?? '',
-        prefix:      opt.dataset.prefix ?? '',
-        dagId:       opt.dataset.dag    ?? '',
+        description:     opt.dataset.desc           ?? '',
+        bucket:          opt.dataset.bucket         ?? '',
+        prefix:          opt.dataset.prefix         ?? '',
+        dagId:           opt.dataset.dag            ?? '',
+        exampleFileName: opt.dataset.exampleFile    ?? 'upload.csv',
+        expectedColumns: parseColumns(opt.dataset.columns),
+        dashboardSlug:   opt.dataset.dashboardSlug  ?? '',
+        dashboardTitle:  opt.dataset.dashboardTitle ?? '',
+        trino: {
+          bronze: { table: opt.dataset.trinoBronze ?? '', supersetDb: opt.dataset.supersetDbBronze ?? '', note: opt.dataset.trinoNoteBronze ?? '' },
+          silver: { table: opt.dataset.trinoSilver ?? '', supersetDb: opt.dataset.supersetDbSilver ?? '', note: opt.dataset.trinoNoteSilver ?? '' },
+          gold:   { table: opt.dataset.trinoGold   ?? '', supersetDb: opt.dataset.supersetDbGold   ?? '', note: opt.dataset.trinoNoteGold   ?? '' },
+        },
+        exampleSql: opt.dataset.exampleSql ?? '',
       };
     });
 
     function currentSource(): Src {
       const v = sel?.value;
-      return (v && collected[v]) || { description: '', bucket: '', prefix: '', dagId: '' };
+      return (v && collected[v]) || {
+        description: '', bucket: '', prefix: '', dagId: '',
+        exampleFileName: 'upload.csv',
+        expectedColumns: [],
+        dashboardSlug: '', dashboardTitle: '',
+        trino: {
+          bronze: { table: '', supersetDb: '', note: '' },
+          silver: { table: '', supersetDb: '', note: '' },
+          gold:   { table: '', supersetDb: '', note: '' },
+        },
+        exampleSql: '',
+      };
+    }
+
+    function setText(id: string, value: string) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    }
+
+    // ── Superset base-URL (host-aware) ────────────────────────────────────
+    // De portal kan draaien op meerdere hosts (k3d local, AKS public). De
+    // Superset-host wisselt mee — vermijd hardcoded .local-URLs.
+    const SUPERSET_BASE_MAP: Record<string, string> = {
+      'platform.uwv-platform.local':           'https://superset.uwv-platform.local:8443',
+      'platform.eu-sovereigndataplatform.com': 'https://superset.eu-sovereigndataplatform.com',
+    };
+    const supersetBase =
+      SUPERSET_BASE_MAP[window.location.hostname] ??
+      'https://superset.uwv-platform.local:8443';
+
+    const schemaTbody    = document.getElementById('src-schema-tbody');
+    const colCountEl     = document.getElementById('src-col-count');
+    const colRequiredEl  = document.getElementById('src-col-required');
+    const resultBronzeEl = document.getElementById('result-bronze');
+    const resultSilverEl = document.getElementById('result-silver');
+    const resultGoldEl   = document.getElementById('result-gold');
+    const resultSupersetEl = document.getElementById('result-superset');
+    const openDashEl     = document.getElementById('open-dashboard') as HTMLAnchorElement | null;
+    const openDashLabel  = document.getElementById('open-dashboard-label');
+
+    function renderSchemaTable(cols: ColumnSpec[]) {
+      if (!schemaTbody) return;
+      // Plain DOM (geen innerHTML) — kolomnamen komen uit YAML/code, geen
+      // user input, dus textContent volstaat en is veilig.
+      schemaTbody.replaceChildren();
+      for (const c of cols) {
+        const tr = document.createElement('tr');
+        const td1 = document.createElement('td'); td1.className = 'mono'; td1.textContent = c.name;
+        const td2 = document.createElement('td'); td2.className = 'mono'; td2.textContent = c.type;
+        const td3 = document.createElement('td'); td3.textContent = c.required ? 'ja' : 'optioneel';
+        tr.append(td1, td2, td3);
+        schemaTbody.appendChild(tr);
+      }
     }
 
     function render() {
@@ -201,10 +559,102 @@ const defaultSource = sources[0];
       if (dag)  dag.textContent  = s.dagId;
       if (dag2) dag2.textContent = s.dagId;
       if (path1) path1.textContent = `${s.bucket}/${s.prefix}/`;
-      if (mc)   mc.textContent = `mc cp ./mijn-meting.csv minio-uwv/${s.bucket}/${s.prefix}/$(date -u +%Y%m%dT%H%M%S).csv --insecure`;
+      if (mc)   mc.textContent = `mc cp ./${s.exampleFileName} minio-uwv/${s.bucket}/${s.prefix}/$(date -u +%Y%m%dT%H%M%S).csv --insecure`;
+      layers.forEach((layer) => {
+        setText(`trino-${layer}`,       s.trino[layer].table);
+        setText(`superset-db-${layer}`, s.trino[layer].supersetDb);
+        setText(`trino-note-${layer}`,  s.trino[layer].note);
+      });
+      if (sqlEl) sqlEl.textContent = s.exampleSql;
+
+      // Schema-tabel + counts
+      renderSchemaTable(s.expectedColumns);
+      if (colCountEl)    colCountEl.textContent    = String(s.expectedColumns.length);
+      if (colRequiredEl) colRequiredEl.textContent = String(s.expectedColumns.filter(c => c.required).length);
+
+      // Result-sectie: tabelnamen + dashboard-status
+      if (resultBronzeEl) resultBronzeEl.textContent = s.trino.bronze.table;
+      if (resultSilverEl) resultSilverEl.textContent = s.trino.silver.table;
+      if (resultGoldEl)   resultGoldEl.textContent   = s.trino.gold.table;
+      if (resultSupersetEl) {
+        resultSupersetEl.replaceChildren();
+        if (s.dashboardSlug && s.dashboardTitle) {
+          resultSupersetEl.append('Dashboard ');
+          const em = document.createElement('em');
+          em.textContent = s.dashboardTitle;
+          resultSupersetEl.appendChild(em);
+          resultSupersetEl.append(' beschikbaar.');
+        } else {
+          resultSupersetEl.textContent = 'Geen kant-en-klaar dashboard — gebruik SQL Lab.';
+        }
+      }
+      if (openDashEl) {
+        if (s.dashboardSlug) {
+          openDashEl.href = `${supersetBase}/superset/dashboard/${s.dashboardSlug}/`;
+          openDashEl.hidden = false;
+          if (openDashLabel) openDashLabel.textContent = `Open dashboard: ${s.dashboardTitle || s.dashboardSlug}`;
+        } else {
+          openDashEl.hidden = true;
+        }
+      }
     }
     sel?.addEventListener('change', render);
     render();
+
+    // ── Copy-to-clipboard + Superset SQL Lab open ──────────────────────────
+    const feedback = document.getElementById('copy-feedback');
+    function flashFeedback(msg: string) {
+      if (!feedback) return;
+      feedback.textContent = msg;
+      feedback.classList.add('csv-copy-feedback--on');
+      window.setTimeout(() => {
+        feedback.classList.remove('csv-copy-feedback--on');
+      }, 2400);
+    }
+
+    async function copyTextOfElement(id: string): Promise<boolean> {
+      const el = document.getElementById(id);
+      const txt = el?.textContent?.trim() ?? '';
+      if (!txt) return false;
+      try {
+        await navigator.clipboard.writeText(txt);
+        return true;
+      } catch {
+        // Fallback voor browsers zonder secure-context clipboard API:
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      }
+    }
+
+    // Bind alle elementen met data-copy-target — tabelnamen + de "Kopieer SQL" knop.
+    document.querySelectorAll<HTMLElement>('[data-copy-target]').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const target = btn.dataset.copyTarget ?? '';
+        const ok = await copyTextOfElement(target);
+        const label = target === 'example-sql' ? 'SQL'
+                    : target.startsWith('trino-') ? 'Tabelnaam'
+                    : 'Tekst';
+        flashFeedback(ok ? `${label} gekopieerd naar klembord.` : `Kopiëren mislukt — selecteer en kopieer handmatig.`);
+      });
+    });
+
+    // "Open Superset SQL Lab": eerst SQL naar klembord, dan tab openen.
+    const openSqlBtn = document.getElementById('open-sqllab') as HTMLAnchorElement | null;
+    openSqlBtn?.addEventListener('click', async (e) => {
+      // Layout.astro rewrite van .local → .eu-sovereigndataplatform.com is al gedraaid
+      // tegen de tijd dat dit script bindt; openSqlBtn.href bevat de juiste host.
+      const ok = await copyTextOfElement('example-sql');
+      if (ok) flashFeedback('SQL gekopieerd — plak straks met ⌘V / Ctrl+V.');
+      // Niet preventDefault: laat de browser het tabblad open in de href.
+    });
 
     // ── Endpoint detectie ──────────────────────────────────────────────────
     const minioEndpoint =
@@ -319,6 +769,60 @@ const defaultSource = sources[0];
       });
     }
 
+    // ── CSV header-validatie ───────────────────────────────────────────────
+    // Lees alleen de eerste regel; voor 500 MB bestand is dit O(8 KB).
+    // Server doet alsnog z'n eigen schema-check; deze browser-side check is
+    // alleen om de gebruiker eerder feedback te geven dan een mislukte DAG-run.
+    type HeaderCheck =
+      | { ok: true; extra: string[] }
+      | { ok: false; reason: string; missing: string[]; extra: string[] };
+
+    async function readCsvHeader(file: File): Promise<string[]> {
+      // Eerste 64 KB — meer dan genoeg voor 49 FOCUS-kolommen (~1 KB).
+      const slice = file.slice(0, 64 * 1024);
+      let text = await slice.text();
+      // Strip UTF-8 BOM (Excel-exports voegen die soms toe).
+      if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+      const newlineIdx = text.search(/\r?\n/);
+      const firstLine = newlineIdx >= 0 ? text.slice(0, newlineIdx) : text;
+      // Simpele comma-split. CSV met komma's binnen quoted kolomnamen
+      // ondersteunen we niet — geen van onze bronnen heeft die.
+      return firstLine.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+    }
+
+    async function validateCsvHeader(
+      file: File, expected: ColumnSpec[],
+    ): Promise<HeaderCheck> {
+      if (expected.length === 0) {
+        // Geen schema bekend — skip validatie, server moet 'm wel hebben.
+        return { ok: true, extra: [] };
+      }
+      let actual: string[];
+      try {
+        actual = await readCsvHeader(file);
+      } catch (err) {
+        return {
+          ok: false,
+          reason: `Header niet leesbaar: ${err instanceof Error ? err.message : String(err)}`,
+          missing: [], extra: [],
+        };
+      }
+      const actualSet = new Set(actual);
+      const expectedSet = new Set(expected.map((c) => c.name));
+      const missingRequired = expected
+        .filter((c) => c.required && !actualSet.has(c.name))
+        .map((c) => c.name);
+      const extra = actual.filter((n) => n && !expectedSet.has(n));
+      if (missingRequired.length > 0) {
+        return {
+          ok: false,
+          reason: `${missingRequired.length} verplichte kolom(men) ontbreken in de CSV-header.`,
+          missing: missingRequired, extra,
+        };
+      }
+      return { ok: true, extra };
+    }
+
     async function handleFile(file: File) {
       if (!file.name.toLowerCase().endsWith('.csv')) {
         setState('err', 'Geen CSV-bestand', 'Alleen <code>.csv</code> wordt geaccepteerd.');
@@ -331,11 +835,26 @@ const defaultSource = sources[0];
       }
 
       const src = currentSource();
+
+      setState('busy', 'Schema-check…', 'Eerste regel van CSV vergeleken met verwacht schema.');
+      const check = await validateCsvHeader(file, src.expectedColumns);
+      if (!check.ok) {
+        const missingList = check.missing.length
+          ? `<br>Ontbrekend: <code>${check.missing.map((s) => s.replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]!))).join('</code>, <code>')}</code>`
+          : '';
+        setState('err', 'CSV-header klopt niet', check.reason + missingList);
+        return;
+      }
+      // Extra kolommen zijn OK; server negeert ze. Wel zachtjes melden.
+      const extraNote = check.extra.length > 0
+        ? `${check.extra.length} extra kolom(men) in CSV — worden door de ingest-job genegeerd.`
+        : '';
+
       const key = objectKey(src.prefix, file.name);
       const url = `${minioEndpoint}/${src.bucket}/${key}`;
 
       try {
-        setState('busy', 'Token ophalen…', 'Sessie van oauth2-proxy.');
+        setState('busy', 'Token ophalen…', extraNote || 'Sessie van oauth2-proxy.');
         const token = await fetchAccessToken();
 
         setState('busy', 'Temp-credentials via MinIO STS…', 'AssumeRoleWithWebIdentity.');
@@ -359,8 +878,9 @@ const defaultSource = sources[0];
           setState('busy', 'Uploaden…', `${(file.size / 1024 / 1024).toFixed(1)} MB`, pct));
 
         setState('ok', 'Klaar — DAG triggert binnen 2 minuten.',
-          `Object: <code>${src.bucket}/${key}</code> · ` +
-          `Refresh Superset over ±3 minuten voor het bijgewerkte dashboard.`,
+          `Object: <code>${src.bucket}/${key}</code><br>` +
+          `Daarna queryable in Trino als <code>${src.trino.bronze.table}</code> ` +
+          `(en via dbt in silver/gold; zie sectie 02 hieronder).`,
           100);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -582,6 +1102,104 @@ const defaultSource = sources[0];
       margin: var(--space-4) 0 0;
     }
 
+    .csv-layers {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 var(--space-5);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+    .csv-layer {
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: var(--space-3) var(--space-4);
+    }
+    .csv-layer-head {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+    }
+    .csv-layer-tag {
+      color: var(--ink-3);
+      font-size: var(--text-eyebrow);
+      letter-spacing: var(--tracking-eyebrow);
+      min-width: 7ch;
+    }
+    .csv-table-btn {
+      flex: 1 1 auto;
+      display: inline-flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-3);
+      background: var(--bg-sunken);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 6px 10px;
+      cursor: pointer;
+      font: inherit;
+      font-size: var(--text-meta);
+      color: var(--ink-1);
+      text-align: left;
+      transition: border-color .15s, background .15s;
+    }
+    .csv-table-btn:hover {
+      border-color: var(--ink-1);
+      background: var(--bg-elev);
+    }
+    .csv-table-btn code {
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: var(--ink-1);
+    }
+    .csv-copy-hint {
+      color: var(--ink-3);
+      font-size: var(--text-eyebrow);
+      letter-spacing: var(--tracking-eyebrow);
+      text-transform: uppercase;
+    }
+    .csv-layer-note {
+      color: var(--ink-2);
+      font-size: var(--text-meta);
+      margin: var(--space-2) 0 var(--space-1);
+      line-height: var(--leading-body);
+    }
+    .csv-layer-meta {
+      color: var(--ink-3);
+      font-size: var(--text-eyebrow);
+      letter-spacing: var(--tracking-eyebrow);
+    }
+
+    .csv-sql-h {
+      font-size: var(--text-meta);
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: var(--tracking-eyebrow);
+      color: var(--ink-3);
+      font-weight: var(--weight-regular);
+      margin: var(--space-5) 0 var(--space-2);
+      border: 0;
+      padding: 0;
+    }
+
+    .csv-copy-feedback {
+      color: var(--ink-3);
+      font-size: var(--text-meta);
+      margin: var(--space-3) 0 0;
+      min-height: 1.4em;
+      opacity: 0;
+      transform: translateY(-4px);
+      transition: opacity .15s, transform .15s;
+    }
+    .csv-copy-feedback.csv-copy-feedback--on {
+      opacity: 1;
+      transform: translateY(0);
+      color: var(--ink-1);
+    }
+
     .csv-pre {
       background: var(--bg-sunken);
       border: 1px solid var(--line);
@@ -599,23 +1217,56 @@ const defaultSource = sources[0];
       border: 0;
     }
 
-    .csv-alt summary {
+    .csv-alt summary,
+    .csv-schema summary {
       cursor: pointer;
       color: var(--ink-3);
       font-size: var(--text-meta);
       list-style: none;
       padding: var(--space-2) 0;
     }
-    .csv-alt summary::-webkit-details-marker { display: none; }
-    .csv-alt summary::before {
+    .csv-alt summary::-webkit-details-marker,
+    .csv-schema summary::-webkit-details-marker { display: none; }
+    .csv-alt summary::before,
+    .csv-schema summary::before {
       content: '▸';
       font-family: var(--font-mono);
       margin-right: var(--space-2);
       transition: transform .15s;
       display: inline-block;
     }
-    .csv-alt[open] summary::before { transform: rotate(90deg); }
-    .csv-alt summary:hover { color: var(--ink-1); }
+    .csv-alt[open] summary::before,
+    .csv-schema[open] summary::before { transform: rotate(90deg); }
+    .csv-alt summary:hover,
+    .csv-schema summary:hover { color: var(--ink-1); }
+
+    .csv-schema { margin: var(--space-3) 0 0; }
+    .csv-schema-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-2) 0 0;
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      font-size: var(--text-meta);
+    }
+    .csv-schema-table th,
+    .csv-schema-table td {
+      padding: 6px var(--space-3);
+      text-align: left;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .csv-schema-table th {
+      color: var(--ink-3);
+      font-size: var(--text-eyebrow);
+      letter-spacing: var(--tracking-eyebrow);
+      text-transform: uppercase;
+      font-weight: var(--weight-regular);
+      background: var(--bg-sunken);
+    }
+    .csv-schema-table tr:last-child td { border-bottom: 0; }
+    .csv-schema-table td.mono { color: var(--ink-1); }
 
     .csv-result {
       list-style: none;

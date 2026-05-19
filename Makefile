@@ -128,12 +128,23 @@ opa-bundle: opa-test ## Build OPA-bundle: sync rego + data naar platform/10-opa/
 	bash scripts/build-opa-bundle.sh
 
 .PHONY: dbt-image
-dbt-image: ## Build uwv/dbt-trino:1.9.0-uwv en importeer in lokale cluster. Voor aks: gebruik een registry.
+dbt-image: ## Build uwv/dbt-trino:1.9.0-uwv (incl. dbt-fabricspark) en importeer in lokale cluster. Voor aks: gebruik een registry.
 	@if [ "$(MODE)" = "aks" ]; then echo "[dbt-image] mode=aks: build + push naar de Azure container registry, daarna 'helm upgrade' op de Cosmos image-tag"; exit 0; fi
 	@cp infrastructure/airflow/dbt/profiles.yml dbt/profiles.yml
 	docker build -t uwv/dbt-trino:1.9.0-uwv -f infrastructure/airflow/dbt/Dockerfile dbt
 	k3d image import uwv/dbt-trino:1.9.0-uwv -c $(CLUSTER_NAME)
 	@echo "Image geïmporteerd (mode=$(MODE)). Cosmos KPO sub-pods pakken 'm bij volgende dbt-task run."
+
+.PHONY: uc11-multiplatform-secret
+uc11-multiplatform-secret: ## Maak/refresh K8s Secret uc11-multiplatform-creds vanuit secrets/local/uc11-multiplatform.env.
+	@if [ ! -f secrets/local/uc11-multiplatform.env ]; then \
+	  echo "[uc11-multiplatform-secret] secrets/local/uc11-multiplatform.env ontbreekt — kopieer template uit platform/11-airflow/uc11-multiplatform-secret.yaml en vul SP-creds in."; \
+	  exit 1; \
+	fi
+	kubectl -n uwv-platform create secret generic uc11-multiplatform-creds \
+	  --from-env-file=secrets/local/uc11-multiplatform.env \
+	  --dry-run=client -o yaml | kubectl apply -f -
+	@echo "Secret uc11-multiplatform-creds bijgewerkt in uwv-platform. fabric_dbt_gold pod leest hier de FABRIC_* env-vars uit."
 
 .PHONY: om-bridge-image
 om-bridge-image: ## Build uwv-platform/om-access-bridge:dev en importeer in k3d
@@ -175,6 +186,14 @@ test: smoke ## Alias voor smoke tests
 .PHONY: smoke
 smoke: ## Run smoke tests onder tests/smoke/
 	bash scripts/run-smoke-tests.sh
+
+.PHONY: alert-test
+alert-test: ## Verstuur een synthetische alert (default warning). Action: warning|critical|resolve. Voorbeeld: 'make alert-test ACTION=critical'
+	bash scripts/alert-test.sh --mode=$(MODE) $(ACTION)
+
+.PHONY: alert-test-resolve
+alert-test-resolve: ## Resolveer de synthetische test-alert (verstuurt zelfde alert met endsAt in verleden)
+	bash scripts/alert-test.sh --mode=$(MODE) resolve
 
 .PHONY: e2e
 e2e: ## Run e2e test (UC-01 full flow)

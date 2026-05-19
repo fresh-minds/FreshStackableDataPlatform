@@ -1,0 +1,127 @@
+{
+  "compatibilityLevel": 1604,
+  "model": {
+    "culture": "en-US",
+    "dataAccessOptions": {
+      "legacyRedirects": true,
+      "returnErrorValuesAsNull": true
+    },
+    "defaultPowerBIDataSourceVersion": "powerBI_V3",
+    "discourageImplicitMeasures": false,
+    "expressions": [
+      {
+        "name": "DatabaseQuery",
+        "kind": "m",
+        "expression": [
+          "let",
+          "    database = Sql.Database(\"f7x5z7ufbtoubd2v4iyuhxftm4-vadyhb425gouxeoepoh4ivyyhm.datawarehouse.fabric.microsoft.com\", \"uc11_lakehouse\")",
+          "in",
+          "    database"
+        ],
+        "lineageTag": "db-query-uc11"
+      }
+    ],
+    "sourceQueryCulture": "en-US",
+    "tables": [
+      {
+        "name": "klantreis_events",
+        "lineageTag": "tbl-events-uc11",
+        "sourceLineageTag": "[dbo].[mart_uc11_klantreis_events]",
+        "measures": [
+          {
+            "name": "Aantal_clienten",
+            "expression": "DISTINCTCOUNT(klantreis_events[bsn])",
+            "formatString": "#,##0",
+            "lineageTag": "m-events-clienten"
+          },
+          {
+            "name": "Aantal_events",
+            "expression": "COUNTROWS(klantreis_events)",
+            "formatString": "#,##0",
+            "lineageTag": "m-events-totaal"
+          },
+          {
+            "name": "Aantal_domeinen",
+            "expression": "DISTINCTCOUNT(klantreis_events[domein])",
+            "formatString": "0",
+            "lineageTag": "m-events-domeinen"
+          }
+        ],
+        "columns": [
+          {"name": "bsn", "dataType": "string", "sourceColumn": "bsn", "summarizeBy": "none", "lineageTag": "ev-bsn", "sourceLineageTag": "bsn", "sourceProviderType": "varchar(8000)"},
+          {"name": "event_seq", "dataType": "int64", "sourceColumn": "event_seq", "summarizeBy": "sum", "formatString": "0", "lineageTag": "ev-seq", "sourceLineageTag": "event_seq", "sourceProviderType": "bigint"},
+          {"name": "event_ts", "dataType": "dateTime", "sourceColumn": "event_ts", "summarizeBy": "none", "formatString": "General Date", "lineageTag": "ev-ts", "sourceLineageTag": "event_ts", "sourceProviderType": "datetime2"},
+          {"name": "event_date", "dataType": "dateTime", "sourceColumn": "event_date", "summarizeBy": "none", "formatString": "Long Date", "lineageTag": "ev-date", "sourceLineageTag": "event_date", "sourceProviderType": "date"},
+          {"name": "domein", "dataType": "string", "sourceColumn": "domein", "summarizeBy": "none", "lineageTag": "ev-domein", "sourceLineageTag": "domein", "sourceProviderType": "varchar(8000)"},
+          {"name": "event_type", "dataType": "string", "sourceColumn": "event_type", "summarizeBy": "none", "lineageTag": "ev-type", "sourceLineageTag": "event_type", "sourceProviderType": "varchar(8000)"},
+          {"name": "event_label", "dataType": "string", "sourceColumn": "event_label", "summarizeBy": "none", "lineageTag": "ev-label", "sourceLineageTag": "event_label", "sourceProviderType": "varchar(8000)"},
+          {"name": "event_status", "dataType": "string", "sourceColumn": "event_status", "summarizeBy": "none", "lineageTag": "ev-status", "sourceLineageTag": "event_status", "sourceProviderType": "varchar(8000)"},
+          {"name": "regio_code", "dataType": "string", "sourceColumn": "regio_code", "summarizeBy": "none", "lineageTag": "ev-regio", "sourceLineageTag": "regio_code", "sourceProviderType": "varchar(8000)"},
+          {"name": "numeric_value", "dataType": "double", "sourceColumn": "numeric_value", "summarizeBy": "sum", "lineageTag": "ev-num", "sourceLineageTag": "numeric_value", "sourceProviderType": "float"},
+          {"name": "source_ref_id", "dataType": "string", "sourceColumn": "source_ref_id", "summarizeBy": "none", "lineageTag": "ev-srcref", "sourceLineageTag": "source_ref_id", "sourceProviderType": "varchar(8000)"}
+        ],
+        "partitions": [
+          {
+            "name": "klantreis_events-partition",
+            "mode": "directLake",
+            "source": {
+              "type": "entity",
+              "entityName": "mart_uc11_klantreis_events",
+              "schemaName": "dbo",
+              "expressionSource": "DatabaseQuery"
+            }
+          }
+        ],
+        "annotations": []
+      },
+      {
+        "name": "klantreis_phases",
+        "lineageTag": "tbl-phases-uc11",
+        "sourceLineageTag": "[dbo].[mart_uc11_klantreis_phases]",
+        "measures": [
+          {
+            "name": "Aantal_fases",
+            "expression": "COUNTROWS(klantreis_phases)",
+            "formatString": "#,##0",
+            "lineageTag": "m-phases-totaal"
+          },
+          {
+            "name": "Gem_duur_dagen",
+            "expression": "AVERAGE(klantreis_phases[duur_dagen])",
+            "formatString": "0.0",
+            "lineageTag": "m-phases-duur"
+          }
+        ],
+        "columns": [
+          {"name": "bsn", "dataType": "string", "sourceColumn": "bsn", "summarizeBy": "none", "lineageTag": "ph-bsn", "sourceLineageTag": "bsn", "sourceProviderType": "varchar(8000)"},
+          {"name": "fase_volgnr", "dataType": "int64", "sourceColumn": "fase_volgnr", "summarizeBy": "sum", "formatString": "0", "lineageTag": "ph-volg", "sourceLineageTag": "fase_volgnr", "sourceProviderType": "bigint"},
+          {"name": "fase", "dataType": "string", "sourceColumn": "fase", "summarizeBy": "none", "lineageTag": "ph-fase", "sourceLineageTag": "fase", "sourceProviderType": "varchar(8000)"},
+          {"name": "trigger_event_type", "dataType": "string", "sourceColumn": "trigger_event_type", "summarizeBy": "none", "lineageTag": "ph-trig", "sourceLineageTag": "trigger_event_type", "sourceProviderType": "varchar(8000)"},
+          {"name": "fase_start_ts", "dataType": "dateTime", "sourceColumn": "fase_start_ts", "summarizeBy": "none", "formatString": "General Date", "lineageTag": "ph-start", "sourceLineageTag": "fase_start_ts", "sourceProviderType": "datetime2"},
+          {"name": "fase_eind_ts", "dataType": "dateTime", "sourceColumn": "fase_eind_ts", "summarizeBy": "none", "formatString": "General Date", "lineageTag": "ph-eind", "sourceLineageTag": "fase_eind_ts", "sourceProviderType": "datetime2"},
+          {"name": "duur_dagen", "dataType": "int64", "sourceColumn": "duur_dagen", "summarizeBy": "sum", "formatString": "0", "lineageTag": "ph-duur", "sourceLineageTag": "duur_dagen", "sourceProviderType": "bigint"},
+          {"name": "is_lopend", "dataType": "boolean", "sourceColumn": "is_lopend", "summarizeBy": "none", "formatString": "\"TRUE\";\"TRUE\";\"FALSE\"", "lineageTag": "ph-lopend", "sourceLineageTag": "is_lopend", "sourceProviderType": "bit"}
+        ],
+        "partitions": [
+          {
+            "name": "klantreis_phases-partition",
+            "mode": "directLake",
+            "source": {
+              "type": "entity",
+              "entityName": "mart_uc11_klantreis_phases",
+              "schemaName": "dbo",
+              "expressionSource": "DatabaseQuery"
+            }
+          }
+        ],
+        "annotations": []
+      }
+    ],
+    "relationships": [],
+    "annotations": [
+      {"name": "PBI_QueryOrder", "value": "[\"DatabaseQuery\"]"},
+      {"name": "__PBI_TimeIntelligenceEnabled", "value": "1"},
+      {"name": "PBI_ProTooling", "value": "[\"DevMode\"]"}
+    ]
+  }
+}

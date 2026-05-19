@@ -91,9 +91,9 @@ select
     fase_eind_ts,
     case
         when fase_eind_ts is null then null
-        else date_diff('day',
-                       cast(fase_start_ts as date),
-                       cast(fase_eind_ts as date))
+        else {{ dbt.datediff('cast(fase_start_ts as date)',
+                             'cast(fase_eind_ts as date)',
+                             'day') }}
     end as duur_dagen,
     case when fase_eind_ts is null then true else false end as is_lopend
 from bounded

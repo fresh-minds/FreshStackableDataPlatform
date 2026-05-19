@@ -13,6 +13,13 @@
     {%- set fmt = var('table_format', 'delta') -%}
     {%- set props = {} -%}
 
+    {# Fabric/Databricks Spark gebruiken geen Trino-WITH-properties; de
+       Lakehouse-default is Delta + Parquet. Return een leeg dict zodat
+       de adapter de model-config zonder TBLPROPERTIES rendert. #}
+    {%- if target.type in ('fabricspark', 'spark', 'databricks') -%}
+        {{ return(props) }}
+    {%- endif -%}
+
     {%- if fmt == 'delta' -%}
         {# Trino's delta_lake connector heeft geen `format` property
            (Delta is altijd Parquet). Alleen `partitioned_by` zetten. #}

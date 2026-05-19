@@ -42,6 +42,8 @@ ACTIVE_USE_CASES: list[dict] = [
      "description": "Re-integratie-effect (sandbox, gepseudonimiseerd)."},
     {"id": "uc11", "name": "klantreis", "owner": "divisie_klantcontact",
      "description": "Integrale Klantreis — event-stream + fase-reconstructie."},
+    {"id": "uc12", "name": "focus_finops", "owner": "divisie_finance",
+     "description": "Cloud-cost FinOps (FOCUS) — spend, savings, commitment-utilization."},
     {"id": "uc_klant_tev", "name": "klanttevredenheid", "owner": "divisie_klantcontact",
      "description": "Klanttevredenheid per kanaal × maand (CSV-batch demo)."},
 ]

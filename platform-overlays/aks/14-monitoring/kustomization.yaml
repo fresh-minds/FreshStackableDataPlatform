@@ -1,0 +1,43 @@
+# AKS overlay voor platform/14-monitoring.
+#
+# In AKS gebruiken we de echte UWV-SMTP-relay (placeholder hieronder) en
+# halen we MailHog (de dev-only sink) eruit. De Slack-/SMTP-credentials
+# horen via External Secrets Operator uit Vault te komen — tot die er is
+# patcht deze overlay het Secret in-place.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/14-monitoring
+patches:
+  # Verwijder de MailHog Deployment, Service en Ingress — die hoeft alleen
+  # in k3d te draaien.
+  - path: delete-mailhog-deployment.yaml
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: mailhog
+  - path: delete-mailhog-service.yaml
+    target:
+      version: v1
+      kind: Service
+      name: mailhog
+  - path: delete-mailhog-ingress.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: Ingress
+      name: mailhog
+  # Wijs de email-receiver naar de productie-relay + zet TLS aan.
+  - path: alertmanager-smtp-prod.yaml
+    target:
+      group: monitoring.coreos.com
+      version: v1alpha1
+      kind: AlertmanagerConfig
+      name: uwv-platform-receivers
+  # Vervang de dev-placeholder SMTP-creds in het Secret.
+  - path: secret-smtp-prod.yaml
+    target:
+      version: v1
+      kind: Secret
+      name: alertmanager-receivers

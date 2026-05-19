@@ -1,4 +1,35 @@
 # kube-prometheus-stack — k3d-specific overrides.
+
+# Alertmanager AAN in k3d zodat devs alerts kunnen testen tegen MailHog
+# (zie platform/14-monitoring/mailhog.yaml). De receivers + routing komen
+# uit de AlertmanagerConfig CR in platform/14-monitoring/.
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+    # Pak alle AlertmanagerConfig CRs uit alle namespaces met label
+    # alertmanagerConfig: uwv-platform. Zonder dit is operator-style
+    # discovery uit.
+    alertmanagerConfigSelector:
+      matchLabels:
+        alertmanagerConfig: uwv-platform
+    alertmanagerConfigMatcherStrategy:
+      type: None
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 1Gi
+
 prometheus:
   prometheusSpec:
     storageSpec:

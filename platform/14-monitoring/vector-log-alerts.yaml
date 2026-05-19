@@ -1,0 +1,84 @@
+# PrometheusRule — log-based alerts uit Vector's log_to_metric pipeline.
+#
+# Vereist Vector-helm-values met `detect_alert_events`/`log_to_metric`/
+# `prometheus_log_events` (zie infrastructure/helm/vector/values.yaml) en
+# de PodMonitor in podmonitor-vector.yaml.
+#
+# De counter heet `vector_uwv_alert_event_total` (Vector prefixes met de
+# default_namespace `vector`). Labels: event, kubernetes_namespace,
+# container.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: uwv-log-events
+  namespace: uwv-monitoring
+  labels:
+    prometheus: kube-prometheus
+    role: alert-rules
+    uwv.nl/policy-tier: production
+spec:
+  groups:
+    - name: uwv-log-events
+      interval: 1m
+      rules:
+        - alert: OpaDecisionDenySpike
+          expr: |
+            sum(rate(vector_uwv_alert_event_total{event="opa_deny"}[5m])) > 0.2
+          for: 5m
+          labels:
+            severity: warning
+            component: opa
+          annotations:
+            summary: "OPA-deny rate hoog (> 12/min over 5m)"
+            description: "OPA weigert > 12 beslissingen/minuut. Controleer of een nieuwe rol-mapping of policy-update onbedoeld toegang afsluit. Decision-IDs in OpenSearch: index uwv-logs-audit-*"
+            runbook_url: "/docs/runbook.md#94-log-based-alert-opadecisiondenyspike"
+
+        - alert: TrinoAccessDeniedSpike
+          expr: |
+            sum(rate(vector_uwv_alert_event_total{event="trino_access_denied"}[5m])) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+            component: trino
+          annotations:
+            summary: "Trino Access Denied > 6/min — mogelijke policy-misconfig of brute-force"
+            description: "Verifieer recente role-changes in Keycloak en OPA-bundle-version."
+            runbook_url: "/docs/runbook.md#41-trino-weigert-query-met-access-denied"
+
+        - alert: JvmOutOfMemory
+          expr: |
+            sum by (kubernetes_namespace, container) (
+              increase(vector_uwv_alert_event_total{event="jvm_oom"}[10m])
+            ) > 0
+          for: 0m
+          labels:
+            severity: critical
+            component: jvm
+          annotations:
+            summary: "JVM OutOfMemoryError in {{ $labels.container }} ({{ $labels.kubernetes_namespace }})"
+            description: "Pod-restart waarschijnlijk. Verhoog heap-size in de operator-CR (Trino/Spark/Hive) of investigate query/workload."
+            runbook_url: "/docs/runbook.md#95-log-based-alert-jvmoutofmemory"
+
+        - alert: KeycloakLoginErrorSpike
+          expr: |
+            sum(rate(vector_uwv_alert_event_total{event="keycloak_login_error"}[5m])) > 0.5
+          for: 5m
+          labels:
+            severity: warning
+            component: keycloak
+          annotations:
+            summary: "Keycloak LOGIN_ERROR > 30/min — mogelijke brute-force"
+            description: "Inspecteer Keycloak admin-events; overweeg IP-rate-limit aan ingress-nginx."
+            runbook_url: "/docs/runbook.md#96-log-based-alert-keycloakloginerrorspike"
+
+        - alert: CsvUploadFailureSpike
+          expr: |
+            sum(rate(vector_uwv_alert_event_total{event="csv_upload_failed"}[15m])) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            component: csv-uploader
+          annotations:
+            summary: "csv-uploader faalt meermaals — schema-drift of MinIO-quota?"
+            description: "Inspecteer csv-uploader-pod-logs in uwv-platform; check MinIO bucket-quota."

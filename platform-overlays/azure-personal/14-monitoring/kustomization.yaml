@@ -1,0 +1,31 @@
+# Overlay: route alerts naar Azure Communication Services Email in een
+# privé Azure-tenant (freshminds.nl / dev-stackable-rg / uwv-acs).
+#
+# Doel: end-to-end-test van de alert-email-pijp zonder een UWV-SMTP-relay
+# nodig te hebben. ACS Email werkt met Entra-app-auth en levert mail aan
+# elke inbox — geen DNS-verificatie nodig dankzij de Azure-managed sender
+# domain.
+#
+# Houdt MailHog actief (uit base) — alerts gaan parallel naar BEIDE,
+# zodat je in MailHog ziet dat Alertmanager 'm verstuurde én in je echte
+# inbox ziet dat de Azure-route ook werkt.
+#
+# Activatie (na bootstrap+deploy in k3d):
+#   1. Run `bash scripts/azure/setup-acs-email-test.sh`  (creëert Entra
+#      app + secret + role en patcht het k8s-Secret met de ACS-credentials).
+#   2. kubectl apply -k platform-overlays/azure-personal/14-monitoring/
+#   3. make alert-test
+#
+# NB: deze overlay hoort NIET in de aks-deploy of in scripts/deploy-platform.sh
+# — het is een handmatige toggle voor lokale tests.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/14-monitoring
+patches:
+  - path: alertmanager-add-acs.yaml
+    target:
+      group: monitoring.coreos.com
+      version: v1alpha1
+      kind: AlertmanagerConfig
+      name: uwv-platform-receivers

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.7.0/schema.json",
+  "name": "v05_line_events_per_maand",
+  "position": {
+    "x": 16,
+    "y": 144,
+    "z": 1000,
+    "height": 240,
+    "width": 624,
+    "tabOrder": 1000
+  },
+  "visual": {
+    "visualType": "lineChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "klantreis_events"
+                    }
+                  },
+                  "Property": "event_date"
+                }
+              },
+              "queryRef": "klantreis_events.event_date",
+              "nativeQueryRef": "event_date"
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "klantreis_events"
+                    }
+                  },
+                  "Property": "Aantal_events"
+                }
+              },
+              "queryRef": "klantreis_events.Aantal_events",
+              "nativeQueryRef": "Aantal_events"
+            }
+          ]
+        },
+        "Series": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "klantreis_events"
+                    }
+                  },
+                  "Property": "domein"
+                }
+              },
+              "queryRef": "klantreis_events.domein",
+              "nativeQueryRef": "domein"
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true,
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Events per maand \u2014 alle domeinen'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

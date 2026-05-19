@@ -434,6 +434,13 @@ spec:
                 mountPath: /dbt-manifest
         containers:
           - name: base
+            # Voor uc11_databricks + uc11_fabric DAG-tasks: Secret met FABRIC_* /
+            # DATABRICKS_* env-vars. Optional zodat non-uc11 DAGs (silver/gold
+            # factories) zonder Secret blijven werken — die hebben hem niet nodig.
+            envFrom:
+              - secretRef:
+                  name: uc11-multiplatform-creds
+                  optional: true
             volumeMounts:
               - name: uwv-ca
                 mountPath: /etc/uwv-ca

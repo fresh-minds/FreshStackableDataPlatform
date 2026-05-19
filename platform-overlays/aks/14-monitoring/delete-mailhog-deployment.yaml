@@ -1,0 +1,7 @@
+# Strategic-merge patch: $patch=delete verwijdert de hele Deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailhog
+  namespace: uwv-monitoring
+$patch: delete

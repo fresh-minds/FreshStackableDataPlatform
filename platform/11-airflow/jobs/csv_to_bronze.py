@@ -64,6 +64,11 @@ TRINO_VERIFY = os.environ.get("TRINO_VERIFY", "/etc/uwv-ca/ca.crt")
 
 # ---------------------------------------------------------------------------
 # Type-mapping CSV-schema → pyarrow + Trino.
+#
+# `decimal` en `timestamp` zijn niet in de simpele map opgenomen omdat ze
+# parameters dragen (precision/scale resp. unit/tz). Voor die types valt
+# `pa_type_for_column` terug op een dynamische constructie. UC-12 (FOCUS
+# billing) was de eerste bron die deze types nodig had.
 # ---------------------------------------------------------------------------
 PA_TYPE = {
     "varchar": pa.string(),
@@ -79,6 +84,30 @@ TRINO_TYPE = {
     "boolean": "BOOLEAN",
     "date":    "DATE",
 }
+# Types waar numerieke min/max-validatie zinvol op is.
+NUMERIC_TYPES = ("integer", "double", "decimal")
+
+
+def pa_type_for_column(col: dict) -> pa.DataType:
+    """Bepaal pyarrow-type voor één kolom-spec.
+
+    Eenvoudige types via PA_TYPE; parameterized types (decimal, timestamp)
+    krijgen een eigen tak met defaults die voor FOCUS-achtige bronnen
+    werken maar in YAML overschreven kunnen worden.
+    """
+    t = col["type"]
+    if t == "decimal":
+        precision = int(col.get("precision", 18))
+        scale = int(col.get("scale", 6))
+        return pa.decimal128(precision, scale)
+    if t == "timestamp":
+        # FOCUS-export gebruikt ISO 8601 met optionele tz; pyarrow's CSV-
+        # reader parsed dat correct mits we het type expliciet meegeven.
+        # Microseconde-precisie matcht Trino's default timestamp(6).
+        return pa.timestamp("us", tz="UTC")
+    if t not in PA_TYPE:
+        sys.exit(f"ERROR: onbekend kolom-type {t!r} voor kolom {col.get('name')!r}")
+    return PA_TYPE[t]
 
 
 def log(msg: str) -> None:
@@ -117,10 +146,20 @@ def parse_csv(data: bytes, schema_cols: list[dict], delimiter: str,
     """Lees CSV met expliciete kolomnamen + types. Strict — onbekend type faalt."""
     column_names = [c["name"] for c in schema_cols]
     convert_options = pa_csv.ConvertOptions(
-        column_types={c["name"]: PA_TYPE[c["type"]] for c in schema_cols},
+        column_types={c["name"]: pa_type_for_column(c) for c in schema_cols},
         strings_can_be_null=True,
         # Lege string in required-veld → null → not_null check vangt 'm hieronder.
         null_values=["", "NULL", "null", "NA"],
+        # FOCUS-export levert timestamps als ISO 8601 met of zonder
+        # milliseconden en met "Z" of "+00:00" tz-suffix. pyarrow probeert
+        # deze patronen op volgorde; eerste match wint.
+        timestamp_parsers=[
+            "%Y-%m-%dT%H:%M:%S.%fZ",
+            "%Y-%m-%dT%H:%M:%SZ",
+            "%Y-%m-%dT%H:%M:%S.%f",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+        ],
     )
     parse_options = pa_csv.ParseOptions(delimiter=delimiter)
     read_options = pa_csv.ReadOptions(
@@ -157,11 +196,11 @@ def validate_constraints(table: pa.Table, schema_cols: list[dict]) -> None:
             n_null = arr.null_count
             if n_null > 0:
                 sys.exit(f"ERROR: kolom {name!r} required maar bevat {n_null} null-waarden")
-        if col.get("min") is not None and col["type"] in ("integer", "double"):
+        if col.get("min") is not None and col["type"] in NUMERIC_TYPES:
             below = pc.sum(pc.less(arr, col["min"])).as_py() or 0
             if below:
                 sys.exit(f"ERROR: kolom {name!r} heeft {below} waarden < {col['min']}")
-        if col.get("max") is not None and col["type"] in ("integer", "double"):
+        if col.get("max") is not None and col["type"] in NUMERIC_TYPES:
             above = pc.sum(pc.greater(arr, col["max"])).as_py() or 0
             if above:
                 sys.exit(f"ERROR: kolom {name!r} heeft {above} waarden > {col['max']}")

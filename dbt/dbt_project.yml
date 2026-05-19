@@ -27,30 +27,11 @@ vars:
 # heeft geen globale `warehouse.dir` config; zonder expliciete schema-locatie
 # defaultet HMS naar `file:/stackable/warehouse/...` wat Trino's Delta-Lake-
 # connector niet kan schrijven ("No factory for location: file:..."). De
-# on-run-start hooks zorgen dat elke schema bestaat MET de juiste S3-bucket.
+# ensure_uwv_schemas() macro genereert per target de juiste statements:
+# Trino krijgt de WITH-(location)-CREATEs, Databricks/Fabric is een no-op
+# (daar wordt schema-setup elders gedaan).
 on-run-start:
-  - "CREATE SCHEMA IF NOT EXISTS silver.persoon       WITH (location = 's3a://uwv-silver/persoon/')"
-  - "CREATE SCHEMA IF NOT EXISTS silver.polisadm      WITH (location = 's3a://uwv-silver/polisadm/')"
-  - "CREATE SCHEMA IF NOT EXISTS silver.ww            WITH (location = 's3a://uwv-silver/ww/')"
-  - "CREATE SCHEMA IF NOT EXISTS silver.wia           WITH (location = 's3a://uwv-silver/wia/')"
-  - "CREATE SCHEMA IF NOT EXISTS silver.wajong        WITH (location = 's3a://uwv-silver/wajong/')"
-  - "CREATE SCHEMA IF NOT EXISTS silver.zw            WITH (location = 's3a://uwv-silver/zw/')"
-  - "CREATE SCHEMA IF NOT EXISTS silver.crm           WITH (location = 's3a://uwv-silver/crm/')"
-  - "CREATE SCHEMA IF NOT EXISTS silver.fez           WITH (location = 's3a://uwv-silver/fez/')"
-  - "CREATE SCHEMA IF NOT EXISTS silver.klantcontact  WITH (location = 's3a://uwv-silver/klantcontact/')"
-  - "CREATE SCHEMA IF NOT EXISTS silver.intermediate  WITH (location = 's3a://uwv-silver/intermediate/')"
-  - "CREATE SCHEMA IF NOT EXISTS silver.sandbox_uc09  WITH (location = 's3a://uwv-silver/sandbox_uc09/')"
-  - "CREATE SCHEMA IF NOT EXISTS silver.seed          WITH (location = 's3a://uwv-silver/seed/')"
-  - "CREATE SCHEMA IF NOT EXISTS gold.uc01_wia_funnel    WITH (location = 's3a://uwv-gold/uc01_wia_funnel/')"
-  - "CREATE SCHEMA IF NOT EXISTS gold.uc04_tw_eligibility WITH (location = 's3a://uwv-gold/uc04_tw_eligibility/')"
-  - "CREATE SCHEMA IF NOT EXISTS gold.uc05_client_360    WITH (location = 's3a://uwv-gold/uc05_client_360/')"
-  - "CREATE SCHEMA IF NOT EXISTS gold.uc06_lastprognose  WITH (location = 's3a://uwv-gold/uc06_lastprognose/')"
-  - "CREATE SCHEMA IF NOT EXISTS gold.uc07_dq_polisadm   WITH (location = 's3a://uwv-gold/uc07_dq_polisadm/')"
-  - "CREATE SCHEMA IF NOT EXISTS gold.uc09_reint_effect  WITH (location = 's3a://uwv-gold/uc09_reint_effect/')"
-  - "CREATE SCHEMA IF NOT EXISTS gold.uc11_klantreis     WITH (location = 's3a://uwv-gold/uc11_klantreis/')"
-  - "CREATE SCHEMA IF NOT EXISTS gold.uc_klant_tev       WITH (location = 's3a://uwv-gold/uc_klant_tev/')"
-  - "CREATE SCHEMA IF NOT EXISTS gold.dq_overview        WITH (location = 's3a://uwv-gold/dq_overview/')"
-  - "CREATE SCHEMA IF NOT EXISTS gold.seed               WITH (location = 's3a://uwv-gold/seed/')"
+  - "{{ ensure_uwv_schemas() }}"
 
 # ----------------------------------------------------------------------
 # Model-config per laag.
@@ -86,6 +67,8 @@ models:
         +schema: fez
       klantcontact:
         +schema: klantcontact
+      finops:
+        +schema: finops
 
     intermediate:
       +database: silver
@@ -109,6 +92,8 @@ models:
         +schema: uc09_reint_effect
       uc11_klantreis:
         +schema: uc11_klantreis
+      uc12_focus_finops:
+        +schema: uc12_focus_finops
       uc_klant_tev:
         +schema: uc_klant_tev
       dq_overview:

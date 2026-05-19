@@ -16,6 +16,14 @@ role: Agent
 service:
   enabled: false
 
+# Prometheus-exporter poort op de Vector-pod (improvements #5.1 — log-based
+# alerting). PodMonitor in platform/14-monitoring/podmonitor-vector.yaml
+# scrape't deze poort.
+containerPorts:
+  - name: prom-exporter
+    containerPort: 9598
+    protocol: TCP
+
 resources:
   requests:
     cpu: 50m
@@ -57,6 +65,72 @@ customConfig:
             contains(string!(.kubernetes.container_name), "trino") &&
             contains(to_string!(.message),"queryId"))
 
+    # Improvements #5.1 (log-based alerts) — detecteer interessante
+    # patronen en zet ze om naar Prometheus-tellers. Het sink-blok
+    # `prometheus_log_events` hieronder serveert ze op poort 9598; de
+    # PrometheusRule `uwv-log-events` (platform/14-monitoring/
+    # vector-log-alerts.yaml) alert daarop.
+    detect_alert_events:
+      type: remap
+      inputs: [add_uwv_metadata]
+      source: |
+        msg = to_string(.message) ?? ""
+        ns  = to_string(.kubernetes.pod_namespace) ?? ""
+        cn  = to_string(.kubernetes.container_name) ?? ""
+
+        .alert_event = null
+
+        # OPA decision DENY — Stackable OPA logt decisions als JSON met
+        # "result": false bij deny.
+        if contains(cn, "opa") && contains(msg, "decision_id") && contains(msg, "\"result\":false") {
+          .alert_event = "opa_deny"
+        }
+
+        # Trino Access Denied — komt voor bij policy-deny in de coordinator.
+        if contains(cn, "trino") && contains(msg, "Access Denied") {
+          .alert_event = "trino_access_denied"
+        }
+
+        # JVM OutOfMemoryError — Spark/Trino/Hive draaien allemaal op JVM.
+        if contains(msg, "java.lang.OutOfMemoryError") {
+          .alert_event = "jvm_oom"
+        }
+
+        # Keycloak failed login (event-type LOGIN_ERROR).
+        if contains(cn, "keycloak") && contains(msg, "LOGIN_ERROR") {
+          .alert_event = "keycloak_login_error"
+        }
+
+        # CSV-upload-failure — portal logt deze regel bij parse/validate-fail.
+        if contains(cn, "csv-uploader") && contains(msg, "upload_failed") {
+          .alert_event = "csv_upload_failed"
+        }
+
+    # Filter: alleen events met een ingevulde alert_event.
+    filter_alert_events:
+      type: filter
+      inputs: [detect_alert_events]
+      condition: '.alert_event != null'
+
+    # Zet elk gefilterd event om in een counter-increment. Labels:
+    # event-type, namespace, container.
+    #
+    # NB: de Vector-helm-chart wikkelt customConfig in Helm's `tpl`. Daardoor
+    # interpreteert Helm de Vector-template-syntax `{{ alert_event }}` als
+    # eigen template. Workaround: `{{` `}}` literal-block (back-tick).
+    log_to_metric:
+      type: log_to_metric
+      inputs: [filter_alert_events]
+      metrics:
+        - type: counter
+          field: alert_event
+          name: uwv_alert_event_total
+          namespace: vector
+          tags:
+            event: '{{`{{ alert_event }}`}}'
+            kubernetes_namespace: '{{`{{ kubernetes.pod_namespace }}`}}'
+            container: '{{`{{ kubernetes.container_name }}`}}'
+
   sinks:
     opensearch_app:
       type: elasticsearch
@@ -87,3 +161,12 @@ customConfig:
       compression: gzip
       healthcheck:
         enabled: false
+
+    # Prometheus-exporter sink — exposes uwv_alert_event_total op poort
+    # 9598. PodMonitor in 14-monitoring scrape't deze poort, PrometheusRule
+    # in vector-log-alerts.yaml alert op stijging-snelheid.
+    prometheus_log_events:
+      type: prometheus_exporter
+      inputs: [log_to_metric]
+      address: "0.0.0.0:9598"
+      default_namespace: vector

@@ -1,0 +1,112 @@
+{
+  "compatibilityLevel": 1604,
+  "model": {
+    "culture": "en-US",
+    "dataAccessOptions": {
+      "legacyRedirects": true,
+      "returnErrorValuesAsNull": true
+    },
+    "defaultPowerBIDataSourceVersion": "powerBI_V3",
+    "discourageImplicitMeasures": false,
+    "expressions": [
+      {
+        "name": "DatabaseQuery",
+        "kind": "m",
+        "expression": [
+          "let",
+          "    Source = Databricks.Catalogs(\"adb-7405615784988736.16.azuredatabricks.net\", \"/sql/1.0/warehouses/c2ef350ed11adf0d\", [Catalog=null, Database=null]),",
+          "    uwv = Source{[Name=\"uwv_databricks\",Kind=\"Catalog\"]}[Data]",
+          "in",
+          "    uwv"
+        ],
+        "lineageTag": "db-query-uc11-dbx"
+      }
+    ],
+    "sourceQueryCulture": "en-US",
+    "tables": [
+      {
+        "name": "klantreis_events",
+        "lineageTag": "tbl-events-uc11-dbx",
+        "sourceLineageTag": "[gold].[mart_uc11_klantreis_events]",
+        "measures": [
+          {"name": "Aantal_clienten", "expression": "DISTINCTCOUNT(klantreis_events[bsn])", "formatString": "#,##0", "lineageTag": "m-events-clienten-dbx"},
+          {"name": "Aantal_events", "expression": "COUNTROWS(klantreis_events)", "formatString": "#,##0", "lineageTag": "m-events-totaal-dbx"},
+          {"name": "Aantal_domeinen", "expression": "DISTINCTCOUNT(klantreis_events[domein])", "formatString": "0", "lineageTag": "m-events-domeinen-dbx"}
+        ],
+        "columns": [
+          {"name": "bsn", "dataType": "string", "sourceColumn": "bsn", "summarizeBy": "none", "lineageTag": "ev-bsn-dbx"},
+          {"name": "event_seq", "dataType": "int64", "sourceColumn": "event_seq", "summarizeBy": "sum", "formatString": "0", "lineageTag": "ev-seq-dbx"},
+          {"name": "event_ts", "dataType": "dateTime", "sourceColumn": "event_ts", "summarizeBy": "none", "formatString": "General Date", "lineageTag": "ev-ts-dbx"},
+          {"name": "event_date", "dataType": "dateTime", "sourceColumn": "event_date", "summarizeBy": "none", "formatString": "Long Date", "lineageTag": "ev-date-dbx"},
+          {"name": "domein", "dataType": "string", "sourceColumn": "domein", "summarizeBy": "none", "lineageTag": "ev-domein-dbx"},
+          {"name": "event_type", "dataType": "string", "sourceColumn": "event_type", "summarizeBy": "none", "lineageTag": "ev-type-dbx"},
+          {"name": "event_label", "dataType": "string", "sourceColumn": "event_label", "summarizeBy": "none", "lineageTag": "ev-label-dbx"},
+          {"name": "event_status", "dataType": "string", "sourceColumn": "event_status", "summarizeBy": "none", "lineageTag": "ev-status-dbx"},
+          {"name": "regio_code", "dataType": "string", "sourceColumn": "regio_code", "summarizeBy": "none", "lineageTag": "ev-regio-dbx"},
+          {"name": "numeric_value", "dataType": "double", "sourceColumn": "numeric_value", "summarizeBy": "sum", "lineageTag": "ev-num-dbx"},
+          {"name": "source_ref_id", "dataType": "string", "sourceColumn": "source_ref_id", "summarizeBy": "none", "lineageTag": "ev-srcref-dbx"}
+        ],
+        "partitions": [
+          {
+            "name": "klantreis_events-partition",
+            "mode": "directQuery",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "    Source = DatabaseQuery,",
+                "    gold = Source{[Name=\"gold\",Kind=\"Schema\"]}[Data],",
+                "    table = gold{[Name=\"mart_uc11_klantreis_events\",Kind=\"Table\"]}[Data]",
+                "in",
+                "    table"
+              ]
+            }
+          }
+        ],
+        "annotations": []
+      },
+      {
+        "name": "klantreis_phases",
+        "lineageTag": "tbl-phases-uc11-dbx",
+        "sourceLineageTag": "[gold].[mart_uc11_klantreis_phases]",
+        "measures": [
+          {"name": "Aantal_fases", "expression": "COUNTROWS(klantreis_phases)", "formatString": "#,##0", "lineageTag": "m-phases-totaal-dbx"},
+          {"name": "Gem_duur_dagen", "expression": "AVERAGE(klantreis_phases[duur_dagen])", "formatString": "0.0", "lineageTag": "m-phases-duur-dbx"}
+        ],
+        "columns": [
+          {"name": "bsn", "dataType": "string", "sourceColumn": "bsn", "summarizeBy": "none", "lineageTag": "ph-bsn-dbx"},
+          {"name": "fase_volgnr", "dataType": "int64", "sourceColumn": "fase_volgnr", "summarizeBy": "sum", "formatString": "0", "lineageTag": "ph-volg-dbx"},
+          {"name": "fase", "dataType": "string", "sourceColumn": "fase", "summarizeBy": "none", "lineageTag": "ph-fase-dbx"},
+          {"name": "trigger_event_type", "dataType": "string", "sourceColumn": "trigger_event_type", "summarizeBy": "none", "lineageTag": "ph-trig-dbx"},
+          {"name": "fase_start_ts", "dataType": "dateTime", "sourceColumn": "fase_start_ts", "summarizeBy": "none", "formatString": "General Date", "lineageTag": "ph-start-dbx"},
+          {"name": "fase_eind_ts", "dataType": "dateTime", "sourceColumn": "fase_eind_ts", "summarizeBy": "none", "formatString": "General Date", "lineageTag": "ph-eind-dbx"},
+          {"name": "duur_dagen", "dataType": "int64", "sourceColumn": "duur_dagen", "summarizeBy": "sum", "formatString": "0", "lineageTag": "ph-duur-dbx"},
+          {"name": "is_lopend", "dataType": "boolean", "sourceColumn": "is_lopend", "summarizeBy": "none", "lineageTag": "ph-lopend-dbx"}
+        ],
+        "partitions": [
+          {
+            "name": "klantreis_phases-partition",
+            "mode": "directQuery",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "    Source = DatabaseQuery,",
+                "    gold = Source{[Name=\"gold\",Kind=\"Schema\"]}[Data],",
+                "    table = gold{[Name=\"mart_uc11_klantreis_phases\",Kind=\"Table\"]}[Data]",
+                "in",
+                "    table"
+              ]
+            }
+          }
+        ],
+        "annotations": []
+      }
+    ],
+    "relationships": [],
+    "annotations": [
+      {"name": "PBI_QueryOrder", "value": "[\"DatabaseQuery\"]"},
+      {"name": "__PBI_TimeIntelligenceEnabled", "value": "1"}
+    ]
+  }
+}

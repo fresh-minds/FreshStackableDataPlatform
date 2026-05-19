@@ -46,3 +46,34 @@ roleRef:
   kind: Role
   name: uc11-orchestrator
   apiGroup: rbac.authorization.k8s.io
+---
+# KubernetesPodOperator (uc11_fabric.fabric_dbt_gold) heeft `events:list,watch`
+# in de legacy core API-group ("") nodig om de pod-status van de child-pod
+# te tracken. Zonder dit faalt KPO in <10s met ApiException(403) op
+# get_events() en exit, terwijl de inner pod orphan blijft draaien.
+#
+# Stackable's airflow-clusterrole geeft alleen events.k8s.io/events:create,
+# wat niet voldoende is voor de KPO event-watcher.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: airflow-kpo-events
+  namespace: uwv-platform
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: airflow-kpo-events
+  namespace: uwv-platform
+subjects:
+  - kind: ServiceAccount
+    name: uwv-airflow-serviceaccount
+    namespace: uwv-platform
+roleRef:
+  kind: Role
+  name: airflow-kpo-events
+  apiGroup: rbac.authorization.k8s.io

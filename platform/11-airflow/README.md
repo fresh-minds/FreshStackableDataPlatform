@@ -71,10 +71,10 @@ Om de bron in een gold-mart te gebruiken: voeg `<uc>` toe aan `used_by_use_cases
 
 ## Cosmos-installatie
 
-Astronomer-Cosmos wordt door een initContainer `cosmos-init` (image `python:3.11-slim`) pip-geïnstalleerd in een emptyDir-volume `/cosmos-pkgs`. De Airflow-container heeft die op `PYTHONPATH`.
+Astronomer-Cosmos wordt door een initContainer `cosmos-init` (image `python:3.12-slim`) pip-geïnstalleerd in een emptyDir-volume `/cosmos-pkgs`. De Airflow-container heeft die op `PYTHONPATH`.
 
-- **Versie**: `astronomer-cosmos==1.7.1` (gepind in `airflowcluster.yaml`).
-- **Cold-start kost** ~20s per pod-start. Productie: bouw een custom image (zie `infrastructure/airflow/Dockerfile`, TODO).
+- **Versie**: `astronomer-cosmos==1.12.0` (gepind in `airflowcluster.yaml`).
+- **Cold-start kost** ~5s per pod-start. Productie: bouw een custom image (zie `infrastructure/airflow/Dockerfile`, TODO).
 - **Modus**: `LoadMode.DBT_MANIFEST` + `ExecutionMode.KUBERNETES`. Geen DB-toegang nodig bij DAG-parse.
 
 ## Apply

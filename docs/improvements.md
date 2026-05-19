@@ -188,7 +188,7 @@ voor opvolg-werk.
 
 | # | Item | Prio | Effort |
 |---|---|---|---|
-| 5.1 | **Prometheus AlertRules** — minstens: Trino p99 > 5s, OPA decision-deny-rate > 5%, Spark streaming-lag > 5min, Postgres-disk > 80% | 🔴 | S |
+| 5.1 | **Prometheus AlertRules** — basis-set in [prometheusrule-uwv.yaml](../platform/14-monitoring/prometheusrule-uwv.yaml) (Trino, OPA, Spark-lag, Postgres, kube-state). Uitbreiding (2026-05-18): log-based alerts via Vector → log_to_metric ([vector-log-alerts.yaml](../platform/14-monitoring/vector-log-alerts.yaml)): OPA-deny-spike, Trino access-denied-spike, JVM-OOM, Keycloak-login-error, CSV-upload-fail. | ✅ | done |
 | 5.2 | **Grafana-dashboards UWV** — per UC één + platform-overview | 🟠 | L |
 | 5.3 | **OpenSearch ILM-policy** — hot/warm/cold tier voor `uwv-logs-*` | 🟠 | S |
 | 5.4 | **OpenSearch Dashboards installeren** — log-querying-UI | 🟡 | M |
@@ -196,7 +196,7 @@ voor opvolg-werk.
 | 5.6 | **Logs-naar-OS schemamapping** — Vector schrijft nu raw; ECS- of OTel-logs-format zou queries beter maken | 🟡 | M |
 | 5.7 | **OpenMetadata observability-tab** — DQ-test-resultaten + lineage-events live | 🟡 | M |
 | 5.8 | **SLO-definities + SLI's** — start met uptime + DQ + ingestion-latency per data-product | 🟠 | M |
-| 5.9 | **Alertmanager met Slack/PagerDuty** — kube-prometheus-stack heeft 'm uit | 🟠 | S |
+| 5.9 | ~~**Alertmanager met Slack/PagerDuty**~~ — opgepakt 2026-05-18: email-receiver toegevoegd ([alertmanager-config.yaml](../platform/14-monitoring/alertmanager-config.yaml)) + MailHog als k3d-SMTP-sink + AKS-overlay voor UWV-relay. Slack-receiver was er al. PagerDuty blijft uitgeschakeld tot CRD-schema fix. | ✅ | done |
 | 5.10 | **Loki of OpenSearch query-saver** voor frequente debug-queries | 🟡 | S |
 
 ---

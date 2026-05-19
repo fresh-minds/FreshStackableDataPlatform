@@ -33,6 +33,8 @@ configMapGenerator:
       - dags/bewaartermijn_enforcer.py
       - dags/lakehouse_maintenance.py
       - dags/uc11_full_setup.py
+      - dags/uc11_databricks.py
+      - dags/uc11_fabric.py
       # watch_csv_staging.py uitgesloten — runtime-fouten (KPO `scan_and_trigger`
       # faalt iedere 2 min en blijft pods produceren). DAG-bron blijft in repo;
       # re-enable na fix van jobs/watch_staging.py.
@@ -55,6 +57,8 @@ configMapGenerator:
       - include/gold_factory.py
       - include/governance_factory.py
       - include/csv_ingest_factory.py
+      - include/databricks_helpers.py
+      - include/fabric_helpers.py
 
   # 3. YAML source-registry — single source of truth voor brondefinities.
   #    Gelezen via env UWV_SOURCES_DIR.

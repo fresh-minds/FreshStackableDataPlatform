@@ -1,10 +1,13 @@
-# AlertmanagerConfig — Slack/PagerDuty receiver (improvements #5).
+# AlertmanagerConfig — receivers + routing (improvements #5.9).
 #
-# Vereist Alertmanager actief (kube-prometheus-stack heeft het uit by default;
-# zet `alertmanager.enabled: true` in helm-values voor productie).
+# Vereist Alertmanager actief (zie infrastructure/helm/prometheus-stack/
+# values-{k3d,aks}.yaml — `alertmanager.enabled: true`).
 #
-# De Slack/PagerDuty webhook-URLs zitten in een Secret zodat ze niet in code
-# komen.
+# Webhook-URLs en SMTP-credentials zitten in Secret `alertmanager-receivers`
+# zodat ze niet in code komen. In k3d wijzen de SMTP-defaults naar de
+# in-cluster MailHog (zie mailhog.yaml); in AKS patcht
+# `platform-overlays/aks/14-monitoring/` smarthost + credentials naar de
+# echte UWV-SMTP-relay.
 ---
 apiVersion: v1
 kind: Secret
@@ -15,9 +18,14 @@ metadata:
     uwv.nl/dev-only: "true"
 type: Opaque
 stringData:
-  # Vervang door echte webhook-URLs. Tot die tijd is dit een placeholder.
+  # Slack — vervang door echte webhook-URL (productie via External Secrets).
   slack_webhook: "https://hooks.slack.com/services/REPLACE/WITH/REAL"
+  # PagerDuty — uitgeschakeld in dev (zie comment onderaan).
   pagerduty_routing_key: "REPLACE_WITH_PD_INTEGRATION_KEY"
+  # SMTP — MailHog accepteert alles in dev. AKS-overlay patcht dit met
+  # de echte relay-credentials.
+  smtp_username: "alertmanager"
+  smtp_password: "uwv-dev-only-no-auth"
 ---
 apiVersion: monitoring.coreos.com/v1alpha1
 kind: AlertmanagerConfig
@@ -28,20 +36,76 @@ metadata:
     alertmanagerConfig: uwv-platform
 spec:
   route:
-    receiver: slack-uwv-warning
+    receiver: email-uwv-alerts
     groupBy: [alertname, cluster, namespace]
     groupWait: 30s
     groupInterval: 5m
     repeatInterval: 4h
     routes:
-      # pagerduty-critical receiver uitgeschakeld (zie below); critical alerts
-      # gaan tijdelijk naar slack-uwv-warning. Productie reactiveert PagerDuty.
+      # Critical alerts: email + Slack. PagerDuty is uitgeschakeld
+      # (schema-incompat in operator-CRD, zie onder).
+      - receiver: email-uwv-alerts
+        matchers:
+          - name: severity
+            value: critical
+        continue: true
+      - receiver: slack-uwv-warning
+        matchers:
+          - name: severity
+            value: critical
+        continue: false
+
+      # Warning alerts: email + Slack.
+      - receiver: email-uwv-alerts
+        matchers:
+          - name: severity
+            value: warning
+        continue: true
       - receiver: slack-uwv-warning
         matchers:
           - name: severity
             value: warning
 
   receivers:
+    - name: email-uwv-alerts
+      emailConfigs:
+        # In k3d wijst smarthost naar MailHog (Service in zelfde namespace,
+        # poort 1025, geen TLS, geen auth-check). AKS-overlay vervangt
+        # smarthost + zet `requireTLS: true` + auth via secret.
+        - to: platform-alerts@uwv-platform.local
+          from: alertmanager@uwv-platform.local
+          smarthost: mailhog.uwv-monitoring.svc.cluster.local:1025
+          requireTLS: false
+          authUsername: ""
+          authPassword:
+            name: alertmanager-receivers
+            key: smtp_password
+          sendResolved: true
+          headers:
+            - key: Subject
+              value: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }})'
+          html: |
+            <html><body style="font-family:sans-serif">
+            <h2 style="color:{{ if eq .Status "firing" }}#c0392b{{ else }}#27ae60{{ end }}">
+              {{ .Status | toUpper }} — {{ .CommonLabels.alertname }}
+            </h2>
+            <p><b>Severity:</b> {{ .CommonLabels.severity }}<br>
+               <b>Component:</b> {{ .CommonLabels.component }}<br>
+               <b>Namespace:</b> {{ .CommonLabels.namespace }}</p>
+            {{ range .Alerts }}
+            <hr>
+            <p><b>{{ .Annotations.summary }}</b></p>
+            <p>{{ .Annotations.description }}</p>
+            {{ if .Annotations.runbook_url }}
+            <p><a href="{{ .Annotations.runbook_url }}">Runbook</a></p>
+            {{ end }}
+            <p style="color:#777;font-size:smaller">
+              started {{ .StartsAt }}
+              {{ if not .EndsAt.IsZero }}· resolved {{ .EndsAt }}{{ end }}
+            </p>
+            {{ end }}
+            </body></html>
+
     - name: slack-uwv-warning
       slackConfigs:
         - apiURL:

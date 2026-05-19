@@ -1,4 +1,31 @@
 # kube-prometheus-stack — AKS-specific overrides.
+
+# Alertmanager AAN in AKS — receivers + email-relay-config komen uit de
+# AlertmanagerConfig CR (gepatcht door platform-overlays/aks/14-monitoring/).
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+    alertmanagerConfigSelector:
+      matchLabels:
+        alertmanagerConfig: uwv-platform
+    alertmanagerConfigMatcherStrategy:
+      type: None
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "managed-csi"
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 5Gi
+
 prometheus:
   prometheusSpec:
     storageSpec:

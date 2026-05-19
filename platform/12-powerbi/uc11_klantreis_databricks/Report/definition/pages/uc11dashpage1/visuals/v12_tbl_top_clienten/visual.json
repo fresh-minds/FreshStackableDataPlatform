@@ -1,0 +1,81 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.7.0/schema.json",
+  "name": "v12_tbl_top_clienten",
+  "position": {
+    "x": 16,
+    "y": 892,
+    "z": 1000,
+    "height": 132,
+    "width": 1248,
+    "tabOrder": 1000
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "klantreis_events"
+                    }
+                  },
+                  "Property": "bsn"
+                }
+              },
+              "queryRef": "klantreis_events.bsn",
+              "nativeQueryRef": "bsn"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "klantreis_events"
+                    }
+                  },
+                  "Property": "Aantal_events"
+                }
+              },
+              "queryRef": "klantreis_events.Aantal_events",
+              "nativeQueryRef": "Aantal_events"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "klantreis_events"
+                    }
+                  },
+                  "Property": "Aantal_domeinen"
+                }
+              },
+              "queryRef": "klantreis_events.Aantal_domeinen",
+              "nativeQueryRef": "Aantal_domeinen"
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true,
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Cli\u00ebnten met meeste events'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

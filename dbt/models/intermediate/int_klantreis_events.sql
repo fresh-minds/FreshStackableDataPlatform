@@ -102,8 +102,7 @@ wia_evt as (
         cast(aanvraag_datum as {{ dbt.type_timestamp() }})          as event_ts,
         aanvraag_datum                                              as event_date,
         cast('wia' as {{ dbt.type_string() }})                      as domein,
-        concat('wia.aanvraag.',
-               lower(coalesce(status, 'onbekend')))                 as event_type,
+        concat('wia.aanvraag.', lower(coalesce(status, 'onbekend')), case when status = 'toegekend' then concat('_', lower(coalesce(onderdeel, 'wga'))) else '' end) as event_type,
         concat('WIA-aanvraag (', coalesce(onderdeel, '?'),
                ', status: ', coalesce(status, '?'),
                case when arbeidsongeschikt_pct is not null

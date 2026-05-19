@@ -46,6 +46,17 @@ sources:
         meta:
           bio_classificatie: intern
           bewaartermijn_jaren: 5
+      - name: focus_billing
+        description: |
+          FOCUS-billing (UC-12 / FinOps). 49-kolom export volgens FinOps
+          Open Cost and Usage Specification 1.x: 39 FOCUS-core kolommen +
+          10 oci_* vendor-extensies, aangevuld met audit-kolommen
+          (ingestion_ts, source_file, event_date). CSV-batch upload
+          via portal. Geen PII; bedragen intern.
+        loader: csv_batch
+        meta:
+          bio_classificatie: intern
+          bewaartermijn_jaren: 7
 
   # ─────────────────────────────────────────────────────────────────
   # Silver source — alleen voor Fabric (uc11 multi-platform demo).

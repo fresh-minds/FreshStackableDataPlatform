@@ -1,0 +1,71 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.7.0/schema.json",
+  "name": "v07_pie_events_per_domein",
+  "position": {
+    "x": 16,
+    "y": 400,
+    "z": 1000,
+    "height": 240,
+    "width": 413,
+    "tabOrder": 1000
+  },
+  "visual": {
+    "visualType": "donutChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "klantreis_events"
+                    }
+                  },
+                  "Property": "domein"
+                }
+              },
+              "queryRef": "klantreis_events.domein",
+              "nativeQueryRef": "domein"
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "klantreis_events"
+                    }
+                  },
+                  "Property": "Aantal_events"
+                }
+              },
+              "queryRef": "klantreis_events.Aantal_events",
+              "nativeQueryRef": "Aantal_events"
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true,
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Events per domein'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

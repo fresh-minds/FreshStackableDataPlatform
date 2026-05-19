@@ -393,9 +393,9 @@ spec:
         secrets.stackable.tech/scope: pod
 EOF
 
-log "Wachten tot secret-provisioner-tls-ca beschikbaar is (timeout 3m)"
+log "Wachten tot secret-provisioner-tls-ca beschikbaar is (timeout 10m)"
 SECRET_READY=false
-for i in {1..90}; do
+for i in {1..300}; do
   if kubectl -n stackable-operators get secret secret-provisioner-tls-ca >/dev/null 2>&1; then
     SECRET_READY=true
     break
@@ -404,23 +404,33 @@ for i in {1..90}; do
 done
 kubectl -n stackable-operators delete pod tls-ca-trigger --ignore-not-found --wait=false >/dev/null 2>&1 || true
 
-if [[ "$SECRET_READY" == "true" ]]; then
-  log "uwv-ca-bundle extenden met Stackable secret-operator CA"
-  TMPCA=$(mktemp)
-  TMPCAS=$(mktemp)
-  kubectl -n uwv-platform get cm uwv-ca-bundle -o jsonpath='{.data.ca\.crt}' > "$TMPCA"
-  kubectl -n stackable-operators get secret secret-provisioner-tls-ca \
-    -o jsonpath='{.data.0\.ca\.crt}' | base64 -d > "$TMPCAS"
-  cat "$TMPCA" "$TMPCAS" > "$TMPCA.combined"
-  # delete+create (apply hits 256KB annotation limit — bundle now contains
-  # 150+ public roots + UWV CA + Stackable CA).
-  kubectl -n uwv-platform delete configmap uwv-ca-bundle --ignore-not-found >/dev/null
-  kubectl -n uwv-platform create configmap uwv-ca-bundle \
-    --from-file=ca.crt="$TMPCA.combined" >/dev/null
-  rm -f "$TMPCA" "$TMPCAS" "$TMPCA.combined"
-else
-  warn "secret-provisioner-tls-ca niet verschenen binnen 3m — uwv-ca-bundle bevat alleen platform-CA."
-  warn "Run 'bash scripts/bootstrap.sh' opnieuw na 'make deploy-platform' om de CA-bundle te complementeren."
+# Hard-fail als de CA niet beschikbaar is: zonder Stackable-CA in uwv-ca-bundle
+# weigert Superset (en andere clients met REQUESTS_CA_BUNDLE=/etc/uwv-ca/ca.crt)
+# elke TLS-verbinding naar Trino/Hive/Kafka met 'self-signed certificate in
+# certificate chain'. Stille soft-fail leidde voorheen tot moeilijk te
+# debuggen 500-errors in superset-init bij DB-registratie.
+if [[ "$SECRET_READY" != "true" ]]; then
+  error "secret-provisioner-tls-ca niet verschenen binnen 10m — secret-operator-pod waarschijnlijk niet healthy. Check 'kubectl -n stackable-operators get pods' en run bootstrap opnieuw."
+fi
+
+log "uwv-ca-bundle extenden met Stackable secret-operator CA"
+TMPCA=$(mktemp)
+TMPCAS=$(mktemp)
+kubectl -n uwv-platform get cm uwv-ca-bundle -o jsonpath='{.data.ca\.crt}' > "$TMPCA"
+kubectl -n stackable-operators get secret secret-provisioner-tls-ca \
+  -o jsonpath='{.data.0\.ca\.crt}' | base64 -d > "$TMPCAS"
+cat "$TMPCA" "$TMPCAS" > "$TMPCA.combined"
+# delete+create (apply hits 256KB annotation limit — bundle now contains
+# 150+ public roots + UWV CA + Stackable CA).
+kubectl -n uwv-platform delete configmap uwv-ca-bundle --ignore-not-found >/dev/null
+kubectl -n uwv-platform create configmap uwv-ca-bundle \
+  --from-file=ca.crt="$TMPCA.combined" >/dev/null
+rm -f "$TMPCA" "$TMPCAS" "$TMPCA.combined"
+
+# Sanity-check: bundle moet "secret-operator self-signed" issuer bevatten.
+if ! kubectl -n uwv-platform get cm uwv-ca-bundle -o jsonpath='{.data.ca\.crt}' \
+     | grep -q "secret-operator self-signed"; then
+  error "uwv-ca-bundle bevat na merge geen 'secret-operator self-signed' subject — CA-merge faalde stil."
 fi
 
 # 9. OpenSearch single-node (gedeeld voor Vector logs + OpenMetadata search)
