@@ -1,12 +1,11 @@
 # Scheduled platform-watcher runs.
 #
-# The CronJob ships SUSPENDED. Each run costs a real Foundry call —
-# operators flip suspend off once the dry-run results in `kubectl logs`
-# look right and Multica's `platform-watcher@uwv` user has been
-# provisioned. To enable:
+# Ships ENABLED (suspend: false). Was suspended-by-default in the
+# original slice 4 commit; flipped on once the watcher → Multica path
+# was verified end-to-end. To pause without redeploying:
 #
 #   kubectl -n uwv-platform patch cronjob nanitics-watcher-cron \
-#     -p '{"spec":{"suspend":false}}'
+#     -p '{"spec":{"suspend":true}}'
 #
 # Cadence: every 30 min by default. concurrencyPolicy=Forbid means a
 # long-running ReAct loop will not be overlapped by the next tick — the
@@ -26,7 +25,7 @@ data:
   # editing the CronJob spec.
   body.json: |
     {
-      "task": "Investigate the currently firing PrometheusRule alerts on the platform. Call list_firing_alerts first; if any alerts are firing, pick the single most severe one, dedup using its Alertmanager fingerprint, and if it is a new issue file ONE Multica task in the platform-ops workspace. If nothing is firing, optionally scan recent K8s Warning events for hot pods. Output one of: 'task filed: <id>', 'already tracked: <id>', or 'no issue found: <one-line reason>'."
+      "task": "Scan platform health and file at most ONE Multica issue if you find a real problem. PROCESS: (1) Call recent_k8s_warnings to get Warning events from the last 60 minutes. (2) If there are any, pick the most distinctive one (highest count, or most recent, or most severe-sounding reason). Compute a stable fingerprint from `reason:involved_object_name` (e.g. `Unhealthy:multica-frontend-abc123`). (3) Call find_existing_multica_tasks(fingerprint). If a matching issue already exists, output 'already tracked: <id>' and stop. (4) Otherwise call query_prometheus once to corroborate (e.g. kube_pod_container_status_restarts_total for the involved pod). (5) File ONE issue via file_multica_task with severity=warning, area=k8s, a body following Symptom/Evidence/Hypothesis/Suggested fix/Runbook structure, and the fingerprint. (6) Output 'task filed: <id>'. If recent_k8s_warnings returned no events, output 'no issue found: cluster quiet'. Do NOT call list_firing_alerts — Alertmanager is not deployed in this cluster and the call wastes a tool turn."
     }
 ---
 apiVersion: batch/v1
@@ -35,7 +34,7 @@ metadata:
   name: nanitics-watcher-cron
   namespace: uwv-platform
 spec:
-  suspend: true
+  suspend: false
   schedule: "*/30 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3

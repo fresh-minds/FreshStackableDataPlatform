@@ -45,13 +45,17 @@ data:
   OPENSEARCH_URL: "http://opensearch-uwv.uwv-meta.svc.cluster.local:9200"
   OPENSEARCH_INDEX_PATTERN: "uwv-logs-*"
 
-  # Multica task surface.
-  MULTICA_API_URL: "http://multica-backend.uwv-platform:8080"
-  MULTICA_WORKSPACE: "platform-ops"
+  # Multica task surface. multica-backend exposes its REST on Service
+  # port 80 (not 8080 — the backend container's :8080 is fronted by the
+  # Service). MULTICA_WORKSPACE is the slug of the workspace the watcher
+  # files into; must exist on Multica AND be visible to the user that
+  # owns MULTICA_API_TOKEN.
+  MULTICA_API_URL: "http://multica-backend.uwv-platform:80"
+  MULTICA_WORKSPACE: "testing"
   # Dry-run mode logs the payload and returns a synthetic task_id instead
-  # of POSTing to Multica. Flip to 'false' once a real MULTICA_API_TOKEN
-  # secret is provisioned (see secret-multica.yaml).
-  MULTICA_DRY_RUN: "true"
+  # of POSTing to Multica. Flip to 'true' to A/B a prompt change without
+  # spamming the issue queue.
+  MULTICA_DRY_RUN: "false"
 
   # Per-tool budgets.
   WATCHER_HTTP_TIMEOUT: "10"
