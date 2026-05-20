@@ -480,9 +480,15 @@ export function resolveEmbedSrc(
   // Voor 'subpath' bouwen we platform-host + path + deep-link.
   // De runtime rewrite in Layout.astro raakt 'm niet aan want geen
   // *.uwv-platform.local hostname.
+  // Path die op een bestand wijst (bv. `/dbt-docs.html`) krijgt geen
+  // trailing slash — anders bouwen we `/dbt-docs.html/` en dat 404't.
+  // Heuristic: een laatste segment met een '.' is een bestand.
+  const looksLikeFile = (p: string) => /\.[a-z0-9]+$/i.test(p.split('/').pop() ?? '');
+
   if (c.embed.mode === 'subpath') {
-    const base = (c.embed.path ?? '/').replace(/\/+$/, '');
-    if (!cleanDeep) return base + '/';
+    const raw = c.embed.path ?? '/';
+    const base = raw.replace(/\/+$/, '');
+    if (!cleanDeep) return looksLikeFile(base) ? base : base + '/';
     // Deep-link mag met of zonder '/' beginnen — normaliseer.
     return base + (cleanDeep.startsWith('/') ? cleanDeep : '/' + cleanDeep);
   }
@@ -491,7 +497,7 @@ export function resolveEmbedSrc(
   if (c.embed.mode === 'subdomain') {
     if (!c.url) return null;
     const baseUrl = c.url.replace(/\/+$/, '');
-    if (!cleanDeep) return baseUrl + '/';
+    if (!cleanDeep) return looksLikeFile(baseUrl) ? baseUrl : baseUrl + '/';
     return baseUrl + (cleanDeep.startsWith('/') ? cleanDeep : '/' + cleanDeep);
   }
 
@@ -510,12 +516,12 @@ export function resolveExternalUrl(
   deepLink?: string | null,
 ): string | null {
   const cleanDeep = (deepLink ?? '').trim();
+  const looksLikeFile = (p: string) => /\.[a-z0-9]+$/i.test(p.split('/').pop() ?? '');
+
   if (c.embed?.mode === 'subpath') {
     const base = (c.embed.path ?? '/').replace(/\/+$/, '');
-    const suffix = cleanDeep
-      ? cleanDeep.startsWith('/') ? cleanDeep : '/' + cleanDeep
-      : '/';
-    return base + suffix;
+    if (!cleanDeep) return looksLikeFile(base) ? base : base + '/';
+    return base + (cleanDeep.startsWith('/') ? cleanDeep : '/' + cleanDeep);
   }
   if (!c.url) return null;
   if (c.url.startsWith('/')) return c.url; // portal-interne URL (zoals dbt-docs)

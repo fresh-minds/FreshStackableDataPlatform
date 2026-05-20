@@ -88,14 +88,39 @@ const canEmbed = embedSrc !== null;
     </header>
 
     {canEmbed ? (
-      <iframe
-        id="embed-frame"
-        class="embed-frame"
-        src={embedSrc}
-        title={component.name}
-        allow="clipboard-write; fullscreen"
-        referrerpolicy="same-origin"
-      ></iframe>
+      <>
+        <iframe
+          id="embed-frame"
+          class="embed-frame"
+          src={embedSrc}
+          title={component.name}
+          allow="clipboard-write; fullscreen"
+          referrerpolicy="same-origin"
+        ></iframe>
+        <div id="embed-loading" class="embed-loading" aria-live="polite">
+          <span class="embed-loading-spinner" aria-hidden="true"></span>
+          <span>{component.name} laden…</span>
+        </div>
+        <div id="embed-blocked" class="embed-blocked" hidden>
+          <div class="embed-fallback-card">
+            <h1>De iframe laadt niet</h1>
+            <p>
+              De browser blokkeert het tonen van <strong>{component.name}</strong>
+              binnen de portal. Meestal komt dat door een X-Frame-Options /
+              CSP-header of door een SSO-redirect die in iframe-context faalt.
+            </p>
+            {externalUrl && (
+              <a class="embed-btn embed-btn-primary" href={externalUrl}
+                 target="_blank" rel="noopener noreferrer">
+                <span>Open {component.name} in nieuw tabblad</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 3h7v7M10 14L21 3M21 14v7H3V3h7"/>
+                </svg>
+              </a>
+            )}
+          </div>
+        </div>
+      </>
     ) : (
       <div class="embed-fallback">
         <div class="embed-fallback-card">
@@ -165,6 +190,31 @@ const canEmbed = embedSrc !== null;
           exitFull();
         }
       });
+
+      // ─── Iframe load / failure UX. Cross-origin iframes geven ons geen
+      // toegang tot contentDocument, maar 'load' vuurt wel zodra de
+      // browser response heeft ontvangen (ook bij X-Frame-Options-blok
+      // op sommige engines). Twee paden:
+      //   - load event binnen 8s → spinner weg, gewoon doorgaan
+      //   - timeout zonder load → toon "blocked"-fallback met
+      //     "open in nieuw tabblad"-knop
+      var frame = document.getElementById('embed-frame') as HTMLIFrameElement | null;
+      var loading = document.getElementById('embed-loading');
+      var blocked = document.getElementById('embed-blocked');
+      if (frame && loading) {
+        var timeoutId: number | undefined = window.setTimeout(function () {
+          if (loading) loading.hidden = true;
+          if (blocked) blocked.hidden = false;
+          if (frame) frame.style.opacity = '0.05';
+        }, 8000);
+        frame.addEventListener('load', function () {
+          if (timeoutId !== undefined) {
+            window.clearTimeout(timeoutId);
+            timeoutId = undefined;
+          }
+          if (loading) loading.hidden = true;
+        });
+      }
     </script>
 
     <style is:global>
@@ -289,7 +339,49 @@ const canEmbed = embedSrc !== null;
         border: 0;
         background: var(--bg-sunken);
         display: block;
+        transition: opacity 0.2s;
       }
+
+      /* Spinner-overlay tijdens initiële iframe-load. Lost in een fade
+         op als 'load' vuurt; gaat weg als de timeout 'm vervangt door
+         de blocked-fallback. */
+      .embed-loading {
+        position: absolute;
+        inset: 40px 0 0 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--space-3);
+        color: var(--ink-3);
+        font-size: var(--text-meta);
+        background: var(--bg);
+        pointer-events: none;
+        z-index: 5;
+      }
+      .embed-loading[hidden] { display: none; }
+      .embed-loading-spinner {
+        width: 14px;
+        height: 14px;
+        border: 2px solid var(--ink-4);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: embed-spin 0.8s linear infinite;
+      }
+      @keyframes embed-spin { to { transform: rotate(360deg); } }
+
+      /* Fallback-overlay als de iframe niet binnen 8s laadt (typisch
+         X-Frame-Options/CSP-blokkade die we niet op tijd hebben gefixt).
+         Toont een "open in nieuw tabblad"-knop. */
+      .embed-blocked {
+        position: absolute;
+        inset: 40px 0 0 0;
+        display: grid;
+        place-items: center;
+        padding: var(--space-7);
+        background: var(--bg);
+        z-index: 6;
+      }
+      .embed-blocked[hidden] { display: none; }
 
       /* Volledig-scherm: top-bar offscreen, iframe pakt alles. */
       body.embed-full .embed-topbar {
