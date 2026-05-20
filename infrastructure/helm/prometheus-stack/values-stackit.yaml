@@ -1,0 +1,57 @@
+# kube-prometheus-stack — StackIT SKE overrides.
+
+# Alertmanager AAN in SKE — receivers + email-relay-config komen uit de
+# AlertmanagerConfig CR (gepatcht door platform-overlays/stackit/14-monitoring/
+# in Phase 3).
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+    alertmanagerConfigSelector:
+      matchLabels:
+        alertmanagerConfig: uwv-platform
+    alertmanagerConfigMatcherStrategy:
+      type: None
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "premium-perf1-stackit"
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 5Gi
+
+prometheus:
+  prometheusSpec:
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "premium-perf1-stackit"
+
+grafana:
+  persistence:
+    storageClassName: "premium-perf1-stackit"
+  # Grafana chart 8.x added a hard guard against plain `client_secret` in values
+  # (assertNoLeakedSecrets). Base values.yaml has a CLEARLY-MARKED dev placeholder
+  # (`uwv-dev-only-CHANGE-ME-grafana-secret`) for k3d laptops — not a real secret
+  # leak. Disabling the assertion lets the chart render; rotate to a real Secret +
+  # `$__file{}` interpolation when this leaves dev.
+  assertNoLeakedSecrets: false
+  # Chart-managed Grafana ingress stays on .uwv-platform.local; public
+  # SKE ingress is in infrastructure/stackit/public-ingresses.yaml (Phase 4).
+  # OIDC endpoints overridden naar publieke Stackit-domein (Let's Encrypt, geen
+  # skip-tls-verify nodig). root_url moet matchen met redirect_uri in realm.
+  grafana.ini:
+    server:
+      root_url: "https://grafana.freshstackable.com"
+    auth.generic_oauth:
+      auth_url: "https://keycloak.freshstackable.com/realms/uwv/protocol/openid-connect/auth"
+      token_url: "https://keycloak.freshstackable.com/realms/uwv/protocol/openid-connect/token"
+      api_url: "https://keycloak.freshstackable.com/realms/uwv/protocol/openid-connect/userinfo"
+      tls_skip_verify_insecure: false

@@ -1,0 +1,27 @@
+# PostgreSQL — StackIT SKE overrides.
+#
+# Same Bitnami-chart-quirk story as AKS:
+#  - subPath: postgresql-data (avoids lost+found tripping Bitnami's
+#             "is volume empty?" check on a fresh cloud PVC).
+#  - image.debug=true: surface init-script errors that otherwise fail silent.
+#  - primary.initdb.scripts cleared: the in-line scripts in base values
+#             hang init on cloud storage; databases are created by the
+#             follow-up Job referenced from scripts/stackit/ske-bootstrap.sh
+#             (re-uses infrastructure/azure/postgres-create-databases.yaml —
+#             mode-agnostic, only namespace + SQL).
+
+image:
+  debug: true
+
+primary:
+  persistence:
+    storageClass: "premium-perf1-stackit"
+    size: 8Gi
+    subPath: "postgresql-data"
+
+  # Drop the in-line database-creation SQL from base values (same reason as
+  # values-aks.yaml — Bitnami init hits a race with role creation on fresh
+  # cloud PVCs). Helm deep-merges maps, so we null the specific key.
+  initdb:
+    scripts:
+      00-uwv-databases.sql: null

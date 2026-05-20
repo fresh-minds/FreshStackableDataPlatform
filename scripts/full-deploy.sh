@@ -48,8 +48,16 @@ ok()   { printf '\033[1;32m  ✓\033[0m  %s\n' "$*"; }
 fail() { printf '\033[1;31m  FAIL\033[0m %s\n' "$*" >&2; exit 1; }
 
 if [[ "${IS_CLOUD}" == "yes" ]]; then
-  fail "mode=${DEPLOYMENT_MODE}: gebruik 'make aks-all' (of scripts/azure/aks-bootstrap.sh + aks-deploy.sh).
-        full-deploy.sh dekt alleen k3d — AKS heeft extra cloud-only stappen."
+  case "$DEPLOYMENT_MODE" in
+    aks)
+      fail "mode=aks: gebruik 'make aks-all' (of scripts/azure/aks-bootstrap.sh + aks-deploy.sh).
+            full-deploy.sh dekt alleen k3d — AKS heeft extra cloud-only stappen."
+      ;;
+    stackit)
+      fail "mode=stackit: gebruik scripts/stackit/ske-bootstrap.sh + scripts/stackit/ske-deploy.sh.
+            full-deploy.sh dekt alleen k3d — StackIT heeft extra cloud-only stappen."
+      ;;
+  esac
 fi
 
 # ---------------------------------------------------------------------- 1

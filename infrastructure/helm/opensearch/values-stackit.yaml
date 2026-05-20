@@ -1,0 +1,4 @@
+# OpenSearch — StackIT SKE overrides.
+persistence:
+  storageClass: "premium-perf1-stackit"
+  size: 10Gi

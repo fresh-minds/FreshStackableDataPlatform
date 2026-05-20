@@ -44,22 +44,31 @@ const isActive = (href: string): boolean => {
     </script>
     <script is:inline>
       // Cross-environment URL rewrite. The same Astro build serves k3d
-      // (*.uwv-platform.local on host:8443) and AKS public DNS
-      // (eu-sovereigndataplatform.com + *.eu-sovereigndataplatform.com on
-      // standard 443). Component-, role-shortcut, and academy-MDX hrefs
-      // are build-time hardcoded as https://<svc>.uwv-platform.local:8443;
-      // on the .com host we rewrite to https://<svc>.eu-sovereigndataplatform.com
-      // (drop the :8443 — public LB is on 443).
+      // (*.uwv-platform.local on host:8443), AKS public DNS
+      // (*.eu-sovereigndataplatform.com on 443), and StackIT SKE
+      // (*.freshstackable.com on 443). Component-, role-shortcut, and
+      // academy-MDX hrefs are build-time hardcoded as
+      // https://<svc>.uwv-platform.local:8443; on a cloud host we rewrite
+      // to https://<svc>.<that-cloud-tld> (drop the :8443 — public LB on 443).
       (function () {
         var host = window.location.hostname;
-        if (host !== 'eu-sovereigndataplatform.com' &&
-            !host.endsWith('.eu-sovereigndataplatform.com')) return;
 
-        // Subdomains that DON'T have a public AKS counterpart. Their link
+        // Map: this-host's TLD → replacement TLD for .uwv-platform.local
+        // hrefs. Extend this table to add a new cloud target.
+        var CLOUD_TLDS = ['eu-sovereigndataplatform.com', 'freshstackable.com'];
+        var targetTld = null;
+        for (var t = 0; t < CLOUD_TLDS.length; t++) {
+          if (host === CLOUD_TLDS[t] || host.endsWith('.' + CLOUD_TLDS[t])) {
+            targetTld = CLOUD_TLDS[t]; break;
+          }
+        }
+        if (!targetTld) return;
+
+        // Subdomains that DON'T have a public cloud counterpart. Their link
         // keeps pointing at the k3d-local hostname even when the portal
-        // is served from the .com host — useful for components that
+        // is served from a cloud host — useful for components that
         // intentionally only run on the dev cluster.
-        // - nanitics: no AKS ingress yet for nanitics-observatory; the
+        // - nanitics: no cloud ingress for nanitics-observatory; the
         //   k3d-local URL is the only place the watcher/Observatory live.
         var KEEP_LOCAL = ['multica', 'nanitics'];
 
@@ -68,7 +77,7 @@ const isActive = (href: string): boolean => {
           if (m && KEEP_LOCAL.indexOf(m[1]) !== -1) return href;
           return href
             .replace(/:\/\/([a-z0-9-]+)\.uwv-platform\.local(:8443)?/g,
-                     '://$1.eu-sovereigndataplatform.com');
+                     '://$1.' + targetTld);
         }
 
         function rewrite() {
@@ -187,15 +196,16 @@ const isActive = (href: string): boolean => {
         el.classList.remove('user-pill--empty');
         // Markup mirrors UserPill primitive's loaded state.
         // The logout onclick is TLD-aware: the same build serves k3d
-        // (uwv-platform.local:8443) and AKS public DNS
-        // (eu-sovereigndataplatform.com on 443). Pick the right host.
+        // (uwv-platform.local:8443), AKS (eu-sovereigndataplatform.com on
+        // 443), and StackIT SKE (freshstackable.com on 443). Pick the
+        // right host.
         el.innerHTML = `
           <span class="user-pill-avatar" aria-hidden="true">${escapeHtml(initial)}</span>
           <span class="user-pill-body">
             <span class="user-pill-role">${escapeHtml(role)}</span>
             <span class="user-pill-user" title="${escapeHtml(user ?? '')}">${escapeHtml(user ?? '')}</span>
           </span>
-          <a class="user-pill-logout" href="#" title="uitloggen" aria-label="uitloggen" onclick="sessionStorage.removeItem('uwv-portal-role');sessionStorage.removeItem('uwv-portal-user');var h=location.hostname,tld='uwv-platform.local',port=':8443';if(h.endsWith('.eu-sovereigndataplatform.com')){tld='eu-sovereigndataplatform.com';port='';}const rd=encodeURIComponent('https://keycloak.'+tld+port+'/realms/uwv/protocol/openid-connect/logout?client_id=portal&post_logout_redirect_uri=https://platform.'+tld+port+'/');window.location.href='/oauth2/sign_out?rd='+rd;return false;">↗</a>
+          <a class="user-pill-logout" href="#" title="uitloggen" aria-label="uitloggen" onclick="sessionStorage.removeItem('uwv-portal-role');sessionStorage.removeItem('uwv-portal-user');var h=location.hostname,tld='uwv-platform.local',port=':8443';if(h.endsWith('.eu-sovereigndataplatform.com')){tld='eu-sovereigndataplatform.com';port='';}else if(h.endsWith('.freshstackable.com')){tld='freshstackable.com';port='';}const rd=encodeURIComponent('https://keycloak.'+tld+port+'/realms/uwv/protocol/openid-connect/logout?client_id=portal&post_logout_redirect_uri=https://platform.'+tld+port+'/');window.location.href='/oauth2/sign_out?rd='+rd;return false;">↗</a>
         `;
       }
 

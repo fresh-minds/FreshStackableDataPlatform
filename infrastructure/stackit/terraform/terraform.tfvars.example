@@ -1,0 +1,14 @@
+project_id   = "442855d5-308d-4e93-95ec-e1a959d6846a"
+region       = "eu01"
+cluster_name = "udp-stackit"
+
+kubernetes_version_min = "1.34.7"
+
+node_machine_type       = "g2i.8"
+node_minimum            = 3
+node_maximum            = 6
+node_availability_zones = ["eu01-3"]
+node_volume_type        = "storage_premium_perf6"
+node_volume_size_gb     = 100
+
+kubeconfig_expiration_seconds = 86400

@@ -1,0 +1,20 @@
+# StackIT SKE overlay for platform/12-superset.
+# Platform-level ingress on superset.uwv-platform.local stays put for
+# in-cluster routing; public AKS ingress is `superset-public` in
+# infrastructure/stackit/public-ingresses.yaml.
+#
+# Only flips SupersetCluster's WEBSERVER_BASE_URL so OAuth redirect_uri
+# (built via ProxyFix from X-Forwarded headers) matches the public host.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/12-superset
+patches:
+  - target:
+      group: superset.stackable.tech
+      kind: SupersetCluster
+      name: uwv-superset
+    patch: |-
+      - op: replace
+        path: /spec/nodes/configOverrides/superset_config.py/WEBSERVER_BASE_URL
+        value: '"https://superset.freshstackable.com"'

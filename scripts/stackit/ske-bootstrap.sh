@@ -1,43 +1,42 @@
 #!/usr/bin/env bash
-# Bootstrap helm charts + Stackable operators on the AKS cluster.
-# Thin wrapper around scripts/bootstrap.sh --mode=aks; the mode flag selects
-# the values-aks.yaml overlays per chart (managed-csi storage, LoadBalancer
-# service, public-domain hostnames).
+# Bootstrap helm charts + Stackable operators on the StackIT SKE cluster.
+# Thin wrapper around scripts/bootstrap.sh --mode=stackit; the mode flag selects
+# the values-stackit.yaml overlays per chart (premium-perf*-stackit storage,
+# LoadBalancer service pinned to the reserved Floating IP, freshstackable.com
+# hostnames).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-# Force mode=aks regardless of what the caller passed — this script only
-# makes sense for AKS.
-export DEPLOYMENT_MODE=aks
+# Force mode=stackit regardless of what the caller passed.
+export DEPLOYMENT_MODE=stackit
 # shellcheck source=../lib/mode.sh
 source "$ROOT/scripts/lib/mode.sh"
-parse_mode_args   # picks up DEPLOYMENT_MODE=aks from env
+parse_mode_args
 require_context
 
-bash "$ROOT/scripts/bootstrap.sh" --mode=aks
+bash "$ROOT/scripts/bootstrap.sh" --mode=stackit
 
 # Postgres reconcile + uwvplatform-role + databases nu in bootstrap.sh
 # zelf (tussen postgres-install en keycloak-install), zodat Keycloak's
 # chart de uwvplatform user vindt en niet --atomic-rollback geeft op een
 # fresh cluster. Hier alleen de OpenMetadata-mysql-secrets workaround.
 
-# AKS-specific: OpenMetadata's helm chart hardcodes the database-credential
-# secret name as 'mysql-secrets' with key 'openmetadata-mysql-password',
-# even when the configured driver is postgres. Create it here so
-# the openmetadata Deployment can finish init.
+# Same OpenMetadata mysql-secrets workaround as AKS — the chart hardcodes that
+# secret name even when running on postgres.
 log "Create OpenMetadata mysql-secrets (workaround for chart's hardcoded name)"
-PG_PW=$(kubectl -n uwv-data get secret postgres-postgresql -o jsonpath='{.data.postgres-password}' | base64 -d)
 kubectl create namespace uwv-meta --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n uwv-meta create secret generic mysql-secrets \
   --from-literal=openmetadata-mysql-password="${PG_PW}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-log "AKS bootstrap done."
+log "StackIT bootstrap done."
 
-# Show LoadBalancer IP so user can update /etc/hosts.
+# Show LoadBalancer IP — should match the reserved Floating IP 188.34.84.39.
+# If it doesn't, the values-stackit.yaml loadBalancerIP setting is wrong.
 log "Waiting for ingress-nginx LoadBalancer IP..."
+EXPECTED_IP="188.34.84.39"
 for i in $(seq 1 60); do
   LB_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
     -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
@@ -49,8 +48,12 @@ done
 
 if [[ -n "${LB_IP:-}" ]]; then
   log "Ingress LoadBalancer IP: $LB_IP"
-  echo "Add to /etc/hosts:"
-  echo "  $LB_IP keycloak.uwv-platform.local minio-console.uwv-platform.local grafana.uwv-platform.local openmetadata.uwv-platform.local airflow.uwv-platform.local superset.uwv-platform.local spark.uwv-platform.local"
+  if [[ "$LB_IP" != "$EXPECTED_IP" ]]; then
+    warn "Ingress IP ($LB_IP) does NOT match reserved Floating IP ($EXPECTED_IP)."
+    warn "Fix infrastructure/helm/ingress-nginx/values-stackit.yaml: loadBalancerIP must equal the reserved IP."
+  else
+    ok "Ingress IP matches reserved Floating IP — DNS records for *.freshstackable.com should resolve."
+  fi
 else
   warn "LoadBalancer IP not yet allocated; run 'kubectl -n ingress-nginx get svc' later."
 fi

@@ -309,6 +309,34 @@ helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
   $(chart_value_args prometheus-stack) \
   --atomic --wait --timeout 15m
 
+# 6b. Postgres reconciliation — MUST land before Keycloak install.
+# Op cloud-modes (aks/stackit) is de in-line `initdb.scripts.00-uwv-databases.sql`
+# uit values-{aks,stackit}.yaml genulld (Bitnami chart faalt stil bij eerste
+# init op fresh cloud PVCs — zie values-aks.yaml). Het uwvplatform-role +
+# de databases worden daardoor pas later aangemaakt door
+# infrastructure/azure/postgres-create-databases.yaml. Maar Keycloak's chart
+# verbindt direct na install met `uwvplatform@postgres`; als die user nog niet
+# bestaat → StatefulSet crashloopt → helm --atomic rolt terug → bootstrap dood.
+# Idempotent: ALTER USER + IF NOT EXISTS checks. Skip op k3d (local-path
+# storage initdb werkt daar wel).
+if [[ "${IS_CLOUD:-no}" == "yes" ]]; then
+  log "Wait for postgres pod Ready (cloud-mode pre-Keycloak reconcile)"
+  kubectl -n uwv-data wait --for=condition=Ready pod -l app.kubernetes.io/name=postgresql --timeout=5m
+
+  log "Reconcile postgres superuser password + uwvplatform role (idempotent)"
+  PG_PW=$(kubectl -n uwv-data get secret postgres-postgresql -o jsonpath='{.data.postgres-password}' | base64 -d)
+  kubectl -n uwv-data exec postgres-postgresql-0 -- env PGPASSWORD="${PG_PW}" \
+    psql -U postgres -c "ALTER USER postgres WITH PASSWORD '${PG_PW}';" >/dev/null
+  kubectl -n uwv-data exec postgres-postgresql-0 -- env PGPASSWORD="${PG_PW}" bash -c \
+    "psql -U postgres -tAc \"SELECT 1 FROM pg_roles WHERE rolname='uwvplatform'\" | grep -q 1 || \
+     psql -U postgres -c \"CREATE USER uwvplatform WITH PASSWORD '${PG_PW}' CREATEDB;\""
+
+  log "Apply postgres-create-databases Job (creates keycloak/superset/airflow/openmetadata/platform DBs)"
+  kubectl apply -f "$ROOT/infrastructure/azure/postgres-create-databases.yaml"
+  kubectl -n uwv-data wait --for=condition=Complete job/postgres-create-databases --timeout=2m \
+    || warn "postgres-create-databases Job did not complete; check 'kubectl -n uwv-data logs job/postgres-create-databases'"
+fi
+
 # 7. Keycloak — eerst realm-ConfigMap, daarna chart die hem mountt
 log "ConfigMap: Keycloak UWV-realm"
 kubectl create namespace uwv-auth --dry-run=client -o yaml | kubectl apply -f -
@@ -369,6 +397,10 @@ done
 # kortlevende Pod die zo'n volume mountt.
 log "Trigger secret-provisioner-tls-ca generation via dummy CSI volume Pod"
 kubectl -n stackable-operators delete pod tls-ca-trigger --ignore-not-found --wait=true >/dev/null 2>&1 || true
+# secret-operator >= v26.3 only accepts CSI Persistent mode (not the older
+# Ephemeral inline `csi:` volume). Use Kubernetes generic ephemeral volumes —
+# a PVC is generated on demand and bound to the Pod's lifecycle, but the
+# CSI sees it as a Persistent volume so secrets.stackable.tech is happy.
 cat <<'EOF' | kubectl apply -f - >/dev/null
 apiVersion: v1
 kind: Pod
@@ -386,11 +418,18 @@ spec:
       mountPath: /tls
   volumes:
   - name: tls
-    csi:
-      driver: secrets.stackable.tech
-      volumeAttributes:
-        secrets.stackable.tech/class: tls
-        secrets.stackable.tech/scope: pod
+    ephemeral:
+      volumeClaimTemplate:
+        metadata:
+          annotations:
+            secrets.stackable.tech/class: tls
+            secrets.stackable.tech/scope: pod
+        spec:
+          accessModes: [ReadWriteOnce]
+          storageClassName: secrets.stackable.tech
+          resources:
+            requests:
+              storage: 1Mi
 EOF
 
 log "Wachten tot secret-provisioner-tls-ca beschikbaar is (timeout 10m)"
@@ -427,11 +466,20 @@ kubectl -n uwv-platform create configmap uwv-ca-bundle \
   --from-file=ca.crt="$TMPCA.combined" >/dev/null
 rm -f "$TMPCA" "$TMPCAS" "$TMPCA.combined"
 
-# Sanity-check: bundle moet "secret-operator self-signed" issuer bevatten.
-if ! kubectl -n uwv-platform get cm uwv-ca-bundle -o jsonpath='{.data.ca\.crt}' \
-     | grep -q "secret-operator self-signed"; then
+# Sanity-check: bundle moet "secret-operator self-signed" subject bevatten.
+# Decode the PEM bundle to human-readable form first — the literal CN string
+# only appears in the ASN.1 (binary) of each cert, never in the base64 text.
+# Plain `grep "secret-operator self-signed"` on the raw bundle is broken even
+# when the cert IS present.
+TMPBUNDLE=$(mktemp)
+kubectl -n uwv-platform get cm uwv-ca-bundle -o jsonpath='{.data.ca\.crt}' > "$TMPBUNDLE"
+if ! openssl crl2pkcs7 -nocrl -certfile "$TMPBUNDLE" 2>/dev/null \
+   | openssl pkcs7 -print_certs -noout 2>/dev/null \
+   | grep -q "secret-operator self-signed"; then
+  rm -f "$TMPBUNDLE"
   error "uwv-ca-bundle bevat na merge geen 'secret-operator self-signed' subject — CA-merge faalde stil."
 fi
+rm -f "$TMPBUNDLE"
 
 # 9. OpenSearch single-node (gedeeld voor Vector logs + OpenMetadata search)
 log "Install OpenSearch ${OPENSEARCH_VERSION} (single-node, uwv-meta)"

@@ -1,0 +1,126 @@
+# Smoke-tests tegen het StackIT SKE cluster — verifieert dat alle endpoints
+# (Trino, Airflow, Superset, OpenMetadata, Portal, Jupyter, OPA-decisions, ...)
+# bereikbaar en healthy zijn na een deploy.
+#
+# Triggers:
+#   1. workflow_run    — automatisch na succesvolle stackit-cd run
+#   2. workflow_dispatch — handmatig (Actions-tab → "stackit-smoke" → Run workflow)
+#
+# Smoke-failures zijn fataal voor deze pipeline (rode run = pager-worthy).
+#
+# Vereiste secret: STACKIT_SA_KEY.
+name: stackit-smoke
+
+on:
+  workflow_run:
+    workflows: [stackit-cd]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# Nieuwe smoke-run cancelt oude — relevantste smoke is altijd de laatste.
+concurrency:
+  group: stackit-smoke
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read   # smoke 04-dbt-parse pulls ghcr.io/dbt-labs/dbt-trino
+
+env:
+  STACKIT_PROJECT_ID: 442855d5-308d-4e93-95ec-e1a959d6846a
+  STACKIT_CLUSTER_NAME: udp-stackit
+  STACKIT_REGION: eu01
+
+jobs:
+  smoke:
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event.workflow_run.conclusion == 'success'
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install OPA CLI (voor smoke 11-uc11-klantreis)
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/opa \
+            https://github.com/open-policy-agent/opa/releases/latest/download/opa_linux_amd64_static
+          sudo chmod +x /usr/local/bin/opa
+          opa version
+
+      - name: Login to ghcr.io (voor smoke 04-dbt-parse)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install StackIT CLI
+        run: |
+          curl -fsSL -o /tmp/stackit.tar.gz \
+            https://github.com/stackitcloud/stackit-cli/releases/latest/download/stackit-cli_linux_amd64.tar.gz
+          sudo tar -xzf /tmp/stackit.tar.gz -C /usr/local/bin stackit
+          stackit --version
+
+      - name: Stage StackIT SA key
+        run: |
+          umask 077
+          mkdir -p "$HOME/.config/stackit"
+          printf '%s' '${{ secrets.STACKIT_SA_KEY }}' > "$HOME/.config/stackit/sa-key.json"
+          jq -e '.credentials.iss and .credentials.kid' \
+            "$HOME/.config/stackit/sa-key.json" >/dev/null
+          echo "STACKIT_SERVICE_ACCOUNT_KEY_PATH=$HOME/.config/stackit/sa-key.json" >> "$GITHUB_ENV"
+
+      - name: Check cluster state
+        run: |
+          STATE=$(stackit ske cluster describe "$STACKIT_CLUSTER_NAME" \
+            --project-id "$STACKIT_PROJECT_ID" \
+            -o json 2>/dev/null | jq -r .state || echo "Unknown")
+          echo "Cluster state: $STATE"
+          if [[ "$STATE" != "STATE_HEALTHY" && "$STATE" != "STATE_RECONCILING" ]]; then
+            echo "::warning title=SKE cluster is $STATE::Smoke skipped — wake the cluster en re-trigger."
+            echo "SKIP_SMOKE=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Get SKE kubeconfig
+        if: env.SKIP_SMOKE != 'true'
+        run: |
+          mkdir -p "$HOME/.kube"
+          stackit ske kubeconfig create "$STACKIT_CLUSTER_NAME" \
+            --project-id "$STACKIT_PROJECT_ID" \
+            --expiration-seconds 7200 \
+            -o json \
+            --verbosity error \
+            | jq -r .kubeconfig > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          kubectl config current-context
+
+      - name: Smoke tests (make stackit-smoke)
+        if: env.SKIP_SMOKE != 'true'
+        run: make stackit-smoke
+
+      - name: Dump pod-status bij failure
+        if: failure() && env.SKIP_SMOKE != 'true'
+        run: |
+          echo "::group::Pods across UWV namespaces"
+          for ns in uwv-platform uwv-auth uwv-data uwv-meta ingress-nginx; do
+            echo "--- $ns ---"
+            kubectl -n "$ns" get pods -o wide 2>/dev/null || true
+          done
+          echo "::endgroup::"
+          echo "::group::Recent events (laatste 50)"
+          kubectl get events --all-namespaces \
+            --sort-by=.lastTimestamp 2>/dev/null \
+            | tail -n 50 || true
+          echo "::endgroup::"

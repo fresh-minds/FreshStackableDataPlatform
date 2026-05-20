@@ -1,0 +1,352 @@
+# Public-DNS Ingresses for the UWV reference platform on StackIT SKE.
+#
+# Domain: freshstackable.com (Azure DNS in dev-stackable-rg).
+# Apex A record points at the StackIT Floating IP 188.34.84.39 (reserved
+# in terraform as stackit_public_ip.platform_ingress, bound to the
+# ingress-nginx Service via loadBalancerIP in values-stackit.yaml). The
+# wildcard A record covers every subdomain — no per-host CNAME upserts.
+#
+# TLS: real Let's Encrypt certs via the `letsencrypt-prod` ClusterIssuer
+# (HTTP-01 challenge — see infrastructure/stackit/cluster-issuer.yaml).
+# cert-manager auto-renews; the challenge succeeds because port 80 on the
+# floating IP is routable via ingress-nginx. No DNS API plumbing needed.
+# No browser warnings; cookie domains are set on .freshstackable.com.
+#
+# Architecture in this file:
+#   - One Cert + Ingress per service (keycloak, grafana, openmetadata,
+#     minio, minio-console/UI, superset, airflow, prometheus,
+#     alertmanager).
+#   - dbt-docs subdomain redirects to /dbt-docs.html on the portal so the
+#     portal stays the single source of truth for serving the static bundle.
+#
+# The Astro portal (platform-landing Deployment + platform-public Ingress)
+# moved to platform-overlays/stackit/15-portal/ so it sits next to its k3d
+# sibling under platform/15-portal/.
+---
+# ============================================================================
+# CERTS + INGRESSES per service.
+# All certs use the letsencrypt-prod ClusterIssuer; cert-manager auto-renews via HTTP-01 (no DNS API needed; port 80 must be reachable from public internet — it is, via the floating IP bound to ingress-nginx).
+#
+# NB: the platform-landing portal (Deployment + Service + nginx config) AND
+# its public Ingress + Certificate have moved to
+# platform-overlays/stackit/15-portal/ — the AKS portal now lives next to its
+# k3d sibling under platform/15-portal/ via the standard mode overlay.
+# ============================================================================
+# --- Keycloak ---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: keycloak-public-tls
+  namespace: uwv-auth
+spec:
+  secretName: keycloak-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: keycloak.freshstackable.com
+  dnsNames: [keycloak.freshstackable.com]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak-public
+  namespace: uwv-auth
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [keycloak.freshstackable.com]
+      secretName: keycloak-public-tls
+  rules:
+    - host: keycloak.freshstackable.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: keycloak, port: { number: 80 } } } }] }
+---
+# --- Grafana ---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: grafana-public-tls
+  namespace: uwv-monitoring
+spec:
+  secretName: grafana-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: grafana.freshstackable.com
+  dnsNames: [grafana.freshstackable.com]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-public
+  namespace: uwv-monitoring
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [grafana.freshstackable.com]
+      secretName: grafana-public-tls
+  rules:
+    - host: grafana.freshstackable.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: prometheus-grafana, port: { number: 80 } } } }] }
+---
+# --- Prometheus ---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: prometheus-public-tls
+  namespace: uwv-monitoring
+spec:
+  secretName: prometheus-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: prometheus.freshstackable.com
+  dnsNames: [prometheus.freshstackable.com]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus-public
+  namespace: uwv-monitoring
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [prometheus.freshstackable.com]
+      secretName: prometheus-public-tls
+  rules:
+    - host: prometheus.freshstackable.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: prometheus-kube-prometheus-prometheus, port: { number: 9090 } } } }] }
+---
+# Note: Alertmanager intentionally disabled in helm-overrides for AKS
+# (alertmanager.enabled=false in prometheus-stack values). The DNS CNAME
+# and Ingress are intentionally absent here. Re-enable in
+# infrastructure/helm/prometheus-stack/values.yaml + add an Ingress block
+# back if you start using it.
+---
+# --- MinIO Console (UI) ---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: minio-public-tls
+  namespace: uwv-platform
+spec:
+  secretName: minio-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: minio.freshstackable.com
+  dnsNames: [minio.freshstackable.com]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minio-public
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # MinIO console listens on HTTPS:9001 with its own self-signed cert.
+    # nginx must speak HTTPS to the backend (not HTTP) and not verify the
+    # upstream cert — without this we got HTTP 400 from MinIO ("plain HTTP
+    # request was sent to HTTPS port").
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
+    # Console streams large responses (logs, browser file list) — disable
+    # buffering so they don't time out on the nginx side.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [minio.freshstackable.com]
+      secretName: minio-public-tls
+  rules:
+    - host: minio.freshstackable.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: minio-console, port: { number: 9001 } } } }] }
+---
+# --- MinIO S3 API ---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: minio-api-public-tls
+  namespace: uwv-platform
+spec:
+  secretName: minio-api-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: minio-api.freshstackable.com
+  dnsNames: [minio-api.freshstackable.com]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minio-api-public
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # MinIO S3 API listens on HTTPS:9000. Same HTTPS-backend treatment as the
+    # console ingress above. Also raise proxy-body-size so large object PUTs
+    # aren't rejected by the default 1MB ceiling.
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [minio-api.freshstackable.com]
+      secretName: minio-api-public-tls
+  rules:
+    - host: minio-api.freshstackable.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: minio, port: { number: 9000 } } } }] }
+---
+# --- Superset ---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: superset-public-tls
+  namespace: uwv-platform
+spec:
+  secretName: superset-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: superset.freshstackable.com
+  dnsNames: [superset.freshstackable.com]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: superset-public
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [superset.freshstackable.com]
+      secretName: superset-public-tls
+  rules:
+    - host: superset.freshstackable.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: superset, port: { number: 8088 } } } }] }
+---
+# --- Airflow ---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: airflow-public-tls
+  namespace: uwv-platform
+spec:
+  secretName: airflow-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: airflow.freshstackable.com
+  dnsNames: [airflow.freshstackable.com]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: airflow-public
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [airflow.freshstackable.com]
+      secretName: airflow-public-tls
+  rules:
+    - host: airflow.freshstackable.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: uwv-airflow-webserver, port: { number: 8080 } } } }] }
+---
+# --- dbt-docs subdomain — permanent redirect to platform/dbt-docs.html ---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dbt-docs-public-tls
+  namespace: uwv-platform
+spec:
+  secretName: dbt-docs-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: dbt-docs.freshstackable.com
+  dnsNames: [dbt-docs.freshstackable.com]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dbt-docs-public
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/permanent-redirect: https://platform.freshstackable.com/dbt-docs.html
+    nginx.ingress.kubernetes.io/permanent-redirect-code: "308"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [dbt-docs.freshstackable.com]
+      secretName: dbt-docs-public-tls
+  rules:
+    - host: dbt-docs.freshstackable.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: platform-landing, port: { number: 80 } } } }] }
+---
+# --- OpenMetadata (data catalog) ---
+# Plain HTTP backend on :8585. OpenMetadata has its own login screen that
+# integrates with Keycloak via OIDC client `openmetadata` (server-side
+# token exchange against keycloak.freshstackable.com — Java
+# truststore is loaded from /etc/uwv-ca/ca.crt which now contains the
+# Mozilla public-root bundle, so LE certs validate).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: openmetadata-public-tls
+  namespace: uwv-meta
+spec:
+  secretName: openmetadata-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: openmetadata.freshstackable.com
+  dnsNames: [openmetadata.freshstackable.com]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openmetadata-public
+  namespace: uwv-meta
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # OM 1.5 Dropwizard returns HTTP 404 + SPA shell for non-/ paths. The
+    # SPA still mounts and React Router picks up the path — so /signin,
+    # /callback, /explore all work in the browser even though the status
+    # is 404. Tried error_page rewriting here but it interferes with real
+    # /api/* 404s. Leave the 404 status; the SPA handles it correctly.
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [openmetadata.freshstackable.com]
+      secretName: openmetadata-public-tls
+  rules:
+    - host: openmetadata.freshstackable.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: openmetadata, port: { number: 8585 } } } }] }
+---
+# --- OpenSearch Dashboards (Kibana-like UI for log/index browsing) ---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: opensearch-public-tls
+  namespace: uwv-meta
+spec:
+  secretName: opensearch-public-tls
+  issuerRef: { name: letsencrypt-prod, kind: ClusterIssuer }
+  commonName: opensearch.freshstackable.com
+  dnsNames: [opensearch.freshstackable.com]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: opensearch-public
+  namespace: uwv-meta
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [opensearch.freshstackable.com]
+      secretName: opensearch-public-tls
+  rules:
+    - host: opensearch.freshstackable.com
+      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: opensearch-dashboards-uwv, port: { number: 5601 } } } }] }
+# NiFi en Trino hadden hier ook publieke Ingresses, maar zijn verwijderd:
+# beide worden as-code aangestuurd (NiFi flows via REST-import op port-forward,
+# Trino via Superset/Jupyter/dbt/Airflow). Geen UI-exposure meer.

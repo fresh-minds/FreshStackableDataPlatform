@@ -1,0 +1,34 @@
+# StackIT SKE overlay for platform/18-om-access-bridge.
+#
+# The bridge is invoked by the browser at
+# platform.freshstackable.com/access-request-api/* and must share
+# that hostname with the platform-landing Ingress in
+# infrastructure/stackit/public-ingresses.yaml. nginx-ingress merges multiple
+# Ingresses on the same host by path — the bridge keeps its /access-request-api*
+# path, platform-landing keeps /. They share the platform-public-tls secret
+# (LE-issued) so no SNI race.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/18-om-access-bridge
+patches:
+  - target:
+      kind: Ingress
+      name: om-access-bridge
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: platform.freshstackable.com
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: platform.freshstackable.com
+      - op: replace
+        path: /spec/tls/0/secretName
+        value: platform-public-tls
+  - target:
+      kind: ConfigMap
+      name: om-access-bridge-config
+    patch: |-
+      - op: replace
+        path: /data/CORS_ALLOWED_ORIGINS
+        value: "https://platform.freshstackable.com"

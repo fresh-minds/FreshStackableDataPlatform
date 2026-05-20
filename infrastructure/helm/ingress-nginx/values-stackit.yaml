@@ -1,0 +1,20 @@
+# ingress-nginx — StackIT SKE overrides.
+#
+# Base values use hostNetwork=true + service.type=ClusterIP (k3d pattern).
+# On SKE we need a real LoadBalancer Service so yawol provisions an external LB.
+#
+# The `yawol.stackit.cloud/existingFloatingIP` annotation tells yawol to attach
+# the LB to the IP reserved by infrastructure/stackit/terraform/network.tf
+# (stackit_public_ip.platform_ingress = 188.34.84.39). The plain
+# `loadBalancerIP` Service field is IGNORED by yawol — using it without the
+# annotation makes yawol allocate a fresh IP from its pool (silently breaking
+# DNS records that already point at the reserved IP).
+controller:
+  hostNetwork: false
+  dnsPolicy: ClusterFirst
+  kind: Deployment
+  service:
+    type: LoadBalancer
+    externalTrafficPolicy: Local
+    annotations:
+      yawol.stackit.cloud/existingFloatingIP: "188.34.84.39"

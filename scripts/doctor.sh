@@ -33,6 +33,11 @@ case "$DEPLOYMENT_MODE" in
     mode_required=("az         (Azure CLI)"
                    "terraform  version 1.5+")
     ;;
+  stackit)
+    mode_required=("stackit    (StackIT CLI)"
+                   "az         (Azure CLI — DNS lives in Azure DNS)"
+                   "terraform  version 1.5+")
+    ;;
 esac
 
 optional=(
@@ -118,6 +123,10 @@ if [[ -z "$ctx" ]]; then
   printf "  [warn] geen kubectl context — run 'make cluster MODE=%s' (lokaal) of 'make aks-context' (cloud)\n" "$DEPLOYMENT_MODE"
 else
   case "$DEPLOYMENT_MODE" in
+    stackit)
+      if [[ "$ctx" == *stackit* ]]; then printf "  [OK]   context '%s' past bij mode=stackit\n" "$ctx"
+      else printf "  [warn] context '%s' is geen StackIT-context (mode=stackit verwacht)\n" "$ctx"
+      fi ;;
     k3d)
       if [[ "$ctx" == k3d-* ]]; then printf "  [OK]   context '%s' past bij mode=k3d\n" "$ctx"
       else printf "  [warn] context '%s' is geen k3d-context (mode=k3d verwacht)\n" "$ctx"

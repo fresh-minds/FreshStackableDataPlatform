@@ -76,8 +76,24 @@ infrastructure/azure/terraform/terraform.tfvars
 infrastructure/azure/terraform/*.tfplan
 infrastructure/azure/terraform/crash.log
 
+# Terraform (StackIT / SKE)
+infrastructure/stackit/terraform/.terraform/
+infrastructure/stackit/terraform/terraform.tfstate
+infrastructure/stackit/terraform/terraform.tfstate.backup
+infrastructure/stackit/terraform/terraform.tfvars
+infrastructure/stackit/terraform/*.tfplan
+infrastructure/stackit/terraform/crash.log
+infrastructure/stackit/terraform/kubeconfig.yaml
+
+# StackIT service account keys (never commit)
+*sa-key*.json
+*.stackit-sa.json
+
 # Azure SP credentials
 scripts/azure/env.sh
+
+# Azure App Service Domain contact info (contains PII)
+*-contact.json
 
 # VPN client certs + private keys (terraform-generated)
 infrastructure/azure/vpn-client/
@@ -90,3 +106,4 @@ infrastructure/azure/vpn-client/
 /site/
 .venv-docs/
 .docs_gen_debug.json
+infrastructure/stackit/terraform/terraform.tfstate.*.backup

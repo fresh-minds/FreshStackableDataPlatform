@@ -1,0 +1,43 @@
+# Let's Encrypt ClusterIssuers for *.freshstackable.com (StackIT SKE).
+#
+# We use the HTTP-01 challenge instead of the DNS-01 path used on AKS:
+#  - HTTP-01 just needs port 80 reachable from the public internet — which
+#    the reserved Floating IP (188.34.84.39) gives us via ingress-nginx.
+#  - DNS-01 would require plumbing StackIT DNS API credentials (or Azure DNS
+#    SP credentials) into cert-manager via a Secret. Not worth it unless we
+#    need wildcard certs, and we don't — each service has its own dedicated
+#    cert/ingress pair.
+#
+# Both prod and staging issuers are defined. Use the staging one while
+# iterating on Ingress configs (no rate-limit pain) by swapping the
+# `cert-manager.io/cluster-issuer` annotation on the Ingress.
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: karel.goense@freshminds.nl
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: karel.goense@freshminds.nl
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx

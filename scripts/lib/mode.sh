@@ -12,11 +12,11 @@
 #   require_context            -- fail fast if kubectl context disagrees with mode
 #
 # After sourcing this file, the following vars are set:
-#   DEPLOYMENT_MODE   -- one of k3d | aks
-#   PLATFORM_DOMAIN   -- e.g. uwv-platform.local (k3d) or
-#                                eu-sovereigndataplatform.com (aks)
-#   PLATFORM_PORT     -- 8443 (k3d) or 443 (aks). Browser URL port.
-#   IS_LOCAL          -- "yes" for k3d, "no" for aks
+#   DEPLOYMENT_MODE   -- one of k3d | aks | stackit
+#   PLATFORM_DOMAIN   -- e.g. uwv-platform.local (k3d), eu-sovereigndataplatform.com (aks),
+#                              or freshstackable.com (stackit)
+#   PLATFORM_PORT     -- 8443 (k3d) or 443 (aks|stackit). Browser URL port.
+#   IS_LOCAL          -- "yes" for k3d, "no" for aks|stackit
 #   IS_CLOUD          -- inverse of IS_LOCAL
 #
 # Usage from a script:
@@ -58,8 +58,8 @@ parse_mode_args() {
   DEPLOYMENT_MODE="${DEPLOYMENT_MODE:-${MODE:-k3d}}"
 
   case "$DEPLOYMENT_MODE" in
-    k3d|aks) ;;
-    *) error "Unknown --mode='$DEPLOYMENT_MODE'. Valid: k3d, aks." ;;
+    k3d|aks|stackit) ;;
+    *) error "Unknown --mode='$DEPLOYMENT_MODE'. Valid: k3d, aks, stackit." ;;
   esac
 
   # Domain / port defaults per mode. Override via PLATFORM_DOMAIN env var.
@@ -71,6 +71,11 @@ parse_mode_args() {
       ;;
     aks)
       PLATFORM_DOMAIN="${PLATFORM_DOMAIN:-eu-sovereigndataplatform.com}"
+      PLATFORM_PORT="${PLATFORM_PORT:-443}"
+      IS_LOCAL="no"; IS_CLOUD="yes"
+      ;;
+    stackit)
+      PLATFORM_DOMAIN="${PLATFORM_DOMAIN:-freshstackable.com}"
       PLATFORM_PORT="${PLATFORM_PORT:-443}"
       IS_LOCAL="no"; IS_CLOUD="yes"
       ;;
@@ -132,7 +137,7 @@ require_context() {
   local ctx
   ctx="$(kubectl config current-context 2>/dev/null || true)"
   if [[ -z "$ctx" ]]; then
-    error "no kubectl context set. Run 'make cluster' (mode=$DEPLOYMENT_MODE) or 'make aks-context' (mode=aks)."
+    error "no kubectl context set. Run 'make cluster' (k3d), 'make aks-context' (aks), or 'export KUBECONFIG=infrastructure/stackit/terraform/kubeconfig.yaml' (stackit)."
   fi
   case "$DEPLOYMENT_MODE" in
     k3d)
@@ -145,6 +150,12 @@ require_context() {
         *) error "mode=aks but kubectl context '$ctx' is not an AKS cluster. Run 'make aks-context'." ;;
       esac
       ;;
+    stackit)
+      case "$ctx" in
+        udp-stackit|*stackit*) ;;
+        *) error "mode=stackit but kubectl context '$ctx' is not a StackIT SKE cluster. Run 'export KUBECONFIG=infrastructure/stackit/terraform/kubeconfig.yaml'." ;;
+      esac
+      ;;
   esac
   log "mode=$DEPLOYMENT_MODE  context=$ctx  domain=$PLATFORM_DOMAIN"
 }
@@ -155,8 +166,9 @@ require_context() {
 require_storage_class() {
   local expected
   case "$DEPLOYMENT_MODE" in
-    k3d) expected="local-path" ;;
-    aks) expected="managed-csi" ;;
+    k3d)     expected="local-path" ;;
+    aks)     expected="managed-csi" ;;
+    stackit) expected="premium-perf1-stackit" ;;
   esac
   if ! kubectl get storageclass "$expected" >/dev/null 2>&1; then
     warn "expected StorageClass '$expected' not found in cluster (mode=$DEPLOYMENT_MODE)."

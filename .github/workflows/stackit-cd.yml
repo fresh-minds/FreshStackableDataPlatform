@@ -1,0 +1,139 @@
+# Continuous deploy: bij elke push naar main re-apply alle platform-manifests
+# op het StackIT SKE cluster en publish een verse portal-bundle.
+#
+# Smoke draait NIET hier — die zit in .github/workflows/stackit-smoke.yml en
+# wordt automatisch getriggerd via `workflow_run` zodra deze CD groen is.
+#
+# Path-filter: alleen runnen als iets verandert dat het cluster-state
+# beïnvloedt. Doc-only of data-generation changes triggeren géén deploy.
+#
+# Vereiste secret: STACKIT_SA_KEY — het volledige service-account key JSON
+# (zoals gedownload uit de StackIT portal of via `stackit service-account key
+# create -o json`). Dedicated SA met `owner` op project udp_resource —
+# zie `feedback_stackit_ske_managed_sa.md`: gebruik NIET een `*.ske.sa.stackit.cloud`
+# SA, die wordt door SKE zelf gewipet.
+name: stackit-cd
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'platform/**'
+      - 'platform-overlays/**'
+      - 'infrastructure/**'
+      - 'portal/**'
+      - 'scripts/**'
+      - 'opa-policies-src/**'
+      - 'dbt/**'
+      - 'nifi-flows/**'
+      - 'Makefile'
+      - '.github/workflows/stackit-cd.yml'
+
+# Eén SKE-deploy tegelijk. Niet cancellen — een half afgebroken apply kan
+# het cluster in een rare staat achterlaten.
+concurrency:
+  group: stackit-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read   # ghcr.io image-pulls (portal-build dependencies)
+
+env:
+  STACKIT_PROJECT_ID: 442855d5-308d-4e93-95ec-e1a959d6846a
+  STACKIT_CLUSTER_NAME: udp-stackit
+  STACKIT_REGION: eu01
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repo @ ${{ github.sha }}
+        uses: actions/checkout@v4
+
+      - name: Setup Python (voor render-trino-catalogs.py)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyYAML (vereist door render-trino-catalogs.py)
+        run: pip install pyyaml
+
+      - name: Setup Node.js (voor portal-build)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: portal/package-lock.json
+
+      - name: Install StackIT CLI
+        run: |
+          curl -fsSL -o /tmp/stackit.tar.gz \
+            https://github.com/stackitcloud/stackit-cli/releases/latest/download/stackit-cli_linux_amd64.tar.gz
+          sudo tar -xzf /tmp/stackit.tar.gz -C /usr/local/bin stackit
+          stackit --version
+
+      - name: Stage StackIT SA key
+        # Schrijf de JSON-key naar disk — de provider/CLI leest hem via env var.
+        run: |
+          umask 077
+          mkdir -p "$HOME/.config/stackit"
+          printf '%s' '${{ secrets.STACKIT_SA_KEY }}' > "$HOME/.config/stackit/sa-key.json"
+          # Sanity: valid JSON met de juiste velden? (faalt fail-fast als
+          # het secret leeg / verkeerd is)
+          jq -e '.credentials.iss and .credentials.kid' \
+            "$HOME/.config/stackit/sa-key.json" >/dev/null
+          echo "STACKIT_SERVICE_ACCOUNT_KEY_PATH=$HOME/.config/stackit/sa-key.json" >> "$GITHUB_ENV"
+
+      - name: Check cluster state
+        id: state
+        run: |
+          # `stackit ske cluster describe` faalt netjes als de cluster
+          # gehiberned / gestopt is. Skip deploy met ::warning:: i.p.v. een
+          # rode run zodat een bewuste cost-save mode geen pager triggert.
+          STATE=$(stackit ske cluster describe "$STACKIT_CLUSTER_NAME" \
+            --project-id "$STACKIT_PROJECT_ID" \
+            -o json 2>/dev/null | jq -r .state || echo "Unknown")
+          echo "Cluster state: $STATE"
+          if [[ "$STATE" != "STATE_HEALTHY" && "$STATE" != "STATE_RECONCILING" ]]; then
+            echo "::warning title=SKE cluster is $STATE::Deploy skipped — wake the cluster en re-trigger deze workflow."
+            echo "SKIP_DEPLOY=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Get SKE kubeconfig
+        if: env.SKIP_DEPLOY != 'true'
+        run: |
+          mkdir -p "$HOME/.kube"
+          stackit ske kubeconfig create "$STACKIT_CLUSTER_NAME" \
+            --project-id "$STACKIT_PROJECT_ID" \
+            --expiration-seconds 7200 \
+            -o json \
+            --verbosity error \
+            | jq -r .kubeconfig > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          kubectl config current-context
+          kubectl get nodes -o wide
+
+      - name: Apply platform manifests (make stackit-deploy)
+        if: env.SKIP_DEPLOY != 'true'
+        run: make stackit-deploy
+
+      - name: Build + publish portal (make stackit-portal-publish)
+        if: env.SKIP_DEPLOY != 'true'
+        run: make stackit-portal-publish
+
+      - name: Dump pod-status bij failure
+        if: failure() && env.SKIP_DEPLOY != 'true'
+        run: |
+          echo "::group::Pods across UWV namespaces"
+          for ns in uwv-platform uwv-auth uwv-data uwv-meta ingress-nginx; do
+            echo "--- $ns ---"
+            kubectl -n "$ns" get pods -o wide 2>/dev/null || true
+          done
+          echo "::endgroup::"
+          echo "::group::Recent events (laatste 50)"
+          kubectl get events --all-namespaces \
+            --sort-by=.lastTimestamp 2>/dev/null \
+            | tail -n 50 || true
+          echo "::endgroup::"

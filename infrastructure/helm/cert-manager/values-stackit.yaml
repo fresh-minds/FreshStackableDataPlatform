@@ -1,0 +1,13 @@
+# cert-manager — StackIT SKE overrides.
+#
+# Gardener (de Kubernetes-distributie waar SKE op draait) handhaaft het
+# K8s "best-practices" advies dat webhook timeoutSeconds <= 15 moet zijn,
+# omdat een hoge timeout de API-server kan blokkeren als de webhook hangt.
+# Chart-default is 30; zonder deze override patcht Gardener de webhook bij
+# elke deploy terug naar 15 én plakt een `gardener.cloud/warning` annotatie,
+# wat hibernation blokkeert met "RemediatedWebhooks ... is problematic".
+#
+# Door het hier expliciet op 15 te zetten matcht de chart Gardener's
+# verwachting en blijft er niets te remedieren.
+webhook:
+  timeoutSeconds: 15

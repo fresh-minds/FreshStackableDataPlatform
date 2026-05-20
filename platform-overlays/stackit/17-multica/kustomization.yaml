@@ -1,0 +1,26 @@
+# StackIT SKE overlay for platform/17-multica.
+# No `multica-public` entry in infrastructure/stackit/public-ingresses.yaml so
+# this overlay owns AKS public access. cert-manager annotation flipped to
+# letsencrypt-prod for a real public cert.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/17-multica
+patches:
+  - target:
+      kind: Ingress
+      name: multica
+    patch: |-
+      - op: replace
+        path: /metadata/annotations/cert-manager.io~1cluster-issuer
+        value: letsencrypt-prod
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: multica.freshstackable.com
+      - op: replace
+        path: /spec/rules/0/host
+        value: multica.freshstackable.com
+  - path: configmap-oauth2-proxy-stackit.yaml
+    target:
+      kind: ConfigMap
+      name: multica-oauth2-proxy-config
