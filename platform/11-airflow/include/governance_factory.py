@@ -33,14 +33,15 @@ DEFAULT_ARGS = {
     "owner": "data-steward",
     "depends_on_past": False,
     "email_on_failure": False,
-    # 3 retries met exponentiele backoff zodat transient pressure op de
-    # shared Postgres (Hive/OM/Airflow/Superset delen één instance,
-    # max_connections=100) of korte OM-API hapering niet meteen het hele
-    # DAG-run laat falen. Max delay 30min houdt het redelijk.
-    "retries": 3,
-    "retry_delay": timedelta(minutes=5),
-    "retry_exponential_backoff": True,
-    "max_retry_delay": timedelta(minutes=30),
+    # 2 retries om transient druk op de shared Postgres (Hive/OM/Airflow/
+    # Superset delen één instance, max_connections=100) of korte OM-API
+    # hapering te overleven. GEEN exponential backoff: de Airflow 3
+    # KubernetesExecutor JWT-token heeft een TTL van 600s — als de
+    # retry-wachttijd > 10min wordt, verloopt het token in de queued-fase
+    # en faalt de retry met "Invalid auth token: Signature has expired".
+    # 3min fixed retry-delay blijft ruim binnen het JWT-venster.
+    "retries": 2,
+    "retry_delay": timedelta(minutes=3),
     # Hard cap zodat een hangende OM-ingest niet uren in queued/running blijft
     # staan en de volgende scheduled-run blokkeert (max_active_runs=1).
     "execution_timeout": timedelta(minutes=20),

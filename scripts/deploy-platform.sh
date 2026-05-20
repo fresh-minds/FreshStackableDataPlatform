@@ -129,6 +129,26 @@ for layer in "${LAYERS[@]}"; do
   fi
 done
 
+# openmetadata-uwv-config wordt door kustomize in `uwv-meta` aangemaakt
+# (zie platform/13-openmetadata-config/kustomization.yaml: configMapGenerator
+# heeft `namespace: uwv-meta`). De governance_om_ingest DAG en de KPO-tasks
+# in 13-openmetadata-config/*-cronjob.yaml draaien echter in `uwv-platform`
+# en mounten de CM uit hun eigen namespace. Zonder deze copy-stap blijft
+# de `uwv-platform`-kopie stale na elke YAML-update onder services/ —
+# bootstrap.sh doet 'm één keer bij eerste install, maar incremental
+# deploys moeten 'm hier opnieuw doen.
+mirror_om_config_cm() {
+  if kubectl -n uwv-meta get configmap openmetadata-uwv-config >/dev/null 2>&1; then
+    kubectl -n uwv-meta get configmap openmetadata-uwv-config -o yaml \
+      | sed -e 's/namespace: uwv-meta/namespace: uwv-platform/' \
+            -e '/resourceVersion:/d' -e '/uid:/d' -e '/creationTimestamp:/d' \
+      | kubectl apply -f - >/dev/null \
+      && log "  openmetadata-uwv-config gespiegeld naar uwv-platform" \
+      || printf '\033[1;33m!!\033[0m mirror van openmetadata-uwv-config naar uwv-platform faalde\n'
+  fi
+}
+mirror_om_config_cm
+
 # CoreDNS-override voor in-cluster resolutie van *.uwv-platform.local.
 # Achtergrond: k3d kopieert de host-/etc/hosts naar de cluster-resolver
 # zodat alle hostnames die de gebruiker daar heeft staan (127.0.0.1
@@ -328,6 +348,9 @@ print(mf.decrypt(b'${ENCRYPTED}').decode())
       --from-literal=jwtToken="$JWT" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
     kubectl -n uwv-meta delete job openmetadata-init --ignore-not-found >/dev/null 2>&1 || true
     kubectl apply -k "$ROOT/platform/13-openmetadata-config" >/dev/null 2>&1 || true
+    # De re-apply hierboven update de CM in uwv-meta; mirror opnieuw naar
+    # uwv-platform zodat de DAG/CronJobs de verse YAML zien (zie helper).
+    mirror_om_config_cm
     printf '\033[1;32mOK\033[0m OpenMetadata admin-JWT geseed + init-Job opnieuw getriggerd\n'
   else
     printf '\033[1;33m!!\033[0m JWT-decrypt faalde (OM nog niet klaar?) — re-run deploy-platform later\n'

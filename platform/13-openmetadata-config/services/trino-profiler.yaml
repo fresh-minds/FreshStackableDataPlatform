@@ -11,8 +11,17 @@ source:
       # executor-pod (state mismatch op de Airflow 3 SDK heartbeat) en
       # zetten de shared Postgres onder druk. Voor een synthetic-data
       # reference-platform is een lichtere sample voldoende om
-      # auto-PII + null-fractie + distinct-count te demonstreren.
+      # null-fractie + distinct-count + value-distribution te demonstreren.
       profileSample: 5
+      # Auto-PII-classification is GEEN onderdeel meer van Profiler in
+      # OM 1.5+ (incl. 1.12.8). `processPiiSensitive` faalt overal — zowel
+      # onder sourceConfig.config als onder processor.config — met
+      # "Extra parameter 'processPiiSensitive'". OM heeft het verplaatst
+      # naar een eigen `AutoClassification` workflow (`metadata classify`).
+      # Voor UWV-platform reference: zie roadmap voor losse AutoClassification-
+      # DAG; nu valt PII-tagging op handmatige tag-assignment via dbt-meta-
+      # mapping (zie 13-openmetadata-config/dbt-meta-mapping.yaml en de
+      # enrich_om_from_dbt_meta.py-stap in deze DAG).
       # `generateSampleData` is verwijderd in OM 1.6+
       # Schema-filter beperkt tot de schemas die echt data hebben in de
       # synthetic-load — voorkomt verloren tijd op lege schemas en
@@ -28,12 +37,7 @@ source:
           - uc07_dq_polisadm
 processor:
   type: orm-profiler
-  config:
-    # Auto-PII-classification — OM scant kolom-samples voor BSN-/IBAN-/
-    # email-/telefoon-patronen en past PII.* tags automatisch toe
-    # (improvements 9.2). Voorgestelde tags moeten in de UI bevestigd
-    # worden voordat ze effectief worden (false-positive control).
-    processPiiSensitive: true
+  config: {}
 sink:
   type: metadata-rest
   config: {}
