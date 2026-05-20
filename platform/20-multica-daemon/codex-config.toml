@@ -14,6 +14,27 @@
 model_provider = "azure"
 model = "gpt-5.4-nano"
 
+# Bypass codex' bubblewrap sandbox.
+#
+# Codex normally wraps its shell tool in bubblewrap (bwrap). bwrap needs
+# the kernel to allow unprivileged user namespaces — k3d's node-container
+# kernel doesn't (sysctl kernel.unprivileged_userns_clone unset, and
+# elevating that would require running the pod privileged: true).
+# Result: every codex shell command inside this pod fails with
+# "bwrap: No permissions to create a new namespace".
+#
+# Skipping codex' sandbox here is safe because the POD is the sandbox:
+# - runAsNonRoot=true, runAsUser=1001 (no root inside)
+# - capabilities: drop ALL (no SYS_ADMIN, no CAP_NET_ADMIN, etc.)
+# - automountServiceAccountToken=false (no K8s API access)
+# - workspace volume is the only writable mount; image FS is RO-ish
+# - egress is whatever the cluster NetworkPolicy says (today: open)
+#
+# `danger-full-access` is codex' label for "no sandbox" — equivalent to
+# the `--dangerously-bypass-approvals-and-sandbox` CLI flag.
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
+
 # Disable reasoning request/summary params globally. The project-form
 # Foundry /v1/responses surface rejects requests whose `reasoning` field
 # is `null` ("invalid_payload param=/reasoning"). Setting both to "none"

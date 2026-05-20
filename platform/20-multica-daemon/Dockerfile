@@ -48,6 +48,16 @@ RUN chmod +x /usr/local/bin/multica
 RUN npm install -g @openai/codex@0.130.0 \
     && npm cache clean --force
 
+# Replace the npm-installed `codex` shim with a wrapper that disables
+# codex' bubblewrap sandbox for daemon-spawned per-task runs. The real
+# binary moves to /usr/local/bin/codex.real. See codex-wrapper.sh for
+# the full rationale (bwrap can't create namespaces in this pod's
+# kernel/seccomp/cap profile; the pod itself is the sandbox).
+COPY codex-wrapper.sh /usr/local/bin/codex-wrapper.sh
+RUN mv /usr/local/bin/codex /usr/local/bin/codex.real \
+    && mv /usr/local/bin/codex-wrapper.sh /usr/local/bin/codex \
+    && chmod +x /usr/local/bin/codex
+
 # Non-root user. The Debian base ships a `daemon` user, and node:20 ships
 # a `node` user at uid 1000, so use `multica` at uid 1001. The daemon
 # writes to ~/.multica and codex to ~/.codex — both go on the workspace

@@ -18,10 +18,12 @@ if [[ -z "${AZURE_OPENAI_API_KEY:-}" ]]; then
 fi
 
 # --- 1a. Codex config on the writable volume ------------------------------
+# Always re-copy the template so a fresh image (with config tweaks like
+# sandbox_mode or new providers) takes effect on the next rollout. The
+# PVC still holds per-task scratch under ~/.codex/.tmp, so we only
+# overwrite the single config.toml file — nothing under it.
 mkdir -p "$HOME/.codex"
-if [[ ! -f "$HOME/.codex/config.toml" ]]; then
-  cp /etc/codex/config.toml.template "$HOME/.codex/config.toml"
-fi
+cp /etc/codex/config.toml.template "$HOME/.codex/config.toml"
 
 # --- 2. Point CLI at the Multica server ------------------------------------
 : "${MULTICA_SERVER_URL:?MULTICA_SERVER_URL must be set (e.g. http://multica-backend.uwv-platform:80)}"
