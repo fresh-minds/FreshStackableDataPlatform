@@ -286,6 +286,11 @@ data:
             ("uc07_dq_polisadm", "mart_uc07_dq_dagrapport"),
             ("uc11_klantreis", "mart_uc11_klantreis_events"),
             ("uc11_klantreis", "mart_uc11_klantreis_phases"),
+            ("uc12_focus_finops", "mart_uc12_focus_spend_monthly"),
+            ("uc12_focus_finops", "mart_uc12_focus_service_breakdown"),
+            ("uc12_focus_finops", "mart_uc12_focus_commitment_utilization"),
+            ("uc12_focus_finops", "mart_uc12_focus_top_resources"),
+            ("uc12_focus_finops", "mart_uc12_focus_savings"),
             ("dq_overview", "mart_dq_overview"),
             ("dq_overview", "mart_dq_violations"),
         ]

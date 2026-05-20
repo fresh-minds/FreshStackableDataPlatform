@@ -731,6 +731,40 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "grafana",
+      "name": "Grafana",
+      "description": "OIDC-client voor Grafana auth.generic_oauth — vervangt de lokale login op /login. Redirect-URIs dekken alle drie de modes (k3d/aks/stackit) zodat dezelfde realm bruikbaar is per omgeving.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-grafana-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://grafana.uwv-platform.local:8443/login/generic_oauth",
+        "https://grafana.uwv-platform.local/login/generic_oauth",
+        "https://grafana.eu-sovereigndataplatform.com/login/generic_oauth",
+        "https://grafana.freshstackable.com/login/generic_oauth"
+      ],
+      "webOrigins": [
+        "https://grafana.uwv-platform.local:8443",
+        "https://grafana.uwv-platform.local",
+        "https://grafana.eu-sovereigndataplatform.com",
+        "https://grafana.freshstackable.com"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "https://grafana.uwv-platform.local:8443/*##https://grafana.uwv-platform.local/*##https://grafana.eu-sovereigndataplatform.com/*##https://grafana.freshstackable.com/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "fullScopeAllowed": true
     }
   ],
   "clientScopes": [

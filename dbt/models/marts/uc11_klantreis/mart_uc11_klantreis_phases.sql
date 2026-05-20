@@ -37,7 +37,7 @@ with_fase as (
             when event_type = 'wia.aanvraag.toegekend_wga'              then 'wga'
             when event_type = 'wia.aanvraag.toegekend_iva'              then 'iva'
             when event_type = 'wia.aanvraag.afgewezen'                  then 'tussen_dienstverband'
-            when event_type = 'wajong.dossier.geopend'                  then 'wajong_actief'
+            when event_type = 'wajong.dossier'                  then 'wajong_actief'
             else null   -- crm.contact.* en persoon.aangemaakt → geen fase-wissel
         end as fase
     from src

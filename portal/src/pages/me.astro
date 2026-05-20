@@ -5,7 +5,7 @@ import Eyebrow from '../components/primitives/Eyebrow.astro';
 import Button from '../components/primitives/Button.astro';
 import Tag from '../components/primitives/Tag.astro';
 import { roles } from '../data/roles';
-import { components, stages } from '../data/components';
+import { components } from '../data/components';
 import { shortcuts } from '../data/role-shortcuts';
 import roleMappings from '../data/role-mappings.generated.json';
 import { DOCS_URL } from '../data/external-links';
@@ -20,7 +20,6 @@ const capabilities = (roleMappings as { uwv_role_mappings: { roles: Record<strin
 const payload = {
   roles,
   components,
-  stages,
   shortcuts,
   capabilities,
 };
@@ -102,21 +101,6 @@ const payload = {
     </div>
   </section>
 
-  <section class="me-section" id="role-tools" hidden>
-    <header class="me-section-head">
-      <Eyebrow>Tools</Eyebrow>
-      <h2>Jouw tools</h2>
-      <p>Gegroepeerd per laag. Klik om te openen — SSO regelt dat je niet opnieuw hoeft in te loggen.</p>
-    </header>
-    <div id="tool-stages"></div>
-
-    <details class="other-tools">
-      <summary>Tools die je <em>niet</em> gebruikt — voor referentie</summary>
-      <p class="me-section-note">Toegang is geblokkeerd door OPA en Keycloak.</p>
-      <div id="other-stages"></div>
-    </details>
-  </section>
-
   <section class="me-section" id="role-access-request" hidden>
     <header class="me-section-head">
       <Eyebrow>Toegang</Eyebrow>
@@ -163,7 +147,6 @@ const payload = {
       short: string; purpose: string; icon: string;
       url: string | null; prometheusJob?: string; rolesUsing: string[];
     }
-    interface StageMeta { id: string; title: string; blurb: string; icon: string; kind: string; category?: string; }
     interface Shortcut { title: string; hint: string; component: string; href: string; }
     interface Capability {
       catalogs: string[]; schemas: string[] | null; purposes: string[];
@@ -174,7 +157,6 @@ const payload = {
     interface Payload {
       roles: RoleMeta[];
       components: Component[];
-      stages: StageMeta[];
       shortcuts: Record<string, Shortcut[]>;
       capabilities: Record<string, Capability>;
     }
@@ -208,60 +190,9 @@ const payload = {
       const grid = document.getElementById('picker-grid')!;
       grid.innerHTML = pickerHtml();
       document.getElementById('role-picker')!.hidden = false;
-      ['role-view','role-caps','role-shortcuts-section','role-upload','role-arch','role-tools','role-access-request','role-help'].forEach((id) => {
+      ['role-view','role-caps','role-shortcuts-section','role-upload','role-arch','role-access-request','role-help'].forEach((id) => {
         document.getElementById(id)!.hidden = true;
       });
-    }
-
-    /** Mirrors ComponentCard.astro structure — keep them in sync. */
-    function renderToolCard(c: Component, emph: boolean): string {
-      const isExternal = !!c.url && c.url.startsWith('http');
-      const linkAttrs = c.url
-        ? `href="${escape(c.url)}"${isExternal ? ' target="_blank" rel="noopener noreferrer"' : ''}`
-        : 'href="#" onclick="return false;"';
-      const status = c.prometheusJob
-        ? `<span class="status-dot status-dot--md" data-status-job="${escape(c.prometheusJob)}"></span>`
-        : '';
-      return `
-        <article class="comp ${emph ? 'comp-emph' : ''}" data-component="${escape(c.id)}">
-          <header class="comp-head">
-            <span class="comp-icon-wrap">
-              <img class="comp-icon" src="${escape(c.icon)}" alt="" width="24" height="24" />
-            </span>
-            <div class="comp-title">
-              <span class="eyebrow">${escape(c.layer)}</span>
-              <h3>
-                <a ${linkAttrs}>${escape(c.name)}${isExternal ? '<span class="comp-ext"> ↗</span>' : ''}</a>
-              </h3>
-            </div>
-            ${status}
-          </header>
-          <p class="comp-purpose">${escape(c.purpose)}</p>
-          <p class="comp-short">${escape(c.short)}</p>
-          <footer class="comp-foot">
-            <span class="tag tag--mono">${escape(c.stage)}</span>
-          </footer>
-        </article>`;
-    }
-
-    /** Mirrors StageSection.astro structure — keep in sync. */
-    function renderStageGroup(
-      stage: StageMeta,
-      stageComps: Component[],
-      emphasizeIds: Set<string>,
-    ): string {
-      if (stageComps.length === 0) return '';
-      const cards = stageComps.map((c) => renderToolCard(c, emphasizeIds.has(c.id))).join('');
-      const catCls = stage.category ? `stage-section--cat-${stage.category}` : '';
-      return `
-        <section class="stage-section ${catCls}" data-stage="${escape(stage.id)}">
-          <header class="stage-section-head">
-            <span class="eyebrow eyebrow--rule">${escape(stage.id)}</span>
-            <h3>${escape(stage.title)}</h3>
-            <p>${escape(stage.blurb)}</p>
-          </header>
-          <div class="stage-section-grid">${cards}</div>
-        </section>`;
     }
 
     function showRole(roleId: string) {
@@ -272,7 +203,7 @@ const payload = {
         return;
       }
 
-      ['role-view','role-caps','role-shortcuts-section','role-upload','role-arch','role-tools','role-access-request','role-help'].forEach((id) => {
+      ['role-view','role-caps','role-shortcuts-section','role-upload','role-arch','role-access-request','role-help'].forEach((id) => {
         document.getElementById(id)!.hidden = false;
       });
       document.getElementById('role-picker')!.hidden = true;
@@ -321,32 +252,13 @@ const payload = {
               </a>`;
           }).join('');
 
-      // ─── Tools per stage (mijn) en niet-mijn ───
+      // ─── Per-rol highlight in het reference-architecture diagram ───
       const myIds = new Set(
         data.components
           .filter((c) => c.rolesUsing.includes('*') || c.rolesUsing.includes(roleId))
           .map((c) => c.id),
       );
 
-      const toolStagesEl  = document.getElementById('tool-stages')!;
-      const otherStagesEl = document.getElementById('other-stages')!;
-      const stageOrder = ['identity','ingestion','storage','transformation','consumption','discovery','pipeline','observability'];
-
-      toolStagesEl.innerHTML = stageOrder.map((sid) => {
-        const stage = data.stages.find((s) => s.id === sid);
-        if (!stage) return '';
-        const stageComps = data.components.filter((c) => c.stage === sid && myIds.has(c.id));
-        return renderStageGroup(stage, stageComps, myIds);
-      }).join('');
-
-      otherStagesEl.innerHTML = stageOrder.map((sid) => {
-        const stage = data.stages.find((s) => s.id === sid);
-        if (!stage) return '';
-        const stageComps = data.components.filter((c) => c.stage === sid && !myIds.has(c.id));
-        return renderStageGroup(stage, stageComps, new Set());
-      }).join('') || '<p class="me-section-note">Je rol gebruikt alle componenten.</p>';
-
-      // ─── Per-rol highlight in het reference-architecture diagram ───
       const arch = document.querySelector<HTMLElement>('[data-arch-host] .ref-arch');
       if (arch) {
         arch.dataset.activeRole = roleId;
@@ -602,28 +514,6 @@ const payload = {
       color: var(--accent);
       flex-shrink: 0;
     }
-
-    /* ─── Other-tools details ─── */
-    .other-tools { margin-top: var(--space-7); }
-    .other-tools summary {
-      cursor: pointer;
-      color: var(--ink-3);
-      font-size: var(--text-meta);
-      padding: var(--space-2) 0;
-      list-style: none;
-    }
-    .other-tools summary::-webkit-details-marker { display: none; }
-    .other-tools summary::before {
-      content: '▸ ';
-      font-family: var(--font-mono);
-      font-size: 11px;
-      transition: transform 0.15s;
-      display: inline-block;
-      margin-right: var(--space-1);
-    }
-    .other-tools[open] summary::before { transform: rotate(90deg); }
-    .other-tools summary:hover { color: var(--ink-1); }
-    .other-tools summary em { font-style: italic; color: var(--ink-1); }
 
     /* ─── Picker grid ─── */
     .role-picker-grid {

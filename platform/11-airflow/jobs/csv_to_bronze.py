@@ -101,10 +101,13 @@ def pa_type_for_column(col: dict) -> pa.DataType:
         scale = int(col.get("scale", 6))
         return pa.decimal128(precision, scale)
     if t == "timestamp":
-        # FOCUS-export gebruikt ISO 8601 met optionele tz; pyarrow's CSV-
-        # reader parsed dat correct mits we het type expliciet meegeven.
+        # FOCUS-export gebruikt ISO 8601 met optionele "Z"-suffix. Pyarrow's
+        # CSV-converter weigert die suffix wanneer target-type tz-aware is
+        # ("CSV conversion error to timestamp[us, tz=UTC]: invalid value
+        # '2026-02-01T00:00:00Z'"). Daarom laden we als naive timestamp;
+        # silver-model voegt de UTC-context toe (alle FOCUS-data is in UTC).
         # Microseconde-precisie matcht Trino's default timestamp(6).
-        return pa.timestamp("us", tz="UTC")
+        return pa.timestamp("us")
     if t not in PA_TYPE:
         sys.exit(f"ERROR: onbekend kolom-type {t!r} voor kolom {col.get('name')!r}")
     return PA_TYPE[t]

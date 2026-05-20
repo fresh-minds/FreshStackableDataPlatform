@@ -65,6 +65,49 @@ grafana:
     tls:
       - hosts: [grafana.uwv-platform.local]
         secretName: grafana-tls
+  # Keycloak SSO via OIDC. De `grafana`-client zit in realm-uwv.json met
+  # redirect-URIs voor alle drie de modes (k3d/aks/stackit). De k3d-defaults
+  # staan hier; values-aks.yaml en values-stackit.yaml overrulen root_url +
+  # de Keycloak-endpoints met de publieke domeinen.
+  #
+  # role_attribute_path: realm-roles uit `roles`-claim mappen op Grafana-rollen.
+  # platform_admin → Admin, data_engineer → Editor, rest → Viewer.
+  # auto_login: false zodat de built-in /login (admin-account) bereikbaar blijft
+  # via "Sign in with Keycloak"-knop; admin/CHANGE-ME blijft de break-glass-route.
+  #
+  # tls_skip_verify_insecure=true is dev-only nodig omdat de pod het self-signed
+  # uwv-platform-issuer-cert van keycloak.uwv-platform.local niet kan verifiëren
+  # (uwv-ca-bundle ConfigMap zit in uwv-platform, niet uwv-monitoring; mounten
+  # zou kunnen maar voegt complexiteit toe voor een dev-only opstelling).
+  # values-aks/values-stackit zetten 'm uit (publieke Let's Encrypt-certs).
+  #
+  # assertNoLeakedSecrets=false: chart-default lint-check verbiedt secrets
+  # inline in values. Onze hele repo gebruikt `uwv-dev-only-CHANGE-ME-*`
+  # placeholders openlijk (zie realm-uwv.json en dev-secrets.yaml), dus deze
+  # check is hier inconsistent — productie zou via SealedSecrets/SOPS lopen.
+  assertNoLeakedSecrets: false
+  grafana.ini:
+    server:
+      root_url: "https://grafana.uwv-platform.local:8443"
+    auth:
+      disable_login_form: false
+      oauth_auto_login: false
+    auth.generic_oauth:
+      enabled: true
+      name: "Keycloak"
+      allow_sign_up: true
+      client_id: "grafana"
+      client_secret: "uwv-dev-only-CHANGE-ME-grafana-secret"
+      scopes: "openid profile email roles"
+      auth_url: "https://keycloak.uwv-platform.local:8443/realms/uwv/protocol/openid-connect/auth"
+      token_url: "https://keycloak.uwv-platform.local:8443/realms/uwv/protocol/openid-connect/token"
+      api_url: "https://keycloak.uwv-platform.local:8443/realms/uwv/protocol/openid-connect/userinfo"
+      tls_skip_verify_insecure: true
+      role_attribute_path: "contains(roles[*], 'platform_admin') && 'Admin' || contains(roles[*], 'data_engineer') && 'Editor' || 'Viewer'"
+      role_attribute_strict: false
+      login_attribute_path: "preferred_username"
+      name_attribute_path: "name"
+      email_attribute_path: "email"
 
 # Operator
 prometheusOperator:

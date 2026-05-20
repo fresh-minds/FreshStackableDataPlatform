@@ -19,6 +19,16 @@ import { docsArchitectureUrl } from '../data/external-links';
 type Layer = 'bronze' | 'silver' | 'gold';
 type TrinoTarget = { table: string; supersetDb: string; note: string };
 type ColumnSpec = { name: string; type: string; required: boolean };
+type Observability = {
+  // Airflow DAG-namen — voor "open in Airflow"-links.
+  // Volgt convention uit gold_factory.py: gold_<uc-id>_<uc-name>.
+  ingestDag: string;
+  silverDag: string;
+  goldDag: string;
+  // Gold-bucket prefix zodat we naar de juiste schema-folder kunnen
+  // linken (niet alle bronnen volgen dezelfde mart-folder conventie).
+  goldBucketPrefix: string;
+};
 type Source = {
   name: string;
   title: string;
@@ -38,6 +48,9 @@ type Source = {
   // Optioneel — als de bron al een Superset-dashboard heeft, toon link.
   dashboardSlug?: string;
   dashboardTitle?: string;
+  // DAG-namen + bucket-paden voor de "Inkijken"-sectie (links naar Airflow,
+  // MinIO, OpenSearch, OpenMetadata, Grafana).
+  observability: Observability;
 };
 
 const sources: Source[] = [
@@ -84,6 +97,12 @@ const sources: Source[] = [
       'FROM   gold.uc_klant_tev.mart_uc_klant_tev_kanaal_maand\n' +
       'ORDER  BY maand DESC, gemid_score_gewogen DESC\n' +
       'LIMIT  50;',
+    observability: {
+      ingestDag: 'ingest_csv_klanttevredenheid',
+      silverDag: 'silver_klantcontact',
+      goldDag: 'gold_uc_klant_tev_klanttevredenheid',
+      goldBucketPrefix: 'uc_klant_tev',
+    },
   },
   {
     name: 'focus_billing',
@@ -180,6 +199,12 @@ const sources: Source[] = [
       'LIMIT  50;',
     dashboardSlug: 'uc12-focus-finops',
     dashboardTitle: 'UC-12 — Cloud Cost (FOCUS / FinOps)',
+    observability: {
+      ingestDag: 'ingest_csv_focus_billing',
+      silverDag: 'silver_finops',
+      goldDag: 'gold_uc12_focus_finops',
+      goldBucketPrefix: 'uc12_focus_finops',
+    },
   },
 ];
 
@@ -231,7 +256,11 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
                   data-trino-note-bronze={s.trino.bronze.note}
                   data-trino-note-silver={s.trino.silver.note}
                   data-trino-note-gold={s.trino.gold.note}
-                  data-example-sql={s.exampleSql}>
+                  data-example-sql={s.exampleSql}
+                  data-obs-ingest={s.observability.ingestDag}
+                  data-obs-silver={s.observability.silverDag}
+                  data-obs-gold={s.observability.goldDag}
+                  data-obs-gold-prefix={s.observability.goldBucketPrefix}>
             {s.title}
           </option>
         ))}
@@ -256,6 +285,18 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
       <div class="csv-meta-row">
         <dt class="mono">KOLOMMEN</dt>
         <dd><span id="src-col-count">{defaultSource.expectedColumns.length}</span> · <span id="src-col-required">{defaultSource.expectedColumns.filter(c => c.required).length}</span> verplicht</dd>
+      </div>
+      <div class="csv-meta-row">
+        <dt class="mono">MINIO</dt>
+        <dd>
+          <a id="src-minio-link"
+             class="csv-meta-link"
+             href={`https://minio-console.uwv-platform.local:8443/browser/${defaultSource.bucket}/${encodeURIComponent(defaultSource.prefix + '/')}`}
+             target="_blank" rel="noopener noreferrer">
+            <span id="src-minio-link-label">{defaultSource.bucket}/{defaultSource.prefix}/</span>
+            <span class="csv-copy-hint">open ↗</span>
+          </a>
+        </dd>
       </div>
     </dl>
 
@@ -435,14 +476,95 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
     </div>
   </section>
 
+  <section class="csv-step">
+    <Eyebrow>04 · Inkijken</Eyebrow>
+    <h2>Live volgen — logs, data en lineage</h2>
+    <p class="csv-step-body">
+      Klik direct door naar het juiste venster om je upload door de keten te volgen.
+      Alle links openen in een nieuw tabblad en wijzen naar de exacte DAG, bucket
+      of tabel voor de geselecteerde bron.
+    </p>
+
+    <div class="csv-obs-grid">
+      <div class="csv-obs-card">
+        <header class="csv-obs-head">
+          <span class="csv-obs-tag mono">AIRFLOW</span>
+          <span class="csv-obs-sub">DAG-runs &amp; task-logs</span>
+        </header>
+        <ul class="csv-obs-list">
+          <li><a id="obs-airflow-ingest" target="_blank" rel="noopener noreferrer" href="#">Ingest-DAG&nbsp;<span class="csv-obs-arr">↗</span></a></li>
+          <li><a id="obs-airflow-silver" target="_blank" rel="noopener noreferrer" href="#">Silver-DAG&nbsp;<span class="csv-obs-arr">↗</span></a></li>
+          <li><a id="obs-airflow-gold" target="_blank" rel="noopener noreferrer" href="#">Gold-DAG&nbsp;<span class="csv-obs-arr">↗</span></a></li>
+        </ul>
+      </div>
+
+      <div class="csv-obs-card">
+        <header class="csv-obs-head">
+          <span class="csv-obs-tag mono">MINIO</span>
+          <span class="csv-obs-sub">data-bestanden per laag</span>
+        </header>
+        <ul class="csv-obs-list">
+          <li><a id="obs-minio-incoming" target="_blank" rel="noopener noreferrer" href="#">Incoming&nbsp;<span class="csv-obs-arr">↗</span></a></li>
+          <li><a id="obs-minio-processed" target="_blank" rel="noopener noreferrer" href="#">Processed&nbsp;<span class="csv-obs-arr">↗</span></a></li>
+          <li><a id="obs-minio-bronze" target="_blank" rel="noopener noreferrer" href="#">Bronze-tabel&nbsp;<span class="csv-obs-arr">↗</span></a></li>
+          <li><a id="obs-minio-gold" target="_blank" rel="noopener noreferrer" href="#">Gold-marts&nbsp;<span class="csv-obs-arr">↗</span></a></li>
+        </ul>
+      </div>
+
+      <div class="csv-obs-card">
+        <header class="csv-obs-head">
+          <span class="csv-obs-tag mono">OPENSEARCH</span>
+          <span class="csv-obs-sub">centrale pod-logs</span>
+        </header>
+        <ul class="csv-obs-list">
+          <li><a id="obs-opensearch-discover" target="_blank" rel="noopener noreferrer" href="#">Open Discover&nbsp;<span class="csv-obs-arr">↗</span></a></li>
+        </ul>
+        <p class="csv-obs-hint">Filter zelf op <code>kubernetes.pod_name : csv-to-bronze*</code></p>
+      </div>
+
+      <div class="csv-obs-card">
+        <header class="csv-obs-head">
+          <span class="csv-obs-tag mono">OPENMETADATA</span>
+          <span class="csv-obs-sub">catalog &amp; lineage</span>
+        </header>
+        <ul class="csv-obs-list">
+          <li><a id="obs-om-service" target="_blank" rel="noopener noreferrer" href="#">Open Trino-catalog&nbsp;<span class="csv-obs-arr">↗</span></a></li>
+        </ul>
+        <p class="csv-obs-hint" id="obs-om-hint">Navigeer naar de database &amp; tabel via de service-page.</p>
+      </div>
+
+      <div class="csv-obs-card">
+        <header class="csv-obs-head">
+          <span class="csv-obs-tag mono">GRAFANA</span>
+          <span class="csv-obs-sub">metrics &amp; dashboards</span>
+        </header>
+        <ul class="csv-obs-list">
+          <li><a id="obs-grafana-home" target="_blank" rel="noopener noreferrer" href="#">Dashboards&nbsp;<span class="csv-obs-arr">↗</span></a></li>
+        </ul>
+      </div>
+
+      <div class="csv-obs-card">
+        <header class="csv-obs-head">
+          <span class="csv-obs-tag mono">PROMETHEUS</span>
+          <span class="csv-obs-sub">alerts &amp; raw metrics</span>
+        </header>
+        <ul class="csv-obs-list">
+          <li><a id="obs-prometheus-alerts" target="_blank" rel="noopener noreferrer" href="#">Actieve alerts&nbsp;<span class="csv-obs-arr">↗</span></a></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
   <script>
     import { AwsClient } from 'aws4fetch';
 
     // Mapping platform-host → MinIO S3-API host. Dezelfde build draait op
-    // k3d (.local) én op AKS (.eu-sovereigndataplatform.com).
+    // k3d (.local), AKS (.eu-sovereigndataplatform.com), en StackIT SKE
+    // (.freshstackable.com).
     const MINIO_ENDPOINT_MAP: Record<string, string> = {
       'platform.uwv-platform.local':           'https://minio.uwv-platform.local:8443',
       'platform.eu-sovereigndataplatform.com': 'https://minio-api.eu-sovereigndataplatform.com',
+      'platform.freshstackable.com':           'https://minio-api.freshstackable.com',
     };
 
     // ── Source-keuze rendering ─────────────────────────────────────────────
@@ -466,6 +588,7 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
       dashboardTitle: string;
       trino: Record<Layer, { table: string; supersetDb: string; note: string }>;
       exampleSql: string;
+      obs: { ingestDag: string; silverDag: string; goldDag: string; goldPrefix: string };
     };
     const layers: Layer[] = ['bronze', 'silver', 'gold'];
 
@@ -491,6 +614,12 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
           gold:   { table: opt.dataset.trinoGold   ?? '', supersetDb: opt.dataset.supersetDbGold   ?? '', note: opt.dataset.trinoNoteGold   ?? '' },
         },
         exampleSql: opt.dataset.exampleSql ?? '',
+        obs: {
+          ingestDag:  opt.dataset.obsIngest     ?? '',
+          silverDag:  opt.dataset.obsSilver     ?? '',
+          goldDag:    opt.dataset.obsGold       ?? '',
+          goldPrefix: opt.dataset.obsGoldPrefix ?? '',
+        },
       };
     });
 
@@ -507,6 +636,7 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
           gold:   { table: '', supersetDb: '', note: '' },
         },
         exampleSql: '',
+        obs: { ingestDag: '', silverDag: '', goldDag: '', goldPrefix: '' },
       };
     }
 
@@ -516,25 +646,130 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
     }
 
     // ── Superset base-URL (host-aware) ────────────────────────────────────
-    // De portal kan draaien op meerdere hosts (k3d local, AKS public). De
-    // Superset-host wisselt mee — vermijd hardcoded .local-URLs.
+    // De portal kan draaien op meerdere hosts (k3d local, AKS public,
+    // StackIT SKE public). De Superset-host wisselt mee — vermijd hardcoded
+    // .local-URLs.
     const SUPERSET_BASE_MAP: Record<string, string> = {
       'platform.uwv-platform.local':           'https://superset.uwv-platform.local:8443',
       'platform.eu-sovereigndataplatform.com': 'https://superset.eu-sovereigndataplatform.com',
+      'platform.freshstackable.com':           'https://superset.freshstackable.com',
     };
     const supersetBase =
       SUPERSET_BASE_MAP[window.location.hostname] ??
       'https://superset.uwv-platform.local:8443';
 
+    // ── MinIO console base-URL (host-aware) ───────────────────────────────
+    // De MinIO console heeft een eigen subdomein per omgeving. De S3-API
+    // (waar de upload heen gaat) is een ander subdomein — zie
+    // MINIO_ENDPOINT_MAP hierboven.
+    const MINIO_CONSOLE_BASE_MAP: Record<string, string> = {
+      'platform.uwv-platform.local':           'https://minio-console.uwv-platform.local:8443',
+      'platform.eu-sovereigndataplatform.com': 'https://minio-console.eu-sovereigndataplatform.com',
+      // Note: StackIT exposes the MinIO Console UI at minio.freshstackable.com
+      // (the AKS `minio-console.<dom>` entry above is legacy — on AKS the
+      // console is actually reached via minio.eu-sovereigndataplatform.com
+      // per infrastructure/azure/public-ingresses.yaml).
+      'platform.freshstackable.com':           'https://minio.freshstackable.com',
+    };
+    const minioConsoleBase =
+      MINIO_CONSOLE_BASE_MAP[window.location.hostname] ??
+      'https://minio-console.uwv-platform.local:8443';
+
+    function minioBrowseUrl(bucket: string, prefix: string): string {
+      // MinIO console (>= RELEASE.2023-05-18) verwacht de prefix als
+      // base64-encoded path-segment — niet URL-encoded. Geverifieerd op
+      // RELEASE.2024-04-18: encodeURIComponent landt op de bucket-root, base64
+      // toont wél de juiste subfolder. Trailing slash dwingt folder-modus.
+      // btoa() is veilig: onze prefixes zijn ASCII (a-z, 0-9, /, -, _).
+      const p = prefix.endsWith('/') ? prefix : `${prefix}/`;
+      const b64 = btoa(p).replace(/=+$/, '');     // MinIO strip padding
+      return `${minioConsoleBase}/browser/${bucket}/${b64}`;
+    }
+
+    // ── Overige observability-tools (host-aware) ──────────────────────────
+    // Eén centrale mapping zodat we niet per tool een eigen MAP hoeven.
+    // Subdomeinen volgen het patroon `<service>.<basis>`.
+    const HOSTS: Record<string, Record<string, string>> = {
+      'platform.uwv-platform.local': {
+        airflow:      'https://airflow.uwv-platform.local:8443',
+        opensearch:   'https://opensearch.uwv-platform.local:8443',
+        openmetadata: 'https://openmetadata.uwv-platform.local:8443',
+        grafana:      'https://grafana.uwv-platform.local:8443',
+        prometheus:   'https://prometheus.uwv-platform.local:8443',
+      },
+      'platform.eu-sovereigndataplatform.com': {
+        airflow:      'https://airflow.eu-sovereigndataplatform.com',
+        opensearch:   'https://opensearch.eu-sovereigndataplatform.com',
+        openmetadata: 'https://openmetadata.eu-sovereigndataplatform.com',
+        grafana:      'https://grafana.eu-sovereigndataplatform.com',
+        prometheus:   'https://prometheus.eu-sovereigndataplatform.com',
+      },
+    };
+    function toolHost(name: string): string {
+      const map = HOSTS[window.location.hostname] ?? HOSTS['platform.uwv-platform.local'];
+      return map[name] ?? '';
+    }
+
+    function airflowDagUrl(dagId: string): string {
+      // Airflow 3 toont de grid-view direct op /dags/<id> (geen /grid-suffix
+      // meer zoals in Airflow 2.x). De /grid-route bestaat niet meer en geeft
+      // een lege/foutpagina.
+      return dagId
+        ? `${toolHost('airflow')}/dags/${encodeURIComponent(dagId)}`
+        : toolHost('airflow');
+    }
+
+    function opensearchDiscoverUrl(): string {
+      // Discover home zonder pre-filter. KQL-URL-params zijn versie-fragile in
+      // OpenSearch Dashboards (state-store-format wisselt per release); de
+      // gebruiker filtert zelf in de UI met bv. `kubernetes.pod_name : csv-to-bronze*`.
+      return `${toolHost('opensearch')}/app/discover`;
+    }
+
+    function omServiceUrl(): string {
+      // OM 1.12 heeft géén werkende deeplinks voor /table/<fqn>, /database/<fqn>
+      // of /databaseSchema/<fqn> — die geven allemaal 404. De `/explore/tables?search=`
+      // werkt qua URL maar crasht server-side op een OpenSearch-mapping bug
+      // (text-field aggregations on glossaryTags). De service-detail-page is het
+      // enige betrouwbare deeplink: gebruikt geen OpenSearch en toont alle
+      // databases (bronze/silver/gold) met klikbare hierarchie.
+      return `${toolHost('openmetadata')}/service/databaseServices/uwv-trino`;
+    }
+
+    function splitTrinoFqn(fqn: string): { catalog: string; schema: string; table: string } {
+      const parts = fqn.split('.');
+      if (parts.length < 3) return { catalog: '', schema: '', table: '' };
+      return { catalog: parts[0], schema: parts[1], table: parts.slice(2).join('.') };
+    }
+
     const schemaTbody    = document.getElementById('src-schema-tbody');
     const colCountEl     = document.getElementById('src-col-count');
     const colRequiredEl  = document.getElementById('src-col-required');
+    const minioLinkEl    = document.getElementById('src-minio-link') as HTMLAnchorElement | null;
+    const minioLabelEl   = document.getElementById('src-minio-link-label');
     const resultBronzeEl = document.getElementById('result-bronze');
     const resultSilverEl = document.getElementById('result-silver');
     const resultGoldEl   = document.getElementById('result-gold');
     const resultSupersetEl = document.getElementById('result-superset');
     const openDashEl     = document.getElementById('open-dashboard') as HTMLAnchorElement | null;
     const openDashLabel  = document.getElementById('open-dashboard-label');
+
+    // Observability-cards — id-conventie `obs-<tool>-<scope>`. Bij elke
+    // render-call swappen we de hrefs zodat ze de huidige bron weerspiegelen.
+    const obsA = (id: string) => document.getElementById(id) as HTMLAnchorElement | null;
+    const obsLinks = {
+      airflowIngest:      obsA('obs-airflow-ingest'),
+      airflowSilver:      obsA('obs-airflow-silver'),
+      airflowGold:        obsA('obs-airflow-gold'),
+      minioIncoming:      obsA('obs-minio-incoming'),
+      minioProcessed:     obsA('obs-minio-processed'),
+      minioBronze:        obsA('obs-minio-bronze'),
+      minioGold:          obsA('obs-minio-gold'),
+      opensearchDiscover: obsA('obs-opensearch-discover'),
+      omService:          obsA('obs-om-service'),
+      grafanaHome:        obsA('obs-grafana-home'),
+      prometheusAlerts:   obsA('obs-prometheus-alerts'),
+    };
 
     function renderSchemaTable(cols: ColumnSpec[]) {
       if (!schemaTbody) return;
@@ -572,6 +807,10 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
       if (colCountEl)    colCountEl.textContent    = String(s.expectedColumns.length);
       if (colRequiredEl) colRequiredEl.textContent = String(s.expectedColumns.filter(c => c.required).length);
 
+      // MinIO console link — per-bron prefix
+      if (minioLinkEl)  minioLinkEl.href        = minioBrowseUrl(s.bucket, s.prefix);
+      if (minioLabelEl) minioLabelEl.textContent = `${s.bucket}/${s.prefix}/`;
+
       // Result-sectie: tabelnamen + dashboard-status
       if (resultBronzeEl) resultBronzeEl.textContent = s.trino.bronze.table;
       if (resultSilverEl) resultSilverEl.textContent = s.trino.silver.table;
@@ -597,6 +836,53 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
           openDashEl.hidden = true;
         }
       }
+
+      // ── Inkijken-sectie — observability-deeplinks per bron ───────────────
+      const setHref = (el: HTMLAnchorElement | null, url: string) => { if (el) el.href = url; };
+
+      // Airflow — drie DAG-deeplinks (grid view per DAG)
+      setHref(obsLinks.airflowIngest, airflowDagUrl(s.obs.ingestDag));
+      setHref(obsLinks.airflowSilver, airflowDagUrl(s.obs.silverDag));
+      setHref(obsLinks.airflowGold,   airflowDagUrl(s.obs.goldDag));
+
+      // MinIO — vier bucket+prefix combinaties
+      setHref(obsLinks.minioIncoming,  minioBrowseUrl(s.bucket, s.prefix));
+      // processed-prefix volgt uit incoming/<bron> → processed/<bron>
+      const processedPrefix = s.prefix.replace(/^incoming\//, 'processed/');
+      setHref(obsLinks.minioProcessed, minioBrowseUrl(s.bucket, processedPrefix));
+      // Bronze tabel-folder: catalog=bronze → bucket uwv-bronze, prefix <schema>/<table>/
+      const bronzeFqn = splitTrinoFqn(s.trino.bronze.table);
+      setHref(obsLinks.minioBronze,
+        minioBrowseUrl(`uwv-${bronzeFqn.catalog}`, `${bronzeFqn.schema}/${bronzeFqn.table}`));
+      // Gold: heel schema (alle marts) — uit observability config
+      setHref(obsLinks.minioGold, minioBrowseUrl('uwv-gold', s.obs.goldPrefix));
+
+      // OpenSearch — discover home (gebruiker filtert zelf op pod-name)
+      setHref(obsLinks.opensearchDiscover, opensearchDiscoverUrl());
+
+      // OpenMetadata — service-detail page (deeplinks naar table/database/schema
+      // bestaan niet of crashen op een index-bug; service-page is werkend).
+      // Hint toont de gebruiker welke FQN ze handmatig moeten kiezen.
+      const silverFqn = splitTrinoFqn(s.trino.silver.table);
+      const goldFqn   = splitTrinoFqn(s.trino.gold.table);
+      setHref(obsLinks.omService, omServiceUrl());
+      const omHint = document.getElementById('obs-om-hint');
+      if (omHint) {
+        omHint.replaceChildren();
+        omHint.append('Bronze: ');
+        const a = document.createElement('code'); a.textContent = `${bronzeFqn.schema}.${bronzeFqn.table}`;
+        omHint.append(a);
+        omHint.append(' · Silver: ');
+        const b = document.createElement('code'); b.textContent = `${silverFqn.schema}.${silverFqn.table}`;
+        omHint.append(b);
+        omHint.append(' · Gold-schema: ');
+        const c = document.createElement('code'); c.textContent = goldFqn.schema;
+        omHint.append(c);
+      }
+
+      // Grafana / Prometheus — nog niet bron-specifiek, root-links
+      setHref(obsLinks.grafanaHome,      toolHost('grafana'));
+      setHref(obsLinks.prometheusAlerts, `${toolHost('prometheus')}/alerts`);
     }
     sel?.addEventListener('change', render);
     render();
@@ -683,12 +969,31 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
     }
 
     // ── Upload-flow ────────────────────────────────────────────────────────
-    async function fetchAccessToken(): Promise<string> {
-      const r = await fetch('/api/auth/token', { credentials: 'same-origin' });
+    async function fetchAccessToken(forceFresh = false): Promise<string> {
+      // `cache: 'no-store'` voorkomt dat de browser een eerder /api/auth/token
+      // antwoord re-gebruikt. Met `forceFresh` voegen we een cache-buster
+      // querystring toe zodat eventuele proxy-caches ook geomzeild worden —
+      // nuttig bij een tweede poging na "Token is expired".
+      const url = forceFresh
+        ? `/api/auth/token?t=${Date.now()}`
+        : '/api/auth/token';
+      const r = await fetch(url, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' },
+      });
       if (!r.ok) throw new Error(`/api/auth/token: HTTP ${r.status} — ben je ingelogd?`);
       const token = (await r.text()).trim();
       if (!token) throw new Error('Geen access-token in sessie. Log opnieuw in.');
       return token;
+    }
+
+    // Detecteert STS-fouten die opgelost kunnen worden door een vers token.
+    // Keycloak-Access tokens hebben 15-min TTL (zie realm-uwv.json) — bij een
+    // lange browser-sessie verloopt 't tussen page-load en upload-klik.
+    function isExpiredTokenError(err: unknown): boolean {
+      const msg = err instanceof Error ? err.message : String(err);
+      return /Token is expired|ExpiredToken|InvalidWebIdentityToken/i.test(msg);
     }
 
     type TempCreds = {
@@ -855,10 +1160,23 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
 
       try {
         setState('busy', 'Token ophalen…', extraNote || 'Sessie van oauth2-proxy.');
-        const token = await fetchAccessToken();
+        let token = await fetchAccessToken();
 
         setState('busy', 'Temp-credentials via MinIO STS…', 'AssumeRoleWithWebIdentity.');
-        const creds = await assumeRoleWithWebIdentity(token);
+        let creds: TempCreds;
+        try {
+          creds = await assumeRoleWithWebIdentity(token);
+        } catch (err) {
+          // "Token is expired" — Keycloak access-token had korter dan 15 min
+          // te leven toen MinIO 'm ontving. Forceer een verse token via
+          // oauth2-proxy en probeer één keer opnieuw. Een tweede mislukking
+          // betekent dat refresh ook niet werkt — login is dan vereist.
+          if (!isExpiredTokenError(err)) throw err;
+          setState('busy', 'Token vernieuwen…',
+            'Vorige token was verlopen — verse token ophalen en opnieuw proberen.');
+          token = await fetchAccessToken(/*forceFresh=*/true);
+          creds = await assumeRoleWithWebIdentity(token);
+        }
 
         const aws = new AwsClient({
           accessKeyId:     creds.accessKeyId,
@@ -877,9 +1195,11 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
         await putWithProgress(signed, file, (pct) =>
           setState('busy', 'Uploaden…', `${(file.size / 1024 / 1024).toFixed(1)} MB`, pct));
 
+        const browseHref = minioBrowseUrl(src.bucket, src.prefix);
         setState('ok', 'Klaar — DAG triggert binnen 2 minuten.',
           `Object: <code>${src.bucket}/${key}</code><br>` +
-          `Daarna queryable in Trino als <code>${src.trino.bronze.table}</code> ` +
+          `<a class="csv-link-inline" href="${browseHref}" target="_blank" rel="noopener noreferrer">Bekijk in MinIO console ↗</a> · ` +
+          `daarna queryable in Trino als <code>${src.trino.bronze.table}</code> ` +
           `(en via dbt in silver/gold; zie sectie 02 hieronder).`,
           100);
       } catch (err) {
@@ -1019,6 +1339,28 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
       margin: 0;
     }
     .csv-meta dd { margin: 0; }
+    .csv-meta-link {
+      display: inline-flex;
+      align-items: baseline;
+      gap: var(--space-2);
+      color: var(--ink-1);
+      text-decoration: none;
+      border-bottom: 1px dotted var(--line);
+      padding-bottom: 1px;
+      font-family: var(--font-mono);
+      font-size: 0.92em;
+    }
+    .csv-meta-link:hover {
+      border-bottom-color: var(--ink-1);
+      color: var(--accent, var(--ink-1));
+    }
+    .csv-link-inline {
+      color: var(--ink-1);
+      text-decoration: underline;
+      text-decoration-color: var(--line);
+      text-underline-offset: 2px;
+    }
+    .csv-link-inline:hover { text-decoration-color: var(--ink-1); }
 
     .csv-drop {
       display: block;
@@ -1267,6 +1609,81 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
     }
     .csv-schema-table tr:last-child td { border-bottom: 0; }
     .csv-schema-table td.mono { color: var(--ink-1); }
+
+    /* ─── Inkijken — observability-cards ────────────────────────────────── */
+    .csv-obs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: var(--space-3);
+      margin: var(--space-4) 0 0;
+    }
+    .csv-obs-card {
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: var(--space-3) var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .csv-obs-head {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      border-bottom: 1px solid var(--line-soft);
+      padding-bottom: var(--space-2);
+    }
+    .csv-obs-tag {
+      color: var(--ink-3);
+      font-size: var(--text-eyebrow);
+      letter-spacing: var(--tracking-eyebrow);
+    }
+    .csv-obs-sub {
+      color: var(--ink-2);
+      font-size: var(--text-meta);
+    }
+    .csv-obs-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .csv-obs-list a {
+      display: inline-flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-2);
+      color: var(--ink-1);
+      text-decoration: none;
+      font-size: var(--text-meta);
+      padding: 4px 0;
+      border-bottom: 1px dotted transparent;
+      transition: border-color .15s, color .15s;
+    }
+    .csv-obs-list a:hover {
+      border-bottom-color: var(--ink-1);
+      color: var(--accent, var(--ink-1));
+    }
+    .csv-obs-arr {
+      color: var(--ink-3);
+      font-size: var(--text-eyebrow);
+      letter-spacing: var(--tracking-eyebrow);
+    }
+    .csv-obs-hint {
+      color: var(--ink-3);
+      font-size: var(--text-eyebrow);
+      margin: var(--space-1) 0 0;
+      line-height: var(--leading-body);
+    }
+    .csv-obs-hint code {
+      background: var(--bg-sunken);
+      border: 1px solid var(--line);
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 0.95em;
+    }
 
     .csv-result {
       list-style: none;

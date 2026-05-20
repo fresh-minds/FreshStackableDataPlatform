@@ -18,6 +18,7 @@ export type ComponentId =
   | 'dbt-docs'
   | 'jupyter'
   | 'prometheus'
+  | 'grafana'
   | 'opensearch'
   | 'multica'
   | 'nanitics';
@@ -284,6 +285,21 @@ export const components: PlatformComponent[] = [
     url: 'https://prometheus.uwv-platform.local:8443',
     prometheusJob: 'prometheus-kube-prometheus-prometheus',
     rolesUsing: ['platform_admin'],
+  },
+  {
+    id: 'grafana',
+    name: 'Grafana',
+    layer: 'observability',
+    stage: 'observability',
+    short: 'Dashboards over Prometheus-metrics — cluster-health en service-latency.',
+    purpose: 'Visualisatie van Prometheus-metrics in dashboards; gateway voor SRE-werk.',
+    icon: '/icons/brand/grafana.svg',
+    // Login via Keycloak SSO (auth.generic_oauth in helm/prometheus-stack/values.yaml).
+    // Klik op "Sign in with Keycloak" op de Grafana-loginpagina; admin-account
+    // blijft beschikbaar als break-glass.
+    url: 'https://grafana.uwv-platform.local:8443',
+    prometheusJob: 'prometheus-grafana',
+    rolesUsing: ['platform_admin', 'data_engineer'],
   },
   {
     id: 'opensearch',
