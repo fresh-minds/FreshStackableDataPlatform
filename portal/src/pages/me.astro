@@ -6,7 +6,7 @@ import Button from '../components/primitives/Button.astro';
 import Tag from '../components/primitives/Tag.astro';
 import { roles } from '../data/roles';
 import { components } from '../data/components';
-import { shortcuts } from '../data/role-shortcuts';
+import { shortcuts, toEmbedHref } from '../data/role-shortcuts';
 import roleMappings from '../data/role-mappings.generated.json';
 import { DOCS_URL } from '../data/external-links';
 
@@ -17,10 +17,20 @@ import { DOCS_URL } from '../data/external-links';
 const capabilities = (roleMappings as { uwv_role_mappings: { roles: Record<string, unknown> } })
   .uwv_role_mappings.roles;
 
+// Wikkel shortcut-hrefs in /embed/<id>?path=... zodat klikken in de portal
+// shell landt voor iframe-bare services; niet-embed-bare componenten en
+// portal-interne URLs blijven ongemoeid (zie toEmbedHref).
+const embeddedShortcuts: typeof shortcuts = Object.fromEntries(
+  Object.entries(shortcuts).map(([role, items]) => [
+    role,
+    items.map((s) => ({ ...s, href: toEmbedHref(s) })),
+  ]),
+) as typeof shortcuts;
+
 const payload = {
   roles,
   components,
-  shortcuts,
+  shortcuts: embeddedShortcuts,
   capabilities,
 };
 ---

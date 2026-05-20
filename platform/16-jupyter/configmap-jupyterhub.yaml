@@ -22,7 +22,12 @@ data:
     c = get_config()  # noqa: F821 — provided by jupyterhub CLI
 
     # ─── Hub network ────────────────────────────────────────────────────
-    c.JupyterHub.bind_url = "http://:8000"
+    # Path-routing onder platform.uwv-platform.local/jupyter (same-origin
+    # voor de portal embed-shell). base_url is de prefix die JupyterHub
+    # voor al z'n eigen URLs zet — login-page, kernel-WS, single-user
+    # spawn-redirects, alles krijgt /jupyter/* prepended.
+    c.JupyterHub.base_url = "/jupyter/"
+    c.JupyterHub.bind_url = "http://:8000/jupyter/"
     c.JupyterHub.hub_bind_url = "http://0.0.0.0:8081"
     c.JupyterHub.hub_connect_url = "http://hub.uwv-platform.svc.cluster.local:8081"
     c.JupyterHub.cleanup_servers = False  # keep user pods on Hub restart
@@ -279,8 +284,8 @@ data:
     c.ConfigurableHTTPProxy.auth_token = os.environ.get("CONFIGPROXY_AUTH_TOKEN", "")
     c.JupyterHub.log_level = "INFO"
     c.JupyterHub.tornado_settings = {
-        # Run behind the ingress at /, so the Hub's templates emit absolute paths
-        # that work both at jupyter.uwv-platform.local and via /go/jupyter.
+        # Path-routed under platform.uwv-platform.local/jupyter — same-origin
+        # as the portal-shell, so frame-ancestors 'self' is enough.
         "headers": {
             "Content-Security-Policy": "frame-ancestors 'self'",
         }

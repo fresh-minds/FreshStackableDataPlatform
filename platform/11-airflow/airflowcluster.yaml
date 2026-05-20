@@ -54,8 +54,13 @@ spec:
     envOverrides:
       REQUESTS_CA_BUNDLE: "/etc/uwv-ca/ca.crt"
       SSL_CERT_FILE: "/etc/uwv-ca/ca.crt"
-      AIRFLOW__API__BASE_URL: "https://airflow.uwv-platform.local:8443"
-      AIRFLOW__FAB__BASE_URL: "https://airflow.uwv-platform.local:8443"
+      # Path-routing onder platform.uwv-platform.local/airflow (same-origin
+      # voor de portal embed-shell). De ingress voegt X-Forwarded-Prefix
+      # toe; PROXY_FIX_X_PREFIX=1 hieronder zorgt dat FAB de prefix in z'n
+      # redirect_uri-opbouw verwerkt. Zonder dit landt OAuth-redirect op
+      # /oauth-authorized i.p.v. /airflow/oauth-authorized → 404.
+      AIRFLOW__API__BASE_URL: "https://platform.uwv-platform.local:8443/airflow"
+      AIRFLOW__FAB__BASE_URL: "https://platform.uwv-platform.local:8443/airflow"
       AIRFLOW__FAB__ENABLE_PROXY_FIX: "True"
       AIRFLOW__FAB__PROXY_FIX_X_PROTO: "1"
       AIRFLOW__FAB__PROXY_FIX_X_HOST: "1"
@@ -243,8 +248,9 @@ spec:
       # Airflow 3.x: [webserver] is gesplitst in [api] + [fab]. Zelfde
       # set als webservers — de scheduler genereert ook redirect_uri's
       # voor task-logs / Cosmos-callbacks die door nginx terug komen.
-      AIRFLOW__API__BASE_URL: "https://airflow.uwv-platform.local:8443"
-      AIRFLOW__FAB__BASE_URL: "https://airflow.uwv-platform.local:8443"
+      # Path-routing onder platform.uwv-platform.local/airflow.
+      AIRFLOW__API__BASE_URL: "https://platform.uwv-platform.local:8443/airflow"
+      AIRFLOW__FAB__BASE_URL: "https://platform.uwv-platform.local:8443/airflow"
       AIRFLOW__FAB__ENABLE_PROXY_FIX: "True"
       AIRFLOW__FAB__PROXY_FIX_X_PROTO: "1"
       AIRFLOW__FAB__PROXY_FIX_X_HOST: "1"

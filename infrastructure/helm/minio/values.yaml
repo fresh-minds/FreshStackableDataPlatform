@@ -88,6 +88,13 @@ consoleIngress:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
     nginx.ingress.kubernetes.io/backend-protocol: HTTPS
     nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
+    # MinIO Console iframe-allow voor portal embed-shell (cross-origin).
+    # Console hard-codet OIDC-callback op /oauth_callback dus blijft op
+    # eigen subdomein i.p.v. path-routed; we strippen X-Frame-Options
+    # en zetten frame-ancestors zodat portal-shell 'm kan iframen.
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_hide_header X-Frame-Options;
+      add_header Content-Security-Policy "frame-ancestors 'self' https://platform.uwv-platform.local:8443 https://platform.eu-sovereigndataplatform.com https://platform.freshstackable.com" always;
   hosts:
     - minio-console.uwv-platform.local
   tls:

@@ -86,7 +86,7 @@ spec:
                   name: jupyterhub-oidc
                   key: client-secret
             - name: OAUTH_CALLBACK_URL
-              value: "https://jupyter.uwv-platform.local:8443/hub/oauth_callback"
+              value: "https://platform.uwv-platform.local:8443/jupyter/hub/oauth_callback"
             # Public URLs visible to the browser; mode-specific (overlays/aks
             # rewrites these to .eu-sovereigndataplatform.com without :8443).
             - name: KEYCLOAK_PUBLIC_URL
@@ -113,15 +113,16 @@ spec:
             - name: hub
               containerPort: 8081
           readinessProbe:
+            # base_url /jupyter/ → health-endpoint zit op /jupyter/hub/health.
             httpGet:
-              path: /hub/health
+              path: /jupyter/hub/health
               port: hub
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 30
           livenessProbe:
             httpGet:
-              path: /hub/health
+              path: /jupyter/hub/health
               port: hub
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -153,7 +154,7 @@ spec:
             - "--api-ip=127.0.0.1"
             - "--api-port=8001"
             - "--default-target=http://127.0.0.1:8081"
-            - "--error-target=http://127.0.0.1:8081/hub/error"
+            - "--error-target=http://127.0.0.1:8081/jupyter/hub/error"
           ports:
             - name: public
               containerPort: 8000

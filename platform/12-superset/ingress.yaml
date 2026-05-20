@@ -24,24 +24,32 @@ metadata:
   namespace: uwv-platform
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
-    # Superset (Flask-AppBuilder) bouwt OAuth redirect_uri vanuit
-    # request-context via ProxyFix. ingress-nginx stuurt X-Forwarded-Proto
-    # en X-Forwarded-Host standaard, maar geen X-Forwarded-Port. K3d mapt
-    # host:8443 naar cluster:443, dus zonder deze header bouwt Superset
-    # een URL zonder :8443 → browser landt op port 443 die niet luistert.
+    # Superset (Flask-AppBuilder) verwacht z'n routes op de root van de
+    # WSGI-app — Werkzeug's ProxyFix zet wel SCRIPT_NAME uit X-Forwarded-Prefix
+    # maar strip't PATH_INFO niet. Daarom moet nginx het /superset-prefix
+    # zelf wegrekenen vóór de upstream-call. Met rewrite-target: /$2 en
+    # path-regex `/superset(/|$)(.*)` belandt /superset/login als /login bij
+    # Flask, terwijl X-Forwarded-Prefix Flask vertelt om /superset voor
+    # url_for() te plakken.
+    #
+    # X-Forwarded-Port=8443 voor OAuth redirect_uri (k3d host:8443 →
+    # cluster:443); zonder die header zou Superset z'n eigen URL bouwen
+    # zonder :8443 → browser landt op port 443 die niet luistert.
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/configuration-snippet: |
       proxy_set_header X-Forwarded-Port 8443;
+      proxy_set_header X-Forwarded-Prefix /superset;
 spec:
   ingressClassName: nginx
   tls:
-    - hosts: ["superset.uwv-platform.local"]
-      secretName: superset-tls
+    - hosts: ["platform.uwv-platform.local"]
+      secretName: superset-platform-tls
   rules:
-    - host: superset.uwv-platform.local
+    - host: platform.uwv-platform.local
       http:
         paths:
-          - path: /
-            pathType: Prefix
+          - path: /superset(/|$)(.*)
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: superset

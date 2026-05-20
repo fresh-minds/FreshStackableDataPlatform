@@ -16,7 +16,7 @@
 // get a soft tinted background and a colored eyebrow — these are the
 // cross-cutting layers, no arrows.
 
-import { components, stages, type StageMeta, type PlatformComponent } from '../data/components';
+import { components, stages, tileHref, isEmbeddable, type StageMeta, type PlatformComponent } from '../data/components';
 import Tile from './primitives/Tile.astro';
 import Eyebrow from './primitives/Eyebrow.astro';
 import Tag from './primitives/Tag.astro';
@@ -75,7 +75,8 @@ const lanes: Lane[] = (() => {
                 <Tile name={c.name}
                       subLabel={subLabel}
                       icon={c.icon}
-                      href={c.url}
+                      href={tileHref(c)}
+                      external={!isEmbeddable(c) && (c.url?.startsWith('http') ?? false)}
                       statusJob={c.prometheusJob}
                       componentId={c.id}
                       title={c.purpose} />
@@ -87,7 +88,8 @@ const lanes: Lane[] = (() => {
               <Tile name={c.name}
                     subLabel={c.layer.toUpperCase()}
                     icon={c.icon}
-                    href={c.url}
+                    href={tileHref(c)}
+                    external={!isEmbeddable(c) && (c.url?.startsWith('http') ?? false)}
                     statusJob={c.prometheusJob}
                     componentId={c.id}
                     title={c.purpose} />

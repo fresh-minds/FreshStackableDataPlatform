@@ -11,6 +11,10 @@ metadata:
   namespace: uwv-meta
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
+    # Iframe-allow voor portal embed-shell (cross-origin).
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_hide_header X-Frame-Options;
+      add_header Content-Security-Policy "frame-ancestors 'self' https://platform.uwv-platform.local:8443 https://platform.eu-sovereigndataplatform.com https://platform.freshstackable.com" always;
 spec:
   ingressClassName: nginx
   tls:

@@ -1,11 +1,14 @@
-# Ingress for UWV Lab.
+# Ingress voor UWV Lab onder platform.uwv-platform.local/jupyter.
+# Same-origin met de portal embed-shell (/embed/jupyter).
 #
-# Hostname follows the platform convention: <component>.uwv-platform.local on
-# port 8443 (via k3d port-mapping → ingress-nginx → Service `jupyter`).
+# WebSocket support is vereist voor de kernel-message channel tussen
+# browser en notebook-pod; ingress-nginx handelt WS upgrades default.
+# Proxy buffers verhogen omdat notebook-output groot kan zijn.
+# Lange proxy-timeouts voor live kernel-output (3600s = 1u).
 #
-# WebSocket support is required for the kernel-message channel between the
-# browser and the notebook pod; ingress-nginx handles WS upgrades by default.
-# We bump the proxy buffers because notebook output can be large.
+# JupyterHub is geconfigureerd met c.JupyterHub.base_url = "/jupyter/"
+# (configmap-jupyterhub.yaml) zodat alle interne URLs het /jupyter-prefix
+# krijgen.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -20,13 +23,13 @@ metadata:
 spec:
   ingressClassName: nginx
   tls:
-    - hosts: ["jupyter.uwv-platform.local"]
-      secretName: jupyter-tls
+    - hosts: ["platform.uwv-platform.local"]
+      secretName: jupyter-platform-tls
   rules:
-    - host: jupyter.uwv-platform.local
+    - host: platform.uwv-platform.local
       http:
         paths:
-          - path: /
+          - path: /jupyter
             pathType: Prefix
             backend:
               service:

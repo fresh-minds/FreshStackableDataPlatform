@@ -1,0 +1,32 @@
+# Ingress voor Grafana onder platform.uwv-platform.local/grafana.
+# Vervangt de chart-managed ingress op grafana.uwv-platform.local
+# (uitgeschakeld in infrastructure/helm/prometheus-stack/values.yaml).
+# Same-origin met de portal-shell → /embed/grafana kan z'n iframe
+# laden zonder cross-origin cookie- of CSP-gedoe.
+#
+# Service `prometheus-grafana` wordt door kube-prometheus-stack
+# gemaakt en luistert intern op poort 80.
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: uwv-monitoring
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["platform.uwv-platform.local"]
+      secretName: grafana-platform-tls
+  rules:
+    - host: platform.uwv-platform.local
+      http:
+        paths:
+          - path: /grafana
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus-grafana
+                port:
+                  number: 80
