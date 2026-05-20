@@ -184,6 +184,10 @@ deploy-om-bridge: om-bridge-image ## Deploy de OM→Keycloak access-bridge (ADR-
 seed: ## Genereer en laad synthetische data (10k cliënten)
 	bash scripts/seed.sh
 
+.PHONY: om-demo-seed
+om-demo-seed: ## Vul OpenMetadata met UC-mart tabel-entities + governance-meta voor demo (idempotent).
+	bash scripts/om-demo-seed.sh
+
 .PHONY: test
 test: smoke ## Alias voor smoke tests
 
@@ -311,6 +315,67 @@ aks-smoke: ## Run smoke tests against the AKS context
 
 .PHONY: aks-all
 aks-all: aks-up aks-context aks-bootstrap aks-deploy aks-smoke ## End-to-end AKS lifecycle: up + context + bootstrap + deploy + smoke
+
+##@ StackIT (SKE)
+
+# Auto-export KUBECONFIG to the terraform-generated kubeconfig when targets
+# below are invoked. Recipes inherit this so bootstrap/deploy/smoke don't
+# need a manual `export KUBECONFIG=...` first.
+STACKIT_KUBECONFIG := $(shell test -f infrastructure/stackit/terraform/kubeconfig.yaml && \
+  cd infrastructure/stackit/terraform && terraform output -raw kubeconfig_absolute_path 2>/dev/null)
+
+.PHONY: stackit-up
+stackit-up: ## Provision StackIT SKE cluster + reserved Floating IP via Terraform
+	bash scripts/stackit/ske-up.sh
+
+.PHONY: stackit-context
+stackit-context: ## Print `export KUBECONFIG=...` for the stackit cluster (use with `eval $(make stackit-context)`)
+	@echo "export KUBECONFIG=\"$$(cd infrastructure/stackit/terraform && terraform output -raw kubeconfig_absolute_path)\""
+
+.PHONY: stackit-bootstrap
+stackit-bootstrap: ## Install helm charts + Stackable operators on StackIT SKE
+	KUBECONFIG="$(or $(KUBECONFIG),$(STACKIT_KUBECONFIG))" bash scripts/stackit/ske-bootstrap.sh
+
+.PHONY: stackit-deploy
+stackit-deploy: render-catalogs ## Deploy platform manifests on StackIT SKE
+	KUBECONFIG="$(or $(KUBECONFIG),$(STACKIT_KUBECONFIG))" bash scripts/stackit/ske-deploy.sh
+
+.PHONY: stackit-portal-publish
+stackit-portal-publish: ## Build portal/dist (if missing) + ship as ConfigMaps to SKE, then roll the Deployment
+	KUBECONFIG="$(or $(KUBECONFIG),$(STACKIT_KUBECONFIG))" bash scripts/stackit/portal-publish.sh
+
+.PHONY: stackit-smoke
+stackit-smoke: ## Run smoke tests against the StackIT context
+	KUBECONFIG="$(or $(KUBECONFIG),$(STACKIT_KUBECONFIG))" DEPLOYMENT_MODE=stackit PLATFORM_DOMAIN=freshstackable.com bash scripts/run-smoke-tests.sh
+
+.PHONY: stackit-all
+stackit-all: stackit-up stackit-bootstrap stackit-deploy stackit-portal-publish stackit-smoke ## End-to-end StackIT lifecycle: cluster + helm + platform + portal + smoke (~40 min from cold)
+
+.PHONY: stackit-hibernate
+stackit-hibernate: ## Hibernate the SKE cluster — deallocates worker nodes, control plane sleeps. Cluster + Floating IP + PVCs preserved.
+	stackit ske cluster hibernate udp-stackit --project-id 442855d5-308d-4e93-95ec-e1a959d6846a -y
+
+.PHONY: stackit-wake
+stackit-wake: ## Wake a hibernated SKE cluster — workers scale back up to node_minimum. Takes ~3-5 min.
+	stackit ske cluster wakeup udp-stackit --project-id 442855d5-308d-4e93-95ec-e1a959d6846a -y
+
+.PHONY: stackit-status
+stackit-status: ## Show SKE cluster state (HEALTHY / HIBERNATED / RECONCILING / ...)
+	@stackit ske cluster describe udp-stackit --project-id 442855d5-308d-4e93-95ec-e1a959d6846a -o json \
+	  | jq -r '"state:        \(.status.aggregated)\nhibernated:   \(.status.hibernated)\nk8s version:  \(.kubernetes.version)\nnode pools:   \(.nodepools | length)\negress IP(s): \(.status.egressAddressRanges | join(", "))"'
+
+.PHONY: stackit-down
+stackit-down: ## Destroy the SKE cluster (PVCs lost, Floating IP + DNS preserved; come back via `make stackit-up && make stackit-all`)
+	@echo "About to terraform-destroy the SKE cluster udp-stackit."
+	@echo "  KEPT:    Floating IP 188.34.84.39 (prevent_destroy → DNS records stay valid)"
+	@echo "  LOST:    all PVCs (postgres, minio, opensearch, prometheus data, ...), Keycloak realm, certs"
+	@echo "  COST:    only Floating IP fee (~€1–5/mo) while down; 0 compute"
+	@echo "  RECOVER: \`make stackit-up && make stackit-all\` (~40 min from cold)"
+	@echo
+	@read -p "Type 'destroy' to confirm: " confirm && [ "$$confirm" = "destroy" ] || { echo "aborted"; exit 1; }
+	terraform -chdir=infrastructure/stackit/terraform destroy \
+	  -target=stackit_ske_cluster.cluster \
+	  -auto-approve
 
 .PHONY: aks-stop
 aks-stop: ## Stop AKS cluster (deallocate nodes — cost-saving, reversible)

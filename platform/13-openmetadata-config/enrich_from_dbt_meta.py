@@ -109,11 +109,14 @@ def load_mapping() -> dict:
 
 
 def get_table(fqn: str) -> dict | None:
-    """Haal table-entity bij FQN. Tags + extension + domain + dataProducts
-    expliciet meegehaald — OM laat ze anders uit het 'lite' antwoord."""
+    """Haal table-entity bij FQN. Tags + extension + domains + dataProducts
+    expliciet meegehaald — OM laat ze anders uit het 'lite' antwoord.
+
+    OM 1.12: veld heet `domains` (plural array), niet `domain`. De 1.5 single
+    `domain` is hernoemd in 1.7+; de v12 server geeft 400 op `?fields=domain`."""
     url = (
         f"{OM_URL}/api/v1/tables/name/{quote(fqn, safe='.')}"
-        "?fields=tags,owners,extension,columns,domain,dataProducts"
+        "?fields=tags,owners,extension,columns,domains,dataProducts"
     )
     r = requests.get(url, headers=HEADERS, timeout=15)
     if r.status_code == 200:
@@ -442,17 +445,20 @@ def build_table_patch_ops(table: dict, node: dict, mapping: dict) -> list[dict]:
         if owner:
             ops.append({"op": "add", "path": "/owners", "value": [owner]})
 
-    # Domain — OM 1.5 hanteert singular `/domain` (EntityReference); 1.7+
-    # heeft `/domains` array. Wij pinnen op 1.5.
+    # Domain — OM 1.12+ gebruikt `/domains` array (was singular `/domain` in
+    # 1.5). We schrijven een lijst met één entry; bestaande domains worden
+    # gerespecteerd via UNION-op-naam.
     dom = resolve_domain(node, mapping)
     if dom:
-        existing_dom = table.get("domain")
-        if not existing_dom or existing_dom.get("name") != dom["name"]:
+        existing_doms = table.get("domains") or []
+        existing_names = {d.get("name") for d in existing_doms}
+        if dom["name"] not in existing_names:
+            merged = existing_doms + [dom]
             ops.append(
                 {
-                    "op": "add" if not existing_dom else "replace",
-                    "path": "/domain",
-                    "value": dom,
+                    "op": "add" if not existing_doms else "replace",
+                    "path": "/domains",
+                    "value": merged,
                 }
             )
 

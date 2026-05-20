@@ -21,6 +21,13 @@ models:
       risk_tier: laag-midden
       human_in_the_loop: true
       toegang_via_OPA_policies: true
+      profilering: false
+      opt_out_supported: true
+      sandbox_only: false
+      pseudonymized: false
+      publiek_te_publiceren: false
+      juistheid_AVG_art_5_1d: true
+      dpia_id: DPIA-UC11-KLANTREIS-2025
       cgm_entiteiten: [Cliënt, IKV, Aanvraag, Beoordeling, Uitkering, Contact, Kanaal]
     columns:
       - name: bsn
@@ -68,6 +75,15 @@ models:
       eigenaar: divisie_klantcontact
       pii_kolommen: [bsn]
       risk_tier: laag-midden
+      human_in_the_loop: true
+      toegang_via_OPA_policies: true
+      profilering: false
+      opt_out_supported: true
+      sandbox_only: false
+      pseudonymized: false
+      publiek_te_publiceren: false
+      juistheid_AVG_art_5_1d: true
+      dpia_id: DPIA-UC11-KLANTREIS-2025
       cgm_entiteiten: [Cliënt, Traject, Uitkering, Werkhervatting]
     columns:
       - name: bsn

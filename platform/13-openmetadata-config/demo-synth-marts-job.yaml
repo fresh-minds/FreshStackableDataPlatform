@@ -1,0 +1,393 @@
+# OpenMetadata demo-seed Job — synthetiseert UC-mart tabel-entities + verrijking.
+#
+# Achtergrond:
+#   De productie-pipeline is: dbt build (materialiseert tabellen in Trino)
+#   → Trino-catalog ingest (registreert tables in OM) → dbt-ingest (linkt
+#   dbt-models aan OM-tables) → enrich_from_dbt_meta.py (PATCH tags, owner,
+#   domain, dataProduct, custom-properties).
+#
+#   Op een verse cluster of na een Trino-reset zijn alleen de UC-11 marts
+#   gematerialiseerd (door uc11_full_setup-DAG). De andere UC-marts
+#   (uc01/uc04/uc05/uc06/uc07/uc09/uc_klant_tev/dq_overview) staan wel
+#   gedefinieerd in dbt/ maar zijn nog niet gebouwd → komen ook niet in OM.
+#
+#   Deze Job creëert die tabel-entities rechtstreeks via de OM REST-API
+#   met representatieve kolommen + verrijking (owner, domain, dataProduct,
+#   Tier/Doelbinding/LegalBasis/Confidentiality/AI-Risk-tags, CGM glossary,
+#   custom-properties, PII-tags). Geen Trino-coupling — de tabellen
+#   bestaan alleen in OM, voor demo-doeleinden.
+#
+#   Idempotent: re-runs slaan bestaande tabellen over (en patchen alleen
+#   ontbrekende kolommen). Na een dbt-build + Trino-catalog ingest wordt
+#   de kolom-lijst overschreven door de echte Trino-discovered kolommen;
+#   alle PATCH-based enrichment (owner/domain/dataProduct/tags/extension)
+#   blijft behouden.
+#
+# Trigger:
+#   make om-demo-seed
+#   OF: kubectl apply -f platform/13-openmetadata-config/demo-synth-marts-job.yaml
+#
+# Pre-conditions die de Job verwacht (allemaal door init-Job aangelegd):
+#   - databaseSchemas onder uwv-trino (bronze + gold per UC)
+#   - Teams (divisie_*, kenniscentrum_uwv, data_steward_*)
+#   - Domains (AG, WW, CRM, FEZ, Polisadm, Klantcontact, Governance)
+#   - DataProducts (uc01_wia_funnel, uc04_..., ...)
+#   - Classifications + Glossary CGM
+#   - Custom-property types geregistreerd op Table-entity
+#
+# SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: om-demo-seed-script
+  namespace: uwv-meta
+  labels:
+    uwv.nl/component: openmetadata-demo-seed
+    uwv.nl/dev-only: "true"
+data:
+  synth.py: |
+    """Synthetiseer demo-mart tabellen + verrijking in OpenMetadata."""
+    import json, os, requests
+    from urllib.parse import quote
+
+    OM = os.environ["OM_URL"].rstrip("/")
+    H = {"Authorization": f"Bearer {os.environ['OM_JWT_TOKEN']}", "Accept": "application/json"}
+    JH = {"Authorization": f"Bearer {os.environ['OM_JWT_TOKEN']}", "Content-Type": "application/json"}
+    PH = {"Authorization": f"Bearer {os.environ['OM_JWT_TOKEN']}", "Content-Type": "application/json-patch+json"}
+
+    def varchar(n=256): return {"dataType": "VARCHAR", "dataLength": n}
+    def col(name, dtype=None, desc=None):
+        c = {"name": name}
+        c.update(varchar() if dtype is None else dtype)
+        if desc: c["description"] = desc
+        return c
+    V = lambda n=256: varchar(n)
+    INT  = {"dataType": "BIGINT"}
+    DBL  = {"dataType": "DOUBLE"}
+    DT   = {"dataType": "DATE"}
+    TS   = {"dataType": "TIMESTAMP"}
+    BOOL = {"dataType": "BOOLEAN"}
+
+    # Per-mart definitie. Kolommen zijn afgeleid uit dbt _xxx.yml-tests +
+    # de bijbehorende mart_*.sql; voor de demo voldoende. Productie haalt
+    # ze uit Trino-catalog-ingest. Owner/domain/dataProduct/tags/extension
+    # spiegelen dbt meta + dbt-meta-mapping.yaml.
+    MARTS = [
+      {
+        "schema": "uc01_wia_funnel", "name": "mart_uc01_wia_funnel_daily",
+        "description": "UC-01 — Dagelijks aggregaat WIA-aanvragen × regio × onderdeel × status. Sturingsinformatie, geen PII.",
+        "columns": [
+          col("aanvraag_datum", DT, "Datum waarop aanvraag is ingediend."),
+          col("regio_code", V(8), "UWV-regio (NO/NW/ZO/ZW/MN)."),
+          col("onderdeel", V(32), "WIA-onderdeel (IVA/WGA/looncomp)."),
+          col("status", V(32), "Aanvraag-status (INGEDIEND/IN_BEHANDELING/TOEGEKEND/AFGEWEZEN)."),
+          col("n_aanvragen", INT, "Aantal aanvragen voor deze rij."),
+        ],
+        "domain": "AG", "owner": "divisie_ag", "dataProduct": "uc01_wia_funnel",
+        "tags": ["Tier.Tier1","Doelbinding.Sturingsinfo","LegalBasis.Art6_1c","Confidentiality.Internal","AI.Risk-Laag"],
+        "glossary": ["Aanvraag","Beoordeling"],
+        "ext": {"bewaartermijn_jaren": 7, "legal_basis_text": "WIA_art_64", "dbt_domain": "ag"},
+        "pii_cols": {},
+      },
+      {
+        "schema": "uc04_tw_eligibility", "name": "mart_uc04_tw_eligibility",
+        "description": "UC-04 — Cliënten potentieel rechthebbend op TW-aanvulling. Regel-gebaseerd, geen profilering.",
+        "columns": [
+          col("bsn", V(9), "BSN van de cliënt — OPA-masking per rol."),
+          col("inkomen_maand_eur", DBL, "Maand-inkomen in EUR."),
+          col("norm_per_maand_eur", DBL, "TW-norm voor deze cliënt."),
+          col("gat_per_maand", DBL, "Verschil (norm − inkomen)."),
+          col("aanvraag_geadviseerd", BOOL, "True als TW-aanvulling wordt geadviseerd."),
+        ],
+        "domain": "WW", "owner": "divisie_ww", "dataProduct": "uc04_tw_eligibility",
+        "tags": ["Tier.Tier1","Doelbinding.Proactieve_Dienstverlening","LegalBasis.Art6_1c","Confidentiality.Confidential","AI.Risk-Laag"],
+        "glossary": ["Uitkering"],
+        "ext": {"bewaartermijn_jaren": 7, "legal_basis_text": "Wet_proactieve_dienstverlening_SZW_2025", "dbt_domain": "ww", "opt_out_supported": ["true"]},
+        "pii_cols": {"bsn": "PII.BSN"},
+      },
+      {
+        "schema": "uc05_client_360", "name": "mart_uc05_client_360",
+        "description": "UC-05 — 360°-cliëntbeeld voor klantcontact. Volledig schema; OPA-policies maskeren BSN/PII per rol.",
+        "columns": [
+          col("bsn", V(9), "BSN — OPA-masking."),
+          col("voornaam", V(64)),
+          col("achternaam", V(64)),
+          col("geboortedatum", DT),
+          col("geslacht", V(16)),
+          col("straat", V(128)),
+          col("huisnummer", V(16)),
+          col("postcode", V(8)),
+          col("n_lopende_ww", INT, "Aantal lopende WW-uitkeringen."),
+          col("n_lopende_wia", INT, "Aantal lopende WIA-uitkeringen."),
+        ],
+        "domain": "CRM", "owner": "divisie_crm", "dataProduct": "uc05_client_360",
+        "tags": ["Tier.Tier1","Doelbinding.Klantcontact","Doelbinding.Behandeling","LegalBasis.Art6_1c","Confidentiality.Confidential","AI.Risk-Midden"],
+        "glossary": ["Client","Uitkering","Contact","Kanaal"],
+        "ext": {"bewaartermijn_jaren": 7, "legal_basis_text": "WIA+WW+Wajong+TW", "dbt_domain": "crm", "toegang_via_OPA_policies": ["true"]},
+        "pii_cols": {"bsn":"PII.BSN","voornaam":"PII.Naam","achternaam":"PII.Naam","geboortedatum":"PII.Geboortedatum","straat":"PII.Adres","huisnummer":"PII.Adres","postcode":"PII.Adres"},
+      },
+      {
+        "schema": "uc06_lastprognose", "name": "mart_uc06_uitkeringslast_5y",
+        "description": "UC-06 — 5-jaars baseline-projectie uitkeringslast per wet × regio.",
+        "columns": [
+          col("jaar", INT),
+          col("maand", INT),
+          col("wet", V(16), "WIA/WW/Wajong/TW."),
+          col("regio_code", V(8)),
+          col("verwachte_last_eur", DBL),
+        ],
+        "domain": "FEZ", "owner": "divisie_fez", "dataProduct": "uc06_lastprognose",
+        "tags": ["Tier.Tier2","Doelbinding.Actuarie","Doelbinding.Beleid","Confidentiality.Internal","AI.Risk-Laag"],
+        "glossary": ["Uitkering"],
+        "ext": {"bewaartermijn_jaren": 10, "dbt_domain": "fez"},
+        "pii_cols": {},
+      },
+      {
+        "schema": "uc06_lastprognose", "name": "mart_uc06_scenario_results",
+        "description": "UC-06 — Scenario-prognoses (baseline + iva_afschaf_2027 + ww_versoberen).",
+        "columns": [
+          col("scenario_id", V(64), "Naam scenario (baseline/iva_afschaf_2027/ww_versoberen)."),
+          col("jaar", INT),
+          col("wet", V(16)),
+          col("totale_last_eur", DBL),
+          col("delta_t_o_v_baseline_eur", DBL),
+        ],
+        "domain": "FEZ", "owner": "divisie_fez", "dataProduct": "uc06_lastprognose",
+        "tags": ["Tier.Tier2","Doelbinding.Actuarie","Doelbinding.Beleid","Confidentiality.Internal","AI.Risk-Laag"],
+        "glossary": [],
+        "ext": {"bewaartermijn_jaren": 10, "dbt_domain": "fez"},
+        "pii_cols": {},
+      },
+      {
+        "schema": "uc07_dq_polisadm", "name": "mart_uc07_dq_dagrapport",
+        "description": "UC-07 — Datakwaliteits-dagrapport polisadministratie.",
+        "columns": [
+          col("rapport_datum", DT),
+          col("n_ikvs", INT, "Aantal IKVs in scope."),
+          col("n_bsn_buiten_test_bereik", INT, "BSNs buiten 9-prefix-bereik (verwacht 0)."),
+          col("pct_geldige_iban", DBL),
+          col("pct_geldige_postcode", DBL),
+          col("pct_complete_naam", DBL),
+        ],
+        "domain": "Polisadm", "owner": "data_steward_polisadm", "dataProduct": "uc07_dq_polisadm",
+        "tags": ["Tier.Tier1","Doelbinding.Kwaliteitscontrole","Doelbinding.Uitkering","LegalBasis.Art6_1c","Confidentiality.Confidential","AI.Risk-Laag"],
+        "glossary": ["IKV"],
+        "ext": {"bewaartermijn_jaren": 30, "legal_basis_text": "Wet_SUWI+Wfsv", "dbt_domain": "polisadm", "juistheid_AVG_art_5_1d": ["true"]},
+        "pii_cols": {},
+      },
+      {
+        "schema": "uc09_reint_effect", "name": "mart_uc09_effect_panel",
+        "description": "UC-09 — Gepseudonimiseerd onderzoekspanel re-integratie. Alleen pseudo-IDs, geen ruwe BSN.",
+        "columns": [
+          col("bsn_pseudo", V(64), "SHA-256 hash van BSN — niet herleidbaar."),
+          col("leeftijd", INT),
+          col("geslacht", V(16)),
+          col("regio_code", V(8)),
+          col("huidige_status", V(32)),
+          col("traject_start_dt", DT),
+        ],
+        "domain": "AG", "owner": "kenniscentrum_uwv", "dataProduct": "uc09_reint_effect",
+        "tags": ["Tier.Tier3","Doelbinding.Statistisch_Onderzoek","LegalBasis.Art5_1b_VerenigbaarGebruik","Confidentiality.Internal","AI.Risk-Laag"],
+        "glossary": ["Traject"],
+        "ext": {"bewaartermijn_jaren": 10, "legal_basis_text": "art_5_1b_verenigbaar_gebruik", "dbt_domain": "ag", "sandbox_only": ["true"], "pseudonymized": ["true"]},
+        "pii_cols": {},
+      },
+      {
+        "schema": "uc_klant_tev", "name": "mart_uc_klant_tev_kanaal_maand",
+        "description": "Klanttevredenheid per kanaal × maand — gewogen gemiddelde + volume.",
+        "columns": [
+          col("maand", DT),
+          col("kanaal", V(32), "telefoon/digitaal/balie/email."),
+          col("n_respondenten", INT),
+          col("gemid_score_gewogen", DBL, "Score 1-5, gewogen op aantal contacten."),
+        ],
+        "domain": "Klantcontact", "owner": "divisie_klantcontact", "dataProduct": "uc_klant_tev",
+        "tags": ["Tier.Tier2","Doelbinding.Sturingsinfo","LegalBasis.Art6_1e","Confidentiality.Internal","AI.Risk-Laag"],
+        "glossary": ["Contact","Kanaal"],
+        "ext": {"bewaartermijn_jaren": 5, "dbt_domain": "klantcontact"},
+        "pii_cols": {},
+      },
+      {
+        "schema": "dq_overview", "name": "mart_dq_violations",
+        "description": "Cross-UC DQ violations — 1 rij per (use_case × check). Voedt Superset DQ-dashboard.",
+        "columns": [
+          col("uc_code", V(16)),
+          col("uc_name", V(64)),
+          col("check_name", V(128)),
+          col("severity", V(16), "info/warn/error."),
+          col("n_violations", INT),
+          col("n_records", INT),
+        ],
+        "domain": "Governance", "owner": "data_steward_platform", "dataProduct": "dq_overview",
+        "tags": ["Tier.Tier2","Doelbinding.Kwaliteitscontrole","Confidentiality.Internal","AI.Risk-Laag"],
+        "glossary": [],
+        "ext": {"bewaartermijn_jaren": 7, "dbt_domain": "governance", "juistheid_AVG_art_5_1d": ["true"]},
+        "pii_cols": {},
+      },
+      {
+        "schema": "dq_overview", "name": "mart_dq_overview",
+        "description": "Cross-UC DQ samenvatting — 1 rij per use-case. dq_score_pct = pass-percentage van alle checks.",
+        "columns": [
+          col("uc_code", V(16)),
+          col("uc_name", V(64)),
+          col("n_records", INT),
+          col("n_checks", INT),
+          col("dq_score_pct", DBL),
+          col("dq_status", V(16), "pass/warn/fail."),
+        ],
+        "domain": "Governance", "owner": "data_steward_platform", "dataProduct": "dq_overview",
+        "tags": ["Tier.Tier2","Doelbinding.Kwaliteitscontrole","Confidentiality.Internal","AI.Risk-Laag"],
+        "glossary": [],
+        "ext": {"bewaartermijn_jaren": 7, "dbt_domain": "governance"},
+        "pii_cols": {},
+      },
+    ]
+
+    _team, _domain, _dp = {}, {}, {}
+    def _ref(kind, name, cache):
+        if name in cache: return cache[name]
+        r = requests.get(f"{OM}/api/v1/{kind}/name/{name}", headers=H, timeout=10)
+        if r.status_code != 200:
+            print(f"  ! {kind}/{name} status={r.status_code}"); cache[name] = None; return None
+        cache[name] = {"id": r.json()["id"], "name": name, "type": kind.rstrip("s")}
+        return cache[name]
+    def team_ref(n):   return _ref("teams", n, _team)
+    def domain_ref(n): return _ref("domains", n, _domain)
+    def dp_ref(n):     return _ref("dataProducts", n, _dp)
+
+    def tag(fqn, source="Classification"):
+        return {"tagFQN": fqn, "source": source, "labelType": "Automated", "state": "Confirmed"}
+
+    def get_table(fqn):
+        r = requests.get(
+            f"{OM}/api/v1/tables/name/{quote(fqn, safe='.')}"
+            "?fields=tags,owners,extension,columns,domains,dataProducts",
+            headers=H, timeout=15)
+        return r.json() if r.status_code == 200 else None
+
+    def put_table(database, schema, name, cols, description):
+        body = {
+            "name": name,
+            "databaseSchema": f"uwv-trino.{database}.{schema}",
+            "columns": cols,
+            "description": description,
+        }
+        r = requests.put(f"{OM}/api/v1/tables", headers=JH, data=json.dumps(body), timeout=20)
+        if r.status_code in (200, 201):
+            return r.json()
+        print(f"  ! PUT {body['databaseSchema']}.{name} status={r.status_code} body={r.text[:200]}")
+        return None
+
+    def patch_table(table, ops, label):
+        if not ops: return True
+        r = requests.patch(f"{OM}/api/v1/tables/{table['id']}", headers=PH,
+                           data=json.dumps(ops), timeout=20)
+        if r.status_code in (200, 201):
+            print(f"    + {label}: {len(ops)} ops"); return True
+        print(f"    ! {label} status={r.status_code} body={r.text[:200]}"); return False
+
+    def build_ops_for_mart(table, m):
+        ops = []
+        owner_ref = team_ref(m["owner"])
+        if owner_ref and not table.get("owners"):
+            ops.append({"op": "add", "path": "/owners", "value": [owner_ref]})
+        dom = domain_ref(m["domain"])
+        if dom and not table.get("domains"):
+            ops.append({"op": "add", "path": "/domains", "value": [dom]})
+        dp = dp_ref(m["dataProduct"])
+        if dp and not table.get("dataProducts"):
+            ops.append({"op": "add", "path": "/dataProducts", "value": [dp]})
+        tags = [tag(t) for t in m["tags"]]
+        for g in m["glossary"]:
+            tags.append(tag(f"CGM.{g}", "Glossary"))
+        if tags and not table.get("tags"):
+            ops.append({"op": "add", "path": "/tags", "value": tags})
+        if m["ext"] and not table.get("extension"):
+            ops.append({"op": "add", "path": "/extension", "value": m["ext"]})
+        # PII per kolom — UNION met bestaande tags (idempotent op re-run).
+        columns = table.get("columns") or []
+        name_to_idx = {(c.get("name") or "").lower(): idx for idx, c in enumerate(columns)}
+        for col_name, pii in m["pii_cols"].items():
+            idx = name_to_idx.get(col_name.lower())
+            if idx is None: continue
+            existing_ct = columns[idx].get("tags") or []
+            if any(t.get("tagFQN") == pii for t in existing_ct):
+                continue
+            merged = existing_ct + [tag(pii)]
+            ops.append({
+                "op": "add" if not existing_ct else "replace",
+                "path": f"/columns/{idx}/tags",
+                "value": merged,
+            })
+        return ops
+
+    created = enriched = errs = 0
+    for m in MARTS:
+        # Beide zones — gold is wat testsuites + Superset gebruiken; bronze
+        # spiegelt de dbt-manifest realiteit (alles materialiseert daar).
+        for db in ("bronze", "gold"):
+            fqn = f"uwv-trino.{db}.{m['schema']}.{m['name']}"
+            existing = get_table(fqn)
+            if existing:
+                print(f"  = {fqn} (bestaat al — {len(existing.get('columns') or [])} kolommen)")
+                table = existing
+                # Als bestaande tabel-kolommen incompleet zijn, patch met volle set.
+                if len(table.get("columns") or []) < len(m["columns"]):
+                    patch_table(table,
+                                [{"op": "replace", "path": "/columns", "value": m["columns"]}],
+                                "kolommen aanvullen")
+                    table = get_table(fqn) or table
+            else:
+                table = put_table(db, m["schema"], m["name"], m["columns"], m["description"])
+                if not table: errs += 1; continue
+                created += 1
+                print(f"  + {fqn} CREATE")
+            ops = build_ops_for_mart(table, m)
+            if patch_table(table, ops, f"verrijk {fqn}"):
+                enriched += 1
+    print(f"Klaar. created={created} enriched={enriched} errors={errs}")
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: om-demo-seed
+  namespace: uwv-meta
+  labels:
+    uwv.nl/component: openmetadata-demo-seed
+    uwv.nl/dev-only: "true"
+spec:
+  ttlSecondsAfterFinished: 1800
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        uwv.nl/component: openmetadata-demo-seed
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: synth
+          image: python:3.11-slim
+          command: ["bash", "-euo", "pipefail", "-c"]
+          args:
+            - |
+              pip install --quiet --disable-pip-version-check requests
+              python /scripts/synth.py
+          env:
+            - name: OM_URL
+              value: "http://openmetadata.uwv-meta.svc.cluster.local:8585"
+            - name: OM_JWT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openmetadata-admin
+                  key: jwtToken
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits:   {cpu: 500m, memory: 256Mi}
+      volumes:
+        - name: scripts
+          configMap:
+            name: om-demo-seed-script

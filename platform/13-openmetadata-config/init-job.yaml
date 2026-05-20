@@ -354,8 +354,10 @@ data:
 
 
     def apply_data_products() -> None:
-        """OM 1.5 CreateDataProduct verwacht singular `domain` (string-name),
-        niet `domains` array (die switch zit in 1.7+)."""
+        """OM 1.12: CreateDataProduct verwacht `domains` (array van FQN-strings),
+        niet singular `domain`. Het zonder-domain aanmaken laat OM een
+        ongeldig dataProduct registreren waarop lineage-updates faalt met
+        OpenSearch script_exception (zie LineageUtil.addDataProductsLineage)."""
         mapping = _load_mapping()
         products = mapping.get("data_products", [])
         if not products:
@@ -379,7 +381,7 @@ data:
                 "name": p["name"],
                 "displayName": p.get("displayName", p["name"]),
                 "description": p["description"],
-                "domain": p["domain"],
+                "domains": [p["domain"]],
             }
             if owners:
                 body["owners"] = owners
@@ -396,9 +398,13 @@ data:
 
 
     def apply_test_suites() -> None:
-        """Maak DQ-TestSuites + TestCases op gold-marts. OM 1.5 hardcoded
-        de executable-suite FQN naar `<entityFQN>.testSuite`; de `name` uit
-        yaml leeft alleen als displayName."""
+        """Maak DQ-TestSuites + TestCases op gold-marts.
+
+        OM 1.12: 'executable' terminologie is hernoemd naar 'basic'. Endpoint
+        is `PUT /dataQuality/testSuites/basic`; body-veld `basicEntityReference`
+        verwacht de FQN-string (geen UUID). TestCases hebben geen `testSuite`-
+        veld meer — de suite-koppeling wordt afgeleid uit `entityLink` (de
+        basic testSuite van de tabel = `<table_fqn>.testSuite`)."""
         cfg = _load_test_suites()
         suites = cfg.get("test_suites", [])
         if not suites:
@@ -417,15 +423,24 @@ data:
                 "name": s["name"],
                 "displayName": s.get("displayName", s["name"]),
                 "description": s.get("description", ""),
-                "executableEntityReference": entity_fqn,
+                "basicEntityReference": entity_fqn,
             }
-            post_or_skip(
-                "/api/v1/dataQuality/testSuites/executable",
-                suite_body,
-                f"testSuite {s['name']}",
+            # PUT is idempotent in OM 1.12 voor basic-suites; bij bestaande
+            # suite met dezelfde basicEntityReference wordt name/description
+            # geüpdatet ipv conflict.
+            url = urljoin(OM_URL, "/api/v1/dataQuality/testSuites/basic")
+            r = requests.put(
+                url, headers=HEADERS, data=json.dumps(suite_body), timeout=30
             )
-
-            suite_fqn = f"{entity_fqn}.testSuite"
+            if r.status_code in (200, 201):
+                log(f"  + testSuite {s['name']}")
+            elif r.status_code in (409, 422):
+                log(f"  = testSuite {s['name']} (bestaat al)")
+            else:
+                log(
+                    f"  ! testSuite {s['name']} "
+                    f"status={r.status_code} body={r.text[:200]}"
+                )
 
             for tc in s.get("test_cases", []):
                 column = tc.get("column")
@@ -441,7 +456,6 @@ data:
                     "description": tc.get("description", ""),
                     "entityLink": entity_link,
                     "testDefinition": tc["testDefinition"],
-                    "testSuite": suite_fqn,
                     "parameterValues": tc.get("parameters", []),
                 }
                 post_or_skip(
