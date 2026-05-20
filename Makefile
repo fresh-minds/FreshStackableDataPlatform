@@ -90,6 +90,10 @@ multica-daemon-image: ## Build uwv-platform/multica-daemon:dev (multica CLI + Co
 	bash platform/20-multica-daemon/build-and-load.sh
 	@echo "[multica-daemon-image] image gebouwd + geïmporteerd (mode=$(MODE))."
 
+.PHONY: multica-bootstrap
+multica-bootstrap: ## Na een Multica-reset: workspace + labels seeden, watcher configmap bijwerken, watcher rollen. Idempotent.
+	bash scripts/multica-bootstrap.sh $(MULTICA_BOOTSTRAP_ARGS)
+
 .PHONY: portal-publish-dbt-docs
 portal-publish-dbt-docs: dbt-docs-offline portal-image ## Genereer dbt-docs → bake in portal-image → rollout (k3d)
 	kubectl -n uwv-platform rollout restart deploy/portal
