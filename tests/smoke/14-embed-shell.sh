@@ -89,12 +89,33 @@ for h in keycloak openmetadata minio-console multica nanitics opensearch spark s
 done
 
 # ── 4. Grafana stuurt geen X-Frame-Options: DENY (allow_embedding=true).
-log "4/4 Grafana X-Frame-Options niet DENY"
+log "4/5 Grafana X-Frame-Options niet DENY"
 xfo=$(curl -sk -I "${PORTAL}/grafana/" 2>/dev/null | grep -i "x-frame-options" || true)
 if [[ -z "$xfo" ]] || ! echo "$xfo" | grep -qi "deny"; then
   pass "Grafana stuurt geen X-Frame-Options: DENY (${xfo:-geen header})"
 else
   fail "Grafana stuurt nog X-Frame-Options: DENY — allow_embedding=true werkt niet"
+fi
+
+# ── 5. Airflow FAB CSS bereikbaar onder /airflow/auth/static/appbuilder/.
+# Belangrijke regressie-check: zonder de aparte /airflow/auth ingress
+# (X-Forwarded-Prefix=/airflow/auth) rendert FAB z'n bootstrap.css URL als
+# /airflow/static/appbuilder/... wat 404't, en de hidden modal "User
+# confirmation needed" wordt zichtbaar zonder styling.
+log "5/5 Airflow FAB-rendered static assets onder /airflow/auth/static/"
+fab_css_code=$(curl -sk -o /dev/null -w "%{http_code}" "${PORTAL}/airflow/auth/static/appbuilder/css/bootstrap.min.css")
+if [[ "$fab_css_code" == "200" ]]; then
+  pass "FAB bootstrap.min.css → HTTP $fab_css_code"
+else
+  fail "FAB bootstrap.min.css → HTTP $fab_css_code (verwacht 200)"
+fi
+# Login-pagina linkt naar /airflow/auth/static/... (correct prefix).
+login_href=$(curl -sk "${PORTAL}/airflow/auth/login/" 2>/dev/null \
+  | grep -oE "href=\"[^\"]+bootstrap\.min\.css\"" | head -1)
+if echo "$login_href" | grep -q "/airflow/auth/static/"; then
+  pass "FAB login-pagina linkt CSS naar /airflow/auth/static/ (juiste prefix)"
+else
+  fail "FAB login-pagina linkt CSS naar verkeerd pad: $login_href"
 fi
 
 echo
