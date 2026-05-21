@@ -36,21 +36,20 @@ spec:
         memory:
           limit: "1Gi"
     # ENABLE_PROXY_FIX laat Superset X-Forwarded-Proto/Host respecteren
-    # (https i.p.v. http). WEBSERVER_BASE_URL bevat :8443 want
+    # (https i.p.v. http). WEBSERVER_BASE_URL hardcodet :8443 want
     # ingress-nginx propageert geen X-Forwarded-Port standaard, en k3d
     # mapt host:8443 → cluster:443. Zonder dit blijft :8443 weg uit
     # redirect_uri → browser landt op port 443 die niet luistert.
-    #
-    # Path-routing onder platform.uwv-platform.local/superset. PROXY_FIX_X_PREFIX
-    # leest X-Forwarded-Prefix (gezet door ingress) en plakt /superset voor alle
-    # Flask url_for()-output. STATIC_ASSETS_PREFIX zorgt dat de UI z'n CSS/JS
-    # onder /superset/static/* zoekt (anders 404).
     configOverrides:
       superset_config.py:
         ENABLE_PROXY_FIX: "True"
-        PROXY_FIX_CONFIG: '{"x_for": 1, "x_proto": 1, "x_host": 1, "x_port": 1, "x_prefix": 1}'
-        WEBSERVER_BASE_URL: '"https://platform.uwv-platform.local:8443/superset"'
-        STATIC_ASSETS_PREFIX: '"/superset"'
+        WEBSERVER_BASE_URL: '"https://superset.uwv-platform.local:8443"'
+        # SameSite=None + Secure: zonder dit blokkeert de browser de
+        # Flask session cookie bij cross-origin iframe-context (portal
+        # embed-shell op platform.uwv-platform.local). Werkt alleen
+        # over HTTPS — wat we al hebben via cert-manager.
+        SESSION_COOKIE_SAMESITE: '"None"'
+        SESSION_COOKIE_SECURE: "True"
         # Custom SecurityManager: vangt None-user op (stale session cookie
         # na DB-reset) zodat Flask-Login naar /login redirect i.p.v. 500.
         # Tweede taak: extract Keycloak realm-roles uit het JWT en geef

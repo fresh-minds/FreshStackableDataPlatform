@@ -48,11 +48,13 @@ done
 # ── 2. Path-routed services responderen onder portal-host.
 log "2/4 path-routed services (same-origin onder /<svc>)"
 # Format: "naam:pad" — bash 3.2-compat (geen associative arrays nodig).
+# Superset zit hier NIET in: blueprint-prefix conflict (zie components.ts
+# embed-comment) maakt path-routing onpraktisch — Superset draait via
+# subdomain en wordt in stap 3 op CSP gecheckt.
 for entry in \
   "grafana:/grafana/" \
   "prometheus:/prometheus/" \
   "airflow:/airflow/" \
-  "superset:/superset/login/" \
   "jupyter:/jupyter/hub/login"; do
   svc="${entry%%:*}"
   path="${entry#*:}"
@@ -67,7 +69,7 @@ done
 
 # ── 3. Subdomain services hebben iframe-allow CSP.
 log "3/4 subdomain services sturen frame-ancestors CSP"
-for h in openmetadata minio-console multica nanitics opensearch spark; do
+for h in openmetadata minio-console multica nanitics opensearch spark superset; do
   csp=$(curl -sk -I "https://${h}.${PLATFORM_DOMAIN}${PORT_SUFFIX}/" 2>/dev/null \
     | grep -i "content-security-policy" | grep -i "frame-ancestors" || true)
   if [[ -n "$csp" ]] && echo "$csp" | grep -q "platform.${PLATFORM_DOMAIN}"; then

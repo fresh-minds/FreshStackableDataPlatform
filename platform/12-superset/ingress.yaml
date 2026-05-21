@@ -24,32 +24,31 @@ metadata:
   namespace: uwv-platform
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
-    # Superset (Flask-AppBuilder) verwacht z'n routes op de root van de
-    # WSGI-app — Werkzeug's ProxyFix zet wel SCRIPT_NAME uit X-Forwarded-Prefix
-    # maar strip't PATH_INFO niet. Daarom moet nginx het /superset-prefix
-    # zelf wegrekenen vóór de upstream-call. Met rewrite-target: /$2 en
-    # path-regex `/superset(/|$)(.*)` belandt /superset/login als /login bij
-    # Flask, terwijl X-Forwarded-Prefix Flask vertelt om /superset voor
-    # url_for() te plakken.
+    # Superset (Flask-AppBuilder) bouwt OAuth redirect_uri vanuit
+    # request-context via ProxyFix. ingress-nginx stuurt X-Forwarded-Proto
+    # en X-Forwarded-Host standaard, maar geen X-Forwarded-Port. K3d mapt
+    # host:8443 naar cluster:443, dus zonder X-Forwarded-Port bouwt Superset
+    # een URL zonder :8443 → browser landt op port 443 die niet luistert.
     #
-    # X-Forwarded-Port=8443 voor OAuth redirect_uri (k3d host:8443 →
-    # cluster:443); zonder die header zou Superset z'n eigen URL bouwen
-    # zonder :8443 → browser landt op port 443 die niet luistert.
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # Iframe-allow voor de portal embed-shell (cross-origin). Zonder
+    # frame-ancestors hier zou Superset's default Talisman-CSP de iframe
+    # blokkeren; X-Frame-Options strippen want sommige Stackable-versies
+    # zetten 'm op DENY.
     nginx.ingress.kubernetes.io/configuration-snippet: |
       proxy_set_header X-Forwarded-Port 8443;
-      proxy_set_header X-Forwarded-Prefix /superset;
+      proxy_hide_header X-Frame-Options;
+      add_header Content-Security-Policy "frame-ancestors 'self' https://platform.uwv-platform.local:8443 https://platform.eu-sovereigndataplatform.com https://platform.freshstackable.com" always;
 spec:
   ingressClassName: nginx
   tls:
-    - hosts: ["platform.uwv-platform.local"]
-      secretName: superset-platform-tls
+    - hosts: ["superset.uwv-platform.local"]
+      secretName: superset-tls
   rules:
-    - host: platform.uwv-platform.local
+    - host: superset.uwv-platform.local
       http:
         paths:
-          - path: /superset(/|$)(.*)
-            pathType: ImplementationSpecific
+          - path: /
+            pathType: Prefix
             backend:
               service:
                 name: superset

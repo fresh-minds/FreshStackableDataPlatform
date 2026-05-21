@@ -229,11 +229,12 @@ export const components: PlatformComponent[] = [
     purpose: 'Dashboards en ad-hoc analyse voor business-rollen — zonder SQL hoeven kennen.',
     icon: '/icons/brand/superset.svg',
     url: 'https://superset.uwv-platform.local:8443',
-    // Path-routing onder portal-host (same-origin). Vereist
-    // WEBSERVER_BASE_URL + ENABLE_PROXY_FIX in supersetcluster.yaml en
-    // nginx-ingress rewrite. Zie infrastructure/helm/ingress-nginx +
-    // platform/12-superset.
-    embed: { mode: 'subpath', path: '/superset' },
+    // Subdomain-routing — Superset hard-codet /superset als blueprint-
+    // prefix voor z'n eigen klasse (Superset.welcome → /superset/welcome/),
+    // dus nginx-rewrite + SCRIPT_NAME=/superset zou /superset/superset/...
+    // produceren of bestaande routes als /welcome/ missen. Praktischer: blijft
+    // op subdomein + ingress strip't X-Frame-Options + zet frame-ancestors.
+    embed: { mode: 'subdomain' },
     prometheusJob: 'superset',
     rolesUsing: [
       'wia_beoordelaar',
