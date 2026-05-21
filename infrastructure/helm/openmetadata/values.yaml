@@ -206,11 +206,23 @@ replicaCount: 1
 # Chart-managed ingress on .uwv-platform.local for in-cluster routing.
 # Public AKS access at openmetadata.eu-sovereigndataplatform.com is in
 # infrastructure/azure/public-ingresses.yaml (`openmetadata-public`).
+#
+# OpenMetadata 1.x heeft geen configureerbare context-path; daarom blijft
+# 'ie op een eigen subdomein i.p.v. mee te gaan in path-routing. Voor de
+# portal embed-shell (cross-origin iframe) strippen we eventuele
+# X-Frame-Options en zetten we een frame-ancestors-CSP zodat
+# platform.uwv-platform.local (en de cloud-TLDs) de OM-UI mogen iframen.
+# Cookies: OM Dropwizard server.applicationContextPath defaults — als
+# SameSite-issues in iframe-context optreden, los je dat op met
+# applicationConnectors.responseCookieSameSite=None (vereist HTTPS).
 ingress:
   enabled: true
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_hide_header X-Frame-Options;
+      add_header Content-Security-Policy "frame-ancestors 'self' https://platform.uwv-platform.local:8443 https://platform.eu-sovereigndataplatform.com https://platform.freshstackable.com" always;
   hosts:
     - host: openmetadata.uwv-platform.local
       paths:

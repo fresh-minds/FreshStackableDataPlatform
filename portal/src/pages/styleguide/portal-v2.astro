@@ -1,0 +1,87 @@
+---
+/*
+  Portal v2 mockup — Databricks/Fabric-style homepage showcase.
+
+  This page is a *static preview* under /styleguide/. Since fase 1.3 the
+  v2 shell + workspace homepage also live on the live root (/), so this
+  page is mostly a labelled mirror that adds an explanatory banner. The
+  same WorkspaceHome component renders on both routes; data lives in
+  src/data/v2-homepage.ts.
+*/
+import ShellLayout from '../../layouts/ShellLayout.astro';
+import WorkspaceHome from '../../components/shell/WorkspaceHome.astro';
+---
+
+<ShellLayout
+  title="Portal v2 — showcase"
+  activeSection="home"
+  persona="data_engineer"
+  userName="Karel Goense"
+>
+  <!-- Mockup-callout banner -->
+  <div class="v2-banner">
+    <span class="v2-banner-pill">SHOWCASE</span>
+    <span class="v2-banner-text">
+      Dit is de styleguide-versie van de v2 shell. De productie-portal
+      op <a href="/">/</a> toont dezelfde inhoud. Klik op de zoekbalk of
+      druk <kbd>⌘K</kbd> voor de command palette · hover de left rail
+      om hem uit te klappen.
+    </span>
+    <a class="v2-banner-link" href="/styleguide/">← styleguide</a>
+  </div>
+
+  <WorkspaceHome userName="Karel Goense" personaLabel="Data Engineer" />
+</ShellLayout>
+
+<style>
+  /* Mockup-banner — only visible on this showcase route, not on /. */
+  .v2-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    margin: 16px;
+    background: color-mix(in oklch, var(--accent-info) 10%, var(--bg-elev));
+    border: 1px solid color-mix(in oklch, var(--accent-info) 30%, var(--line));
+    border-radius: var(--radius-md);
+    font-size: var(--text-meta);
+    color: var(--ink-2);
+  }
+  .v2-banner-pill {
+    background: var(--accent-info);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-eyebrow);
+    flex-shrink: 0;
+  }
+  .v2-banner-text { flex: 1; }
+  .v2-banner-text a {
+    color: var(--accent-info);
+    text-decoration: none;
+    font-weight: var(--weight-medium);
+  }
+  .v2-banner-text a:hover { text-decoration: underline; }
+  .v2-banner-text kbd {
+    background: var(--kbd-bg);
+    border: 1px solid var(--kbd-line);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .v2-banner-link {
+    color: var(--accent-info);
+    text-decoration: none;
+    font-size: var(--text-meta);
+    flex-shrink: 0;
+  }
+  .v2-banner-link:hover { text-decoration: underline; }
+
+  @media (max-width: 720px) {
+    .v2-banner { margin: 8px; padding: 8px 12px; flex-wrap: wrap; }
+  }
+</style>

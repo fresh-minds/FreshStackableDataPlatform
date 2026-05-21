@@ -1,5 +1,14 @@
-# Ingress voor Airflow webserver. Service uwv-airflow-webserver bestaat
-# al via Stackable-operator (ClusterIP op 8080).
+# Ingress voor Airflow webserver onder platform.uwv-platform.local/airflow.
+# Same-origin met de portal embed-shell (/embed/airflow).
+#
+# X-Forwarded-Prefix wordt door FAB gelezen (PROXY_FIX_X_PREFIX=1 in
+# airflowcluster.yaml) om redirect_uri's correct op te bouwen.
+# X-Forwarded-Port=8443 zit erbij omdat de browser :8443 ziet, maar
+# de ingress intern naar :80/:443 forwarded — zonder dit zou Flask
+# de poort uit Host wegrekenen en OAuth redirect_uri zou ontbreken.
+#
+# Service uwv-airflow-webserver bestaat al via Stackable-operator
+# (ClusterIP op 8080).
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -8,19 +17,26 @@ metadata:
   namespace: uwv-platform
   annotations:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
-    # Zie superset/ingress.yaml — :8443 in OAuth redirect_uri.
+    # Iframe-allow voor portal embed-shell. Airflow zélf zet geen X-Frame-Options
+    # of CSP, maar sommige browsers (Brave Shields, Firefox ETP, Chrome
+    # cross-origin-isolation) blokkeren iframes default zonder een EXPLICIETE
+    # frame-ancestors-policy. We zetten die hier zelf — defensief, kost niks.
     nginx.ingress.kubernetes.io/configuration-snippet: |
       proxy_set_header X-Forwarded-Port 8443;
+      proxy_set_header X-Forwarded-Prefix /airflow;
+      proxy_hide_header X-Frame-Options;
+      proxy_hide_header Content-Security-Policy;
+      add_header Content-Security-Policy "frame-ancestors 'self' https://platform.uwv-platform.local:8443 https://platform.eu-sovereigndataplatform.com https://platform.freshstackable.com" always;
 spec:
   ingressClassName: nginx
   tls:
-    - hosts: ["airflow.uwv-platform.local"]
-      secretName: airflow-tls
+    - hosts: ["platform.uwv-platform.local"]
+      secretName: airflow-platform-tls
   rules:
-    - host: airflow.uwv-platform.local
+    - host: platform.uwv-platform.local
       http:
         paths:
-          - path: /
+          - path: /airflow
             pathType: Prefix
             backend:
               service:

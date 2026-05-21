@@ -60,7 +60,41 @@ spec:
             - name: nginx-cache
               mountPath: /var/cache/nginx
 
-        # 2) oauth2-proxy sidecar — luistert op :4180, bewaakt :8080 erachter.
+        # 2) airflow-bridge sidecar — luistert op 127.0.0.1:8089 (pod-local).
+        #    Nginx proxyt /api/airflow/* hierheen; deze service vertaalt
+        #    naar Airflow REST met airflow-api-bot creds en validatie van
+        #    de caller's email tegen het object_key-prefix.
+        - name: airflow-bridge
+          image: uwv-platform/portal-airflow-bridge:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: AIRFLOW_BASE_URL
+              value: "http://uwv-airflow-webserver.uwv-platform.svc.cluster.local:8080"
+            - name: AIRFLOW_PUBLIC_URL
+              value: "https://platform.uwv-platform.local:8443/airflow"
+            - name: AIRFLOW_USERNAME
+              valueFrom:
+                secretKeyRef: { name: airflow-api-bot, key: username }
+            - name: AIRFLOW_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: airflow-api-bot, key: password }
+          readinessProbe:
+            httpGet: { path: /api/health, port: 8089 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: 8089 }
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 10m,  memory: 64Mi  }
+            limits:   { cpu: 200m, memory: 192Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+
+        # 3) oauth2-proxy sidecar — luistert op :4180, bewaakt :8080 erachter.
         - name: oauth2-proxy
           image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
           imagePullPolicy: IfNotPresent

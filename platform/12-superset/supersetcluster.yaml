@@ -44,6 +44,12 @@ spec:
       superset_config.py:
         ENABLE_PROXY_FIX: "True"
         WEBSERVER_BASE_URL: '"https://superset.uwv-platform.local:8443"'
+        # SameSite=None + Secure: zonder dit blokkeert de browser de
+        # Flask session cookie bij cross-origin iframe-context (portal
+        # embed-shell op platform.uwv-platform.local). Werkt alleen
+        # over HTTPS — wat we al hebben via cert-manager.
+        SESSION_COOKIE_SAMESITE: '"None"'
+        SESSION_COOKIE_SECURE: "True"
         # Custom SecurityManager: vangt None-user op (stale session cookie
         # na DB-reset) zodat Flask-Login naar /login redirect i.p.v. 500.
         # Tweede taak: extract Keycloak realm-roles uit het JWT en geef

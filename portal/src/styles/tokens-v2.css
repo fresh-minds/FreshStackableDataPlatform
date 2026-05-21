@@ -1,0 +1,92 @@
+/* ============================================================
+   UWV Platform Portal — design tokens v2 (shell-specific)
+   ============================================================
+   Additive layer on top of tokens.css. Defines shell-specific
+   dimensions, persona/item-type hues, and chrome for the
+   Databricks/Fabric-style v2 shell (left rail, command palette,
+   item tiles, dropdowns). Imported by ShellLayout.astro only;
+   the legacy Layout.astro stays untouched until v2 ships.
+
+   To preview: visit /styleguide/portal-v2/
+============================================================ */
+
+:root {
+  /* Shell dimensions */
+  --sidebar-w-collapsed: 56px;
+  --sidebar-w-expanded:  240px;
+  --topbar-h:            52px;
+  --content-max-w:       1440px;
+
+  /* Persona hues — mapped onto cat-* (same OKLCH set as the
+     architecture-diagram lanes, for consistency). */
+  --persona-engineer:  var(--cat-pipeline);     /* blue */
+  --persona-analyst:   var(--cat-discovery);    /* purple */
+  --persona-scientist: var(--cat-agents);       /* teal */
+  --persona-steward:   var(--cat-observability);/* amber */
+  --persona-admin:     var(--cat-identity);     /* red */
+
+  /* Item-type accent dots — one per primary item kind */
+  --type-dashboard: oklch(0.55 0.18 305);  /* purple — Superset */
+  --type-dag:       oklch(0.55 0.18 260);  /* blue   — Airflow */
+  --type-table:     oklch(0.58 0.16 195);  /* teal   — Catalog */
+  --type-notebook:  oklch(0.6 0.16 50);    /* orange — Jupyter */
+  --type-query:     oklch(0.55 0.18 25);   /* red    — SQLLab */
+  --type-pipeline:  oklch(0.58 0.16 70);   /* amber  — dbt */
+
+  /* Secondary accent — UWV-blauw, for info / shared / link tones.
+     Keeps the warm-orange --accent as the primary CTA color. */
+  --accent-info:      oklch(0.55 0.14 230);
+  --accent-info-soft: oklch(0.95 0.04 230);
+
+  /* Tile chrome */
+  --tile-radius: var(--radius-lg);
+
+  /* Shell motion — match Material's "easing-standard" curve */
+  --motion-fast: 120ms cubic-bezier(.4, 0, .2, 1);
+  --motion-base: 180ms cubic-bezier(.4, 0, .2, 1);
+}
+
+/* ──────────────────────────────────────────────────────────
+   Dark surface (default) — shell-specific tints. Slightly
+   darker than the legacy --bg so the rail "floats" above.
+   ────────────────────────────────────────────────────────── */
+:root,
+[data-theme="dark"] {
+  --shell-bg:        #0F0E09;
+  --shell-rail-bg:   #1B1A14;
+  --shell-rail-line: #2A2820;
+
+  --tile-bg:         #1B1A14;
+  --tile-bg-hover:   #221F17;
+  --tile-line:       #2A2820;
+  --tile-line-hover: #3E3A2D;
+  --tile-shadow-hover: 0 8px 24px -12px rgba(0,0,0,0.6),
+                       0 0 0 1px var(--tile-line-hover);
+
+  --kbd-bg:          #25231B;
+  --kbd-line:        #3A372E;
+
+  --cmdk-overlay:    rgba(8, 7, 4, 0.6);
+  --cmdk-bg:         #1B1A14;
+  --cmdk-input-bg:   #14130E;
+}
+
+[data-theme="light"] {
+  --shell-bg:        #F5F4ED;
+  --shell-rail-bg:   #FFFFFF;
+  --shell-rail-line: #E6E3D6;
+
+  --tile-bg:         #FFFFFF;
+  --tile-bg-hover:   #FAFAF7;
+  --tile-line:       #E6E3D6;
+  --tile-line-hover: #D0CCBA;
+  --tile-shadow-hover: 0 12px 24px -12px rgba(20, 18, 10, 0.16),
+                       0 0 0 1px var(--tile-line-hover);
+
+  --kbd-bg:          #FFFFFF;
+  --kbd-line:        #E6E3D6;
+
+  --cmdk-overlay:    rgba(245, 244, 237, 0.65);
+  --cmdk-bg:         #FFFFFF;
+  --cmdk-input-bg:   #FAFAF7;
+}

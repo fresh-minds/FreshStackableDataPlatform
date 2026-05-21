@@ -1,4 +1,10 @@
-# Ingress voor Prometheus UI (op poort 9090).
+# Ingress voor Prometheus UI (op poort 9090) onder
+# platform.uwv-platform.local/prometheus. Same-origin met portal-shell.
+# Prometheus zelf is met --web.route-prefix=/prometheus geconfigureerd
+# (zie prometheusSpec.routePrefix in infrastructure/helm/prometheus-stack/
+# values.yaml), dus geen rewrite-target nodig — het pad wordt onverkort
+# doorgegeven.
+#
 # Service prometheus-kube-prometheus-prometheus wordt door kube-prometheus-stack
 # gemaakt. Geen auth — voor demo/dev OK; productie zou oauth2-proxy ervoor zetten.
 ---
@@ -12,13 +18,13 @@ metadata:
 spec:
   ingressClassName: nginx
   tls:
-    - hosts: ["prometheus.uwv-platform.local"]
-      secretName: prometheus-tls
+    - hosts: ["platform.uwv-platform.local"]
+      secretName: prometheus-platform-tls
   rules:
-    - host: prometheus.uwv-platform.local
+    - host: platform.uwv-platform.local
       http:
         paths:
-          - path: /
+          - path: /prometheus
             pathType: Prefix
             backend:
               service:

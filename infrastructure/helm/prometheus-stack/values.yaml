@@ -37,6 +37,12 @@ prometheus:
     # Service- en PodMonitors uit alle namespaces oppakken
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
+    # Path-routing onder de portal-host. externalUrl wordt door Prometheus
+    # gebruikt voor zelf-gegenereerde links (notification URLs, recordings).
+    # routePrefix zorgt dat de UI z'n eigen assets onder /prometheus/* zoekt.
+    # values-aks/values-stackit overrulen externalUrl met hun publieke domein.
+    externalUrl: "https://platform.uwv-platform.local:8443/prometheus"
+    routePrefix: "/prometheus"
 
 # Grafana
 grafana:
@@ -52,19 +58,13 @@ grafana:
       memory: 128Mi
     limits:
       memory: 256Mi
-  # Chart-managed Grafana ingress on .uwv-platform.local for in-cluster
-  # routing. Public AKS access is in infrastructure/azure/public-ingresses.yaml
-  # (`grafana-public`).
+  # Chart-managed Grafana ingress UIT — we serveren Grafana onder
+  # platform.uwv-platform.local/grafana via een eigen ingress in
+  # platform/14-monitoring/ingress-grafana.yaml (path-routing voor de
+  # portal embed-shell). Public AKS access blijft via
+  # infrastructure/azure/public-ingresses.yaml (`grafana-public`).
   ingress:
-    enabled: true
-    ingressClassName: nginx
-    annotations:
-      cert-manager.io/cluster-issuer: uwv-platform-issuer
-    hosts:
-      - grafana.uwv-platform.local
-    tls:
-      - hosts: [grafana.uwv-platform.local]
-        secretName: grafana-tls
+    enabled: false
   # Keycloak SSO via OIDC. De `grafana`-client zit in realm-uwv.json met
   # redirect-URIs voor alle drie de modes (k3d/aks/stackit). De k3d-defaults
   # staan hier; values-aks.yaml en values-stackit.yaml overrulen root_url +
@@ -88,7 +88,18 @@ grafana:
   assertNoLeakedSecrets: false
   grafana.ini:
     server:
-      root_url: "https://grafana.uwv-platform.local:8443"
+      # Path-routing onder de portal-host (zie platform/14-monitoring/
+      # ingress-grafana.yaml). De chart-managed ingress is uit; alle
+      # toegang gaat via /grafana-prefix. serve_from_sub_path zorgt dat
+      # alle static-asset paths het /grafana-prefix krijgen.
+      root_url: "https://platform.uwv-platform.local:8443/grafana/"
+      serve_from_sub_path: true
+    security:
+      # Default X-Frame-Options=DENY blokkeert ook same-origin iframes
+      # (alleen SAMEORIGIN/ALLOW-FROM doet wat de naam suggereert).
+      # allow_embedding zet de header op SAMEORIGIN zodat de portal
+      # embed-shell Grafana via een iframe kan tonen.
+      allow_embedding: true
     auth:
       disable_login_form: false
       oauth_auto_login: false

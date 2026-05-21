@@ -1,0 +1,307 @@
+---
+/*
+  ItemTile — Fabric-style content tile used on the Workspace
+  homepage (recents, favorites, persona shortcuts). Click-through
+  goes either to /embed/<service>?path=… (for embeddable services)
+  or to the absolute service URL (opens in new tab).
+
+  type drives the color of the leading icon tile and the type-chip:
+    - dashboard  (Superset)   purple
+    - dag        (Airflow)    blue
+    - table      (Catalog)    teal
+    - notebook   (Jupyter)    orange
+    - query      (SQLLab)     red
+    - pipeline   (dbt)        amber
+
+  Use inside <ItemGrid> for auto-fit responsive grid.
+*/
+interface Props {
+  type: 'dashboard' | 'dag' | 'table' | 'notebook' | 'query' | 'pipeline';
+  title: string;
+  subtitle?: string;
+  owner?: string;
+  href?: string;
+  status?: 'ok' | 'warn' | 'down' | null;
+  badge?: string;          // optional tag, e.g. "Pinned" / "Shared"
+  starred?: boolean;
+  /**
+   * Stable identifier for the favorites backend. Required when starrable=true;
+   * a click on the star POSTs/DELETEs against /api/portal/favorites/<key>.
+   */
+  itemKey?: string;
+  /**
+   * When true, render the star as a clickable toggle (visible even if not
+   * starred yet, in a subtle outline color). When false, the star is a
+   * read-only indicator that only appears when starred=true.
+   */
+  starrable?: boolean;
+  /**
+   * Service slug used to look up /icons/brand/<slug>.svg.
+   * When set, the leading tile shows the brand icon on a type-tinted
+   * background; when omitted, the tile shows the type-letter (DSH/DAG/…).
+   * Valid values match the filenames in portal/public/icons/brand/.
+   */
+  service?:
+    | 'airflow' | 'dbt' | 'grafana' | 'hive' | 'jupyter' | 'kafka'
+    | 'keycloak' | 'minio' | 'multica' | 'nifi' | 'opa' | 'openmetadata'
+    | 'opensearch' | 'prometheus' | 'spark' | 'superset' | 'trino';
+}
+const {
+  type, title, subtitle, owner, href = '#',
+  status, badge, starred, service,
+  itemKey, starrable = false,
+} = Astro.props;
+
+// Map type → short label shown inside the icon tile (fallback when no service)
+const TYPE_LABEL: Record<Props['type'], string> = {
+  dashboard: 'DSH',
+  dag:       'DAG',
+  table:     'TBL',
+  notebook:  'NB',
+  query:     'SQL',
+  pipeline:  'DBT',
+};
+---
+
+<a
+  class="v2-tile"
+  href={href}
+  data-type={type}
+  data-item-key={itemKey}
+>
+  {service ? (
+    <span class="v2-tile-brand" aria-hidden="true">
+      <img src={`/icons/brand/${service}.svg`} alt="" width="24" height="24" loading="lazy" />
+    </span>
+  ) : (
+    <span class="v2-tile-icon" aria-hidden="true">{TYPE_LABEL[type]}</span>
+  )}
+  <span class="v2-tile-body">
+    <span class="v2-tile-row">
+      <span class="v2-tile-title">{title}</span>
+      {starrable && itemKey ? (
+        <button
+          type="button"
+          class="v2-tile-star"
+          aria-pressed={starred ? 'true' : 'false'}
+          aria-label={starred ? 'Verwijder uit favorieten' : 'Markeer als favoriet'}
+          data-action="favorite-toggle"
+          data-item-key={itemKey}
+          data-item-type={type}
+          data-item-service={service ?? ''}
+          data-item-title={title}
+          data-item-subtitle={subtitle ?? ''}
+          data-item-href={href}
+        >★</button>
+      ) : (
+        starred && <span class="v2-tile-star v2-tile-star--static" aria-label="favoriet">★</span>
+      )}
+    </span>
+    {subtitle && <span class="v2-tile-subtitle">{subtitle}</span>}
+    <span class="v2-tile-meta">
+      <span class="v2-type-chip" data-type={type}>{type}</span>
+      {owner && <span class="v2-tile-owner">· {owner}</span>}
+      {badge && <span class="v2-tile-badge">{badge}</span>}
+      {status && <span class:list={['v2-tile-status', `v2-tile-status--${status}`]} aria-label={status}></span>}
+    </span>
+  </span>
+</a>
+
+<style>
+  .v2-tile {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
+    background: var(--tile-bg);
+    border: 1px solid var(--tile-line);
+    border-radius: var(--tile-radius);
+    color: var(--ink-1);
+    text-decoration: none;
+    transition: background var(--motion-fast),
+                border-color var(--motion-fast),
+                box-shadow var(--motion-fast),
+                transform var(--motion-fast);
+    min-height: 84px;
+  }
+  .v2-tile:hover {
+    background: var(--tile-bg-hover);
+    border-color: var(--tile-line-hover);
+    box-shadow: var(--tile-shadow-hover);
+    text-decoration: none;
+    transform: translateY(-1px);
+  }
+
+  .v2-tile-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: var(--weight-bold);
+    color: white;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+  }
+  .v2-tile[data-type="dashboard"] .v2-tile-icon { background: var(--type-dashboard); }
+  .v2-tile[data-type="dag"]       .v2-tile-icon { background: var(--type-dag); }
+  .v2-tile[data-type="table"]     .v2-tile-icon { background: var(--type-table); }
+  .v2-tile[data-type="notebook"]  .v2-tile-icon { background: var(--type-notebook); }
+  .v2-tile[data-type="query"]     .v2-tile-icon { background: var(--type-query); }
+  .v2-tile[data-type="pipeline"]  .v2-tile-icon { background: var(--type-pipeline); }
+
+  /* ─── Brand-icon variant (when `service` prop is set) ─── */
+  /* Same 40×40 footprint as the type-letter tile, but with a subtle
+     type-tinted background + 1px tinted border, and the brand SVG
+     centered at 24×24. Keeps cross-row alignment and lets each row
+     show "what type this is" via tint while still showing the
+     service brand for instant recognition. */
+  .v2-tile-brand {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: var(--bg-sunken);
+    border: 1px solid var(--tile-line);
+  }
+  .v2-tile-brand img {
+    width: 24px;
+    height: 24px;
+    display: block;
+  }
+  .v2-tile[data-type="dashboard"] .v2-tile-brand {
+    background: color-mix(in oklch, var(--type-dashboard) 14%, var(--bg-sunken));
+    border-color: color-mix(in oklch, var(--type-dashboard) 30%, var(--tile-line));
+  }
+  .v2-tile[data-type="dag"] .v2-tile-brand {
+    background: color-mix(in oklch, var(--type-dag) 14%, var(--bg-sunken));
+    border-color: color-mix(in oklch, var(--type-dag) 30%, var(--tile-line));
+  }
+  .v2-tile[data-type="table"] .v2-tile-brand {
+    background: color-mix(in oklch, var(--type-table) 14%, var(--bg-sunken));
+    border-color: color-mix(in oklch, var(--type-table) 30%, var(--tile-line));
+  }
+  .v2-tile[data-type="notebook"] .v2-tile-brand {
+    background: color-mix(in oklch, var(--type-notebook) 14%, var(--bg-sunken));
+    border-color: color-mix(in oklch, var(--type-notebook) 30%, var(--tile-line));
+  }
+  .v2-tile[data-type="query"] .v2-tile-brand {
+    background: color-mix(in oklch, var(--type-query) 14%, var(--bg-sunken));
+    border-color: color-mix(in oklch, var(--type-query) 30%, var(--tile-line));
+  }
+  .v2-tile[data-type="pipeline"] .v2-tile-brand {
+    background: color-mix(in oklch, var(--type-pipeline) 14%, var(--bg-sunken));
+    border-color: color-mix(in oklch, var(--type-pipeline) 30%, var(--tile-line));
+  }
+
+  .v2-tile-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+  .v2-tile-row {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .v2-tile-title {
+    font-weight: var(--weight-medium);
+    color: var(--ink-1);
+    font-size: var(--text-body);
+    letter-spacing: var(--tracking-tight);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Interactive toggle: subtle when unstarred, filled when starred.
+     The button sits inside the <a> tile-link, so we stopPropagation
+     in the global handler to keep clicks from navigating. */
+  .v2-tile-star {
+    border: 0;
+    background: transparent;
+    color: var(--ink-4);
+    font-size: 14px;
+    flex-shrink: 0;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    transition: color var(--motion-fast), transform var(--motion-fast);
+  }
+  .v2-tile-star:hover {
+    color: var(--status-warn);
+    transform: scale(1.15);
+  }
+  .v2-tile-star[aria-pressed="true"] {
+    color: var(--status-warn);
+  }
+  /* Static read-only indicator (used when starrable=false). */
+  .v2-tile-star--static {
+    cursor: default;
+    color: var(--status-warn);
+  }
+  .v2-tile-subtitle {
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .v2-tile-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: 4px;
+    font-size: var(--text-eyebrow);
+    color: var(--ink-3);
+    flex-wrap: wrap;
+  }
+  .v2-type-chip {
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bg-sunken);
+    color: var(--ink-2);
+    border: 1px solid var(--tile-line);
+  }
+  .v2-type-chip[data-type="dashboard"] { color: var(--type-dashboard); border-color: color-mix(in oklch, var(--type-dashboard) 35%, var(--tile-line)); }
+  .v2-type-chip[data-type="dag"]       { color: var(--type-dag);       border-color: color-mix(in oklch, var(--type-dag)       35%, var(--tile-line)); }
+  .v2-type-chip[data-type="table"]     { color: var(--type-table);     border-color: color-mix(in oklch, var(--type-table)     35%, var(--tile-line)); }
+  .v2-type-chip[data-type="notebook"]  { color: var(--type-notebook);  border-color: color-mix(in oklch, var(--type-notebook)  35%, var(--tile-line)); }
+  .v2-type-chip[data-type="query"]     { color: var(--type-query);     border-color: color-mix(in oklch, var(--type-query)     35%, var(--tile-line)); }
+  .v2-type-chip[data-type="pipeline"]  { color: var(--type-pipeline);  border-color: color-mix(in oklch, var(--type-pipeline)  35%, var(--tile-line)); }
+
+  .v2-tile-owner { color: var(--ink-3); }
+  .v2-tile-badge {
+    background: var(--accent-info-soft);
+    color: var(--accent-info);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: var(--weight-medium);
+  }
+  [data-theme="dark"] .v2-tile-badge {
+    background: color-mix(in oklch, var(--accent-info) 18%, transparent);
+    color: color-mix(in oklch, var(--accent-info) 80%, white);
+  }
+  .v2-tile-status {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .v2-tile-status--ok   { background: var(--status-ok); }
+  .v2-tile-status--warn { background: var(--status-warn); }
+  .v2-tile-status--down { background: var(--status-down); }
+</style>

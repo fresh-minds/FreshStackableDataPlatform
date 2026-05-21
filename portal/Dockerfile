@@ -15,8 +15,12 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 # 1. Astro/portal-bron + node deps.
+# --legacy-peer-deps omdat de embed-ui-shell branch @types/react@19 introduceerde
+# terwijl @astrojs/react@3.x nog 17/18 peer-pinned heeft. Niet runtime-relevant
+# (Astro-React-island wordt niet gebruikt op de pagina's die we bouwen) maar
+# blokkeert wel een verse npm ci.
 COPY portal/package.json portal/package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+RUN if [ -f package-lock.json ]; then npm ci --legacy-peer-deps; else npm install --legacy-peer-deps; fi
 
 # 2. Brondata uit OPA op de plek die scripts/sync-data.mjs verwacht
 #    (../opa-policies-src/data, gerekend vanaf /app).

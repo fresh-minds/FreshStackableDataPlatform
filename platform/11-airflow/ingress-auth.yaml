@@ -1,0 +1,44 @@
+# Aparte ingress voor /airflow/auth/* — Airflow 3 mount't de FAB-provider
+# (Flask) als WSGIMiddleware op /auth binnen de FastAPI-main-app. Wanneer
+# de hoofd-ingress X-Forwarded-Prefix=/airflow stuurt, overschrijft FAB's
+# ProxyFix `x_prefix=1` Flask's SCRIPT_NAME naar /airflow — daarmee
+# verdwijnt het /auth-mount-deel. Resultaat: url_for("appbuilder.static")
+# rendert /airflow/static/appbuilder/... terwijl de echte route
+# /airflow/auth/static/appbuilder/... is. Browser krijgt 404 op
+# bootstrap.min.css → de hidden Bootstrap-modal in baselayout.html
+# verschijnt als "User confirmation needed"-tekst zonder styling.
+#
+# Door deze tweede ingress op het meer-specifieke pad /airflow/auth
+# (nginx-ingress kiest altijd de meest-specifieke path-match) krijgen
+# alleen FAB-rendered requests X-Forwarded-Prefix=/airflow/auth. De
+# main-ingress blijft /airflow voor de React-SPA + /api/v2-routes.
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: airflow-auth
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header X-Forwarded-Port 8443;
+      proxy_set_header X-Forwarded-Prefix /airflow/auth;
+      proxy_hide_header X-Frame-Options;
+      proxy_hide_header Content-Security-Policy;
+      add_header Content-Security-Policy "frame-ancestors 'self' https://platform.uwv-platform.local:8443 https://platform.eu-sovereigndataplatform.com https://platform.freshstackable.com" always;
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["platform.uwv-platform.local"]
+      secretName: airflow-platform-tls
+  rules:
+    - host: platform.uwv-platform.local
+      http:
+        paths:
+          - path: /airflow/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: uwv-airflow-webserver
+                port:
+                  number: 8080

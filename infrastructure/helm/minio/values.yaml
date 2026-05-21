@@ -88,6 +88,13 @@ consoleIngress:
     cert-manager.io/cluster-issuer: uwv-platform-issuer
     nginx.ingress.kubernetes.io/backend-protocol: HTTPS
     nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
+    # MinIO Console iframe-allow voor portal embed-shell (cross-origin).
+    # Console hard-codet OIDC-callback op /oauth_callback dus blijft op
+    # eigen subdomein i.p.v. path-routed; we strippen X-Frame-Options
+    # en zetten frame-ancestors zodat portal-shell 'm kan iframen.
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_hide_header X-Frame-Options;
+      add_header Content-Security-Policy "frame-ancestors 'self' https://platform.uwv-platform.local:8443 https://platform.eu-sovereigndataplatform.com https://platform.freshstackable.com" always;
   hosts:
     - minio-console.uwv-platform.local
   tls:
@@ -137,7 +144,20 @@ environment:
 policies:
   - name: csv-uploader
     statements:
-      # 1. WRITE — uploaden van CSV's naar de staging-incoming prefix.
+      # 1a. WRITE — generic uploads (portal /csv-upload page).
+      # Per-user prefix: uploads/<sanitized-email>/<ts>/<filename>. De portal
+      # sanitiseert browser-side; de airflow-bridge sidecar valideert dat het
+      # prefix overeenkomt met X-Auth-Request-Email vóór trigger.
+      - effect: Allow
+        resources:
+          - "arn:aws:s3:::uwv-staging/uploads/*"
+        actions:
+          - "s3:PutObject"
+          - "s3:AbortMultipartUpload"
+          - "s3:ListMultipartUploadParts"
+      # 1b. WRITE — legacy bron-specifieke CSV-staging (mc CLI / Airflow watcher).
+      # Behouden zodat `mc cp … incoming/<bron>/…` blijft werken voor
+      # bestaande klanttevredenheid/focus_billing flows.
       - effect: Allow
         resources:
           - "arn:aws:s3:::uwv-staging/incoming/*"
@@ -169,13 +189,14 @@ policies:
           - "arn:aws:s3:::uwv-gold"
         actions:
           - "s3:ListBucket"
-      # 4. READ — alleen-lezen op processed-archief + alle bronze/silver/gold.
-      # Maakt "Inkijken"-sectie in portal werkend. Let op: omvat de hele
-      # data-lake; voor productie zou je per use-case een eigen policy maken
-      # zodat een UC-12-uploader geen UC-11-PII kan zien.
+      # 4. READ — alleen-lezen op processed-archief, eigen uploads + alle
+      # bronze/silver/gold. Maakt "Inkijken"-sectie in portal werkend.
+      # Let op: omvat de hele data-lake; voor productie zou je per use-case
+      # een eigen policy maken zodat een UC-12-uploader geen UC-11-PII kan zien.
       - effect: Allow
         resources:
           - "arn:aws:s3:::uwv-staging/processed/*"
+          - "arn:aws:s3:::uwv-staging/uploads/*"
           - "arn:aws:s3:::uwv-bronze/*"
           - "arn:aws:s3:::uwv-silver/*"
           - "arn:aws:s3:::uwv-gold/*"

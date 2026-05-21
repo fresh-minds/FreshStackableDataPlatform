@@ -168,8 +168,12 @@ fi
 log "7/10  Portal Docker-image bouwen + in cluster laden (mode=${DEPLOYMENT_MODE})"
 docker build -f portal/Dockerfile -t uwv-platform/portal:dev . >/dev/null
 k3d image import uwv-platform/portal:dev -c "${CLUSTER_NAME:-uwv-platform}" >/dev/null
+# Sidecar voor /api/airflow/* (FastAPI; triggert convert_to_delta DAG).
+docker build -f portal/Dockerfile.airflow-bridge \
+             -t uwv-platform/portal-airflow-bridge:dev . >/dev/null
+k3d image import uwv-platform/portal-airflow-bridge:dev -c "${CLUSTER_NAME:-uwv-platform}" >/dev/null
 kubectl -n uwv-platform rollout restart deployment portal >/dev/null 2>&1 || true
-ok "portal-image gebouwd + geïmporteerd"
+ok "portal + airflow-bridge images gebouwd + geïmporteerd"
 
 # ---------------------------------------------------------------------- 8
 log "8/10  Live-only Keycloak realm patches (TOTP, scopes, mappers, attrs)"
@@ -263,6 +267,14 @@ for u in wia.beoordelaar platform.admin; do
 done
 " 2>&1 | tail -3
   ok "Keycloak runtime patches applied"
+
+  # Path-based redirect-URIs voor /embed/<svc>-flow. Realm-import in
+  # configmap dekt verse Keycloak-installs; voor draaiende clusters
+  # die het oude realm-JSON al hebben geïmporteerd, doen we hier de
+  # PUT via admin API. Idempotent — dedup'pt op bestaande URIs.
+  log "Patch Keycloak clients voor /embed/<svc> redirect-URIs"
+  bash "${ROOT}/scripts/patch-keycloak-embed-redirects.sh" 2>&1 | tail -5 \
+    || warn "embed-redirects-patch faalde — log hierboven"
 fi
 
 # ---------------------------------------------------------------------- 9
@@ -304,8 +316,9 @@ PYEOF
 fi
 
 # ---------------------------------------------------------------------- 10
-log "10/10 smoke test 09-portal-up"
-bash tests/smoke/09-portal-up.sh || warn "smoke meldt fouten"
+log "10/10 smoke tests (portal + embed-shell)"
+bash tests/smoke/09-portal-up.sh   || warn "smoke 09 meldt fouten"
+bash tests/smoke/14-embed-shell.sh || warn "smoke 14 meldt fouten"
 
 echo
 ok "Alles klaar. Open: https://platform.${PLATFORM_DOMAIN}:${PLATFORM_PORT}/"

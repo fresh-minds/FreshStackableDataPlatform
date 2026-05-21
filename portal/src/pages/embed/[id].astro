@@ -1,0 +1,64 @@
+---
+// Dynamische embed-pagina per component. Pre-genereert /embed/<id>/ voor
+// elk component dat in `components.ts` is gedefinieerd (zelfs voor 'none'
+// — die toont een nette "open in nieuw tabblad"-fallback).
+//
+// Deep-linking: ?path=/foo/bar?query=... — wordt aan de iframe-src geplakt
+// zodat bestaande role-shortcuts naar specifieke dashboards/lineage/etc.
+// blijven werken binnen de shell.
+
+import { components, type ComponentId } from '../../data/components';
+import EmbedLayout from '../../layouts/EmbedLayout.astro';
+
+export function getStaticPaths() {
+  return components.map((c) => ({
+    params: { id: c.id },
+    props: { id: c.id as ComponentId },
+  }));
+}
+
+interface Props {
+  id: ComponentId;
+}
+
+const { id } = Astro.props;
+const component = components.find((c) => c.id === id);
+if (!component) {
+  // Astro raises 404 op statische builds als de id niet bestaat.
+  return Astro.redirect('/404');
+}
+
+// Deep-link uit ?path=… — Astro maakt statische pages, dus de
+// query-string wordt client-side ingelezen. Server-side renderen we 'm
+// niet (zou anders elke deep-link een aparte page vereisen).
+// Voor SSR-loze static builds: we lezen de query in een inline script en
+// patchen de iframe-src dáár. EmbedLayout heeft daarvoor een placeholder.
+const deepLink = Astro.url.searchParams.get('path');
+---
+<EmbedLayout component={component} deepLink={deepLink}>
+</EmbedLayout>
+
+<script>
+  // ─── Client-side deep-link override.
+  // Astro is static; ?path=… komt pas in de browser binnen. Als er een
+  // pad in de query staat, herbouwen we iframe.src met dat pad.
+  const params = new URLSearchParams(window.location.search);
+  const deep = params.get('path');
+  if (deep) {
+    const iframe = document.getElementById('embed-frame') as HTMLIFrameElement | null;
+    if (iframe) {
+      const cur = iframe.src;
+      // Strip trailing slash van de basis, voeg deep-link toe (mag met of
+      // zonder leading slash beginnen).
+      const base = cur.replace(/\/+$/, '');
+      const suffix = deep.startsWith('/') ? deep : '/' + deep;
+      iframe.src = base + suffix;
+    }
+    // Update de breadcrumb in de top-bar als die er is.
+    const breadcrumb = document.querySelector<HTMLElement>('.embed-deep');
+    if (breadcrumb) {
+      breadcrumb.textContent = deep;
+      breadcrumb.title = deep;
+    }
+  }
+</script>

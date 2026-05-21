@@ -22,10 +22,11 @@ UWV draait workloads bij meerdere cloud-providers (primair OCI). Finance wil per
 
 ```
 Finance medewerker
-   │  Upload focus-yyyymm.csv via https://platform.uwv-platform.local:8443/csv-upload/
+   │  Upload focus-yyyymm.csv via mc CLI of MinIO Console
+   │  (portal /csv-upload is sinds 2026-05 generiek — zie handleidingen/csv-upload.md Pad B)
    ▼
 MinIO  s3://uwv-staging/incoming/focus/<ts>-<file>.csv
-   │  watch_csv_staging DAG (poll elke 2 min)
+   │  (handmatige trigger: Airflow UI of REST API)
    ▼
 ingest_csv_focus DAG (auto-generated door csv_ingest_factory)
    │  csv_to_bronze.py — pyarrow type-cast + validatie tegen sources/focus.yml
@@ -102,20 +103,39 @@ Config: [platform/12-superset/dashboards-init-job.yaml](../../platform/12-supers
 
 ### Voorwaarden
 
-- Keycloak-account heeft user-attribute `policy: csv-uploader` (zie [csv-upload.astro:7-17](../../portal/src/pages/csv-upload.astro)).
+- Keycloak-account heeft user-attribute `policy: csv-uploader` (de `csv-uploader`
+  MinIO-policy dekt zowel `uploads/*` als legacy `incoming/*`; zie
+  [infrastructure/helm/minio/values.yaml](../../infrastructure/helm/minio/values.yaml)).
 - CSV-header **moet exact** de 50 kolomnamen uit [sources/focus.yml](../../platform/11-airflow/sources/focus.yml) bevatten — `csv_to_bronze.py` faalt anders met `ERROR: CSV mist kolommen: [...]`.
 - Timestamps in ISO 8601 (`2026-05-01T00:00:00Z` of `2026-05-01T00:00:00.000Z`).
 - `BillingCurrency` is per upload homogeen verondersteld (MVP); meertonen-uploads splits je apart.
 
 ### Stappen
 
-1. Login op https://platform.uwv-platform.local:8443/csv-upload/ met `finops-uploader`-account.
-2. Kies bron **FOCUS billing** in de dropdown.
-3. Selecteer `focus-yyyymm.csv` (max 500 MB).
-4. Bevestig — bestand landt in `s3://uwv-staging/incoming/focus/<ts>-<filename>.csv`.
-5. Binnen ~2 minuten triggert `watch_csv_staging` → `ingest_csv_focus`.
-6. Bekijk progress in Airflow: https://airflow.uwv-platform.local:8443/dags/ingest_csv_focus.
-7. Bij succes ververst het Superset-dashboard zodra `gold_uc12_focus_finops` klaar is (5-15 min na upload, afhankelijk van rij-aantal).
+Sinds 2026-05 is de portal-uploader generiek — hij schrijft naar `uploads/`,
+niet `incoming/`. Voor FOCUS gebruik je daarom de mc CLI en trigger je daarna
+de DAG handmatig:
+
+```bash
+# 1. Upload het bestand
+mc alias set minio-uwv https://minio.uwv-platform.local:8443 uwvadmin \
+  'uwv-dev-only-CHANGE-ME-2026' --insecure
+TS=$(date -u +%Y%m%dT%H%M%S)
+mc cp ./focus-2026-05.csv \
+  minio-uwv/uwv-staging/incoming/focus/${TS}.csv --insecure
+
+# 2. Trigger de ingest-DAG via Airflow REST
+curl -fsS -u "airflow:uwv-dev-only-CHANGE-ME-2026" \
+  -X POST -H 'Content-Type: application/json' \
+  -d "{\"conf\":{\"object_key\":\"incoming/focus/${TS}.csv\"}}" \
+  https://airflow.uwv-platform.local:8443/api/v1/dags/ingest_csv_focus/dagRuns
+```
+
+Of via de Airflow UI: open `ingest_csv_focus`, klik **Trigger DAG w/ config**
+en geef `{"object_key": "incoming/focus/<ts>.csv"}`.
+
+1. Bekijk progress in Airflow: https://airflow.uwv-platform.local:8443/dags/ingest_csv_focus.
+2. Bij succes ververst het Superset-dashboard zodra `gold_uc12_focus_finops` klaar is (5-15 min na upload, afhankelijk van rij-aantal).
 
 ### Test-CSV genereren
 

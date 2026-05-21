@@ -52,6 +52,32 @@ export type ComponentStage =
   | 'identity'
   | 'agents';
 
+// Embed-config — bepaalt of een component in de portal-shell (iframe) past,
+// en welke URL we als iframe.src gebruiken. Apart van `url` zodat het
+// "open in nieuw tabblad"-gedrag (en de TLD-rewrite in Layout.astro) blijft
+// werken met de oorspronkelijke externe URL.
+//
+// - 'subpath':   de service draait onder platform.uwv-platform.local/<path>/
+//                (same-origin, geen cross-origin cookie-issues).
+// - 'subdomain': service draait op een eigen <svc>.<tld> en wordt cross-origin
+//                geiframed. Vereist dat de service X-Frame-Options/CSP toestaat
+//                en cookies SameSite=None;Secure heeft.
+// - 'none':      niet iframe-baar (Keycloak login, MinIO S3-API, …).
+//                Link altijd in nieuw tabblad.
+export type EmbedMode = 'subpath' | 'subdomain' | 'none';
+
+export interface EmbedConfig {
+  mode: EmbedMode;
+  // Voor 'subpath': pad onder de portal-host (begin met '/').
+  // Voor 'subdomain': leeg laten — we gebruiken `url` als basis.
+  path?: string;
+  // Override de iframe-src base. Nuttig als `url` naar een portal-pagina
+  // wijst (bv. MinIO's /go/minio/ SSO-bootstrap) maar de iframe gewoon
+  // direct naar het service-subdomein moet. Layout-chrome in een iframe
+  // is verwarrend; betere UX is direct laden.
+  iframeBase?: string;
+}
+
 export interface PlatformComponent {
   id: ComponentId;
   name: string;
@@ -61,6 +87,7 @@ export interface PlatformComponent {
   purpose: string;
   icon: string;
   url: string | null;
+  embed?: EmbedConfig;
   prometheusJob?: string;
   rolesUsing: string[];
 }
@@ -75,6 +102,10 @@ export const components: PlatformComponent[] = [
     purpose: 'Eén keer inloggen, overal toegang volgens je rol. MFA en audit-log centraal.',
     icon: '/icons/brand/keycloak.svg',
     url: 'https://keycloak.uwv-platform.local:8443',
+    // Keycloak admin-console is bewust niet iframe-baar — login-redirects
+    // breken in iframe-context, en sommige browsers blokkeren third-party
+    // OIDC-cookies sowieso. Open altijd in een nieuw tabblad.
+    embed: { mode: 'none' },
     prometheusJob: 'keycloak',
     rolesUsing: ['*'],
   },
@@ -89,6 +120,7 @@ export const components: PlatformComponent[] = [
     // Flows worden as-code beheerd (process-group JSON, REST-import); de UI
     // is geen onderdeel van de dagelijkse workflow. Geen klikbare link op /me.
     url: null,
+    embed: { mode: 'none' },
     prometheusJob: 'nifi',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
@@ -101,6 +133,7 @@ export const components: PlatformComponent[] = [
     purpose: 'Data-events bufferen en doorzetten naar verwerking. Schaalbare doorvoer.',
     icon: '/icons/brand/kafka.svg',
     url: null,
+    embed: { mode: 'none' },
     prometheusJob: 'kafka',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
@@ -115,7 +148,19 @@ export const components: PlatformComponent[] = [
     // /go/minio/ is een portal-redirect die de Keycloak SSO-flow start;
     // zie portal/nginx.conf + portal/src/pages/go/minio.astro voor de
     // workaround voor de embedded MinIO Console-quirk via de externe ingress.
+    // (Nieuwe MinIO Console-builds returnen wel SSO-redirect via externe
+    // /api/v1/login dus /go/minio/ is niet meer strikt noodzakelijk, maar
+    // blijft staan als directe-link entry voor de /me shortcut-lijst.)
     url: '/go/minio/',
+    // S3-API moet root-pad zijn (geen subpath mogelijk). De Console heeft
+    // OIDC-callback hard-coded op /oauth_callback en is daarom cross-origin
+    // op zijn eigen subdomein. iframeBase override: iframe direct naar de
+    // Console — Layout-chrome via /go/minio/ in een iframe was verwarrend
+    // (geneste topbars), en de Console doet zelf de SSO-redirect.
+    embed: {
+      mode: 'subdomain',
+      iframeBase: 'https://minio-console.uwv-platform.local:8443',
+    },
     prometheusJob: 'minio',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
@@ -128,6 +173,7 @@ export const components: PlatformComponent[] = [
     purpose: 'Vertaalt bestanden in MinIO naar tabellen met kolommen en types.',
     icon: '/icons/brand/hive.svg',
     url: null,
+    embed: { mode: 'none' },
     prometheusJob: 'hive',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
@@ -144,6 +190,7 @@ export const components: PlatformComponent[] = [
     // Op de Executors-tab vind je stderr/stdout per pod = "spark cluster logs".
     // 503 als de driver niet draait.
     url: 'https://spark.uwv-platform.local:8443',
+    embed: { mode: 'subdomain' },
     prometheusJob: 'spark',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
@@ -158,6 +205,7 @@ export const components: PlatformComponent[] = [
     // Eindgebruikers raken Trino via Superset, Jupyter, dbt of Airflow — niet
     // via de Trino-UI zelf. Geen klikbare link op /me.
     url: null,
+    embed: { mode: 'none' },
     prometheusJob: 'trino',
     rolesUsing: [
       'wia_beoordelaar',
@@ -181,6 +229,7 @@ export const components: PlatformComponent[] = [
     purpose: 'Doelbinding, rij-filters en kolom-maskering afdwingen op iedere query.',
     icon: '/icons/brand/opa.svg',
     url: null,
+    embed: { mode: 'none' },
     prometheusJob: 'opa',
     rolesUsing: ['platform_admin'],
   },
@@ -193,6 +242,12 @@ export const components: PlatformComponent[] = [
     purpose: 'Dashboards en ad-hoc analyse voor business-rollen — zonder SQL hoeven kennen.',
     icon: '/icons/brand/superset.svg',
     url: 'https://superset.uwv-platform.local:8443',
+    // Subdomain-routing — Superset hard-codet /superset als blueprint-
+    // prefix voor z'n eigen klasse (Superset.welcome → /superset/welcome/),
+    // dus nginx-rewrite + SCRIPT_NAME=/superset zou /superset/superset/...
+    // produceren of bestaande routes als /welcome/ missen. Praktischer: blijft
+    // op subdomein + ingress strip't X-Frame-Options + zet frame-ancestors.
+    embed: { mode: 'subdomain' },
     prometheusJob: 'superset',
     rolesUsing: [
       'wia_beoordelaar',
@@ -216,6 +271,10 @@ export const components: PlatformComponent[] = [
     purpose: 'Wat hebben we, wie is eigenaar, hoe is het opgebouwd, en is het op orde?',
     icon: '/icons/brand/openmetadata.svg',
     url: 'https://openmetadata.uwv-platform.local:8443',
+    // OpenMetadata 1.x heeft geen configureerbare context-path (alle /api/v1,
+    // /callback, /entities zijn hard-coded). Blijft daarom cross-origin op
+    // eigen subdomein; ingress strip't X-Frame-Options.
+    embed: { mode: 'subdomain' },
     prometheusJob: 'openmetadata',
     rolesUsing: [
       'wia_beoordelaar',
@@ -242,6 +301,9 @@ export const components: PlatformComponent[] = [
     purpose: 'Wat doen onze dbt-modellen, welke tests draaien er, en hoe vloeit data van staging naar marts?',
     icon: '/icons/brand/dbt.svg',
     url: '/dbt-docs.html',
+    // dbt-docs is een statische bundle die door portal-nginx zelf wordt
+    // geserveerd — same-origin per definitie.
+    embed: { mode: 'subpath', path: '/dbt-docs.html' },
     rolesUsing: ['data_engineer', 'data_steward', 'platform_admin'],
   },
   {
@@ -253,6 +315,10 @@ export const components: PlatformComponent[] = [
     purpose: 'Interactief data verkennen en analyseren — Trino, Delta, MinIO, OpenMetadata vanuit één Python-kernel; werk versioneren met Git.',
     icon: '/icons/brand/jupyter.svg',
     url: 'https://jupyter.uwv-platform.local:8443',
+    // JupyterHub draait onder c.JupyterHub.base_url = '/jupyter/'.
+    // Notebook-kernels gebruiken websockets; nginx-ingress proxy_pass laat
+    // die door zolang de Upgrade-header niet wordt geblokkeerd.
+    embed: { mode: 'subpath', path: '/jupyter' },
     rolesUsing: [
       'researcher',
       'data_engineer',
@@ -271,6 +337,10 @@ export const components: PlatformComponent[] = [
     purpose: 'Plant en bewaakt alle scheduled jobs — wat draait wanneer, in welke volgorde.',
     icon: '/icons/brand/airflow.svg',
     url: 'https://airflow.uwv-platform.local:8443',
+    // Airflow 3 — AIRFLOW__API__BASE_URL en AIRFLOW__FAB__BASE_URL beide
+    // gezet op platform-host + /airflow. FAB proxy-fix met X_PREFIX zorgt
+    // dat redirect_uri's correct worden opgebouwd onder subpath.
+    embed: { mode: 'subpath', path: '/airflow' },
     prometheusJob: 'airflow',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
@@ -283,6 +353,9 @@ export const components: PlatformComponent[] = [
     purpose: 'Metrics verzamelen en alerteren als iets stuk dreigt te gaan.',
     icon: '/icons/brand/prometheus.svg',
     url: 'https://prometheus.uwv-platform.local:8443',
+    // --web.external-url=/prometheus + --web.route-prefix=/prometheus in
+    // de Prometheus CR; geen auth dus geen cookie-overwegingen.
+    embed: { mode: 'subpath', path: '/prometheus' },
     prometheusJob: 'prometheus-kube-prometheus-prometheus',
     rolesUsing: ['platform_admin'],
   },
@@ -298,6 +371,9 @@ export const components: PlatformComponent[] = [
     // Klik op "Sign in with Keycloak" op de Grafana-loginpagina; admin-account
     // blijft beschikbaar als break-glass.
     url: 'https://grafana.uwv-platform.local:8443',
+    // server.root_url + serve_from_sub_path=true in grafana.ini; werkt
+    // schoon onder subpath.
+    embed: { mode: 'subpath', path: '/grafana' },
     prometheusJob: 'prometheus-grafana',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
@@ -312,6 +388,9 @@ export const components: PlatformComponent[] = [
     // Externe URL wijst naar OpenSearch Dashboards (port 5601). De REST-API
     // (port 9200) is alleen intern bereikbaar via cluster-DNS.
     url: 'https://opensearch.uwv-platform.local:8443',
+    // OpenSearch Dashboards heeft een eigen oauth-flow; we houden 'm
+    // cross-origin tot we tijd hebben voor server.basePath-config.
+    embed: { mode: 'subdomain' },
     prometheusJob: 'opensearch',
     rolesUsing: ['platform_admin', 'data_steward'],
   },
@@ -327,6 +406,9 @@ export const components: PlatformComponent[] = [
     purpose: 'Taken toewijzen aan coding agents; voortgang volgen. Agents draaien op je laptop.',
     icon: '/icons/brand/multica.svg',
     url: 'https://multica.uwv-platform.local:8443',
+    // Cross-origin op eigen subdomein achter oauth2-proxy; behoeft alleen
+    // dat ingress X-Frame-Options niet zet.
+    embed: { mode: 'subdomain' },
     prometheusJob: 'multica-backend',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
@@ -346,6 +428,7 @@ export const components: PlatformComponent[] = [
     // tot er een Nanitics-logo aan public/icons/brand/ is toegevoegd.
     icon: '/icons/stage/agents.svg',
     url: 'https://nanitics.uwv-platform.local:8443/api/observatory/',
+    embed: { mode: 'subdomain' },
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
 ];
@@ -362,6 +445,112 @@ export function componentById(id: ComponentId): PlatformComponent | undefined {
 
 export function componentsByStage(stage: ComponentStage): PlatformComponent[] {
   return components.filter((c) => c.stage === stage);
+}
+
+/**
+ * Of een component in de portal-iframe-shell past. False voor Keycloak,
+ * Kafka, Hive, OPA, Trino — die hebben geen iframe-bare UI.
+ */
+export function isEmbeddable(c: PlatformComponent): boolean {
+  return c.embed != null && c.embed.mode !== 'none';
+}
+
+/**
+ * Componenten die /embed/<id>-pagina krijgen. Gebruikt door
+ * getStaticPaths() in pages/embed/[id].astro.
+ */
+export function embeddableComponents(): PlatformComponent[] {
+  return components.filter(isEmbeddable);
+}
+
+/**
+ * Href die in de portal-UI (architectuur-diagram, role-shortcuts, /me)
+ * gebruikt moet worden bij een klik op een component. Voor iframe-bare
+ * componenten landt 'ie in /embed/<id>/ (portal-shell); anders de
+ * originele externe URL (Keycloak, MinIO-via-go-redirect, etc.).
+ */
+export function tileHref(c: PlatformComponent): string | null {
+  if (isEmbeddable(c)) return `/embed/${c.id}/`;
+  return c.url;
+}
+
+/**
+ * Resolveert de iframe-src URL voor een component, optioneel met deep-link
+ * pad. Bouwt op build-time de uwv-platform.local-URL; Layout.astro's
+ * runtime TLD-rewrite swap't naar de juiste cloud-host. De DEEP-LINK is een
+ * pad-inclusief-query (bv. "/dashboard/list/?filters=…") relatief aan de
+ * service-root.
+ */
+export function resolveEmbedSrc(
+  c: PlatformComponent,
+  deepLink?: string | null,
+): string | null {
+  if (!c.embed) return null;
+
+  // 'none' → niet iframe-baar; caller toont een "open in nieuw tabblad"-fallback.
+  if (c.embed.mode === 'none') return null;
+
+  const cleanDeep = (deepLink ?? '').trim();
+  // Voor 'subpath' bouwen we platform-host + path + deep-link.
+  // De runtime rewrite in Layout.astro raakt 'm niet aan want geen
+  // *.uwv-platform.local hostname.
+  // Path die op een bestand wijst (bv. `/dbt-docs.html`) krijgt geen
+  // trailing slash — anders bouwen we `/dbt-docs.html/` en dat 404't.
+  // Heuristic: een laatste segment met een '.' is een bestand.
+  const looksLikeFile = (p: string) => /\.[a-z0-9]+$/i.test(p.split('/').pop() ?? '');
+
+  if (c.embed.mode === 'subpath') {
+    const raw = c.embed.path ?? '/';
+    const base = raw.replace(/\/+$/, '');
+    if (!cleanDeep) return looksLikeFile(base) ? base : base + '/';
+    // Deep-link mag met of zonder '/' beginnen — normaliseer.
+    return base + (cleanDeep.startsWith('/') ? cleanDeep : '/' + cleanDeep);
+  }
+
+  // 'subdomain' → externe URL uit embed.iframeBase (override) of c.url.
+  if (c.embed.mode === 'subdomain') {
+    const source = c.embed.iframeBase ?? c.url;
+    if (!source) return null;
+    const baseUrl = source.replace(/\/+$/, '');
+    if (!cleanDeep) return looksLikeFile(baseUrl) ? baseUrl : baseUrl + '/';
+    return baseUrl + (cleanDeep.startsWith('/') ? cleanDeep : '/' + cleanDeep);
+  }
+
+  return null;
+}
+
+/**
+ * Bouwt de externe (open-in-new-tab) URL voor een component, inclusief
+ * eventueel deep-link pad. Voor subpath-componenten plakken we op de
+ * portal-host, voor subdomain-componenten op de service-host.
+ *
+ * Wordt door EmbedShell gebruikt voor de "↗ open in nieuw tabblad"-knop.
+ */
+export function resolveExternalUrl(
+  c: PlatformComponent,
+  deepLink?: string | null,
+): string | null {
+  const cleanDeep = (deepLink ?? '').trim();
+  const looksLikeFile = (p: string) => /\.[a-z0-9]+$/i.test(p.split('/').pop() ?? '');
+
+  if (c.embed?.mode === 'subpath') {
+    const base = (c.embed.path ?? '/').replace(/\/+$/, '');
+    if (!cleanDeep) return looksLikeFile(base) ? base : base + '/';
+    return base + (cleanDeep.startsWith('/') ? cleanDeep : '/' + cleanDeep);
+  }
+  // Subdomain mode: voor "open in nieuw tabblad" gebruiken we dezelfde
+  // base als de iframe — gebruiker landt op de echte service-URL, niet op
+  // een tussenpagina als /go/minio/.
+  if (c.embed?.mode === 'subdomain' && c.embed.iframeBase) {
+    const baseUrl = c.embed.iframeBase.replace(/\/+$/, '');
+    if (!cleanDeep) return baseUrl;
+    return baseUrl + (cleanDeep.startsWith('/') ? cleanDeep : '/' + cleanDeep);
+  }
+  if (!c.url) return null;
+  if (c.url.startsWith('/')) return c.url; // portal-interne URL (zoals dbt-docs)
+  const baseUrl = c.url.replace(/\/+$/, '');
+  if (!cleanDeep) return baseUrl;
+  return baseUrl + (cleanDeep.startsWith('/') ? cleanDeep : '/' + cleanDeep);
 }
 
 // Stage-meta voor lane-headers in het reference-diagram en gegroepeerde

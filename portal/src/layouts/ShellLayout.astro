@@ -1,0 +1,1590 @@
+---
+/*
+  ShellLayout — v2 layout for the Databricks/Fabric-style shell.
+
+  Provides:
+    - Left rail (56px, hover-expand to 240px)
+    - Top bar (search trigger + Cmd+K + New + bell + persona + theme + user)
+    - Command Palette (Cmd+K modal with grouped search results)
+    - Dropdown toggle pattern for + New / Notifications / Persona menus
+
+  Coexists with the legacy Layout.astro — only pages that explicitly
+  import ShellLayout get the new chrome. Default route stays on Layout.
+
+  All shell CSS uses rail- / topbarv2- / cmdk- prefixes to avoid
+  collision with legacy styles. v2-tile lives in ItemTile.astro.
+
+  Preview: /styleguide/portal-v2/
+*/
+import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
+import '../styles/tokens.css';
+import '../styles/tokens-v2.css';
+import '../styles/base.css';
+
+import CommandPalette from '../components/shell/CommandPalette';
+import NotificationBell from '../components/shell/NotificationBell';
+
+interface Props {
+  title: string;
+  description?: string;
+  /** Which left-rail item is highlighted. */
+  activeSection?:
+    | 'home' | 'workspace' | 'storage' | 'catalog' | 'lineage'
+    | 'workflows' | 'compute' | 'observability' | 'academy' | 'settings';
+  /**
+   * Optional sub-rail highlight (e.g. 'grafana', 'prometheus', 'opensearch'
+   * inside the 'observability' group). Matches a child entry's `id`.
+   */
+  activeSubsection?: string;
+  /** Mock persona for the mockup. Real impl reads from oauth2-proxy. */
+  persona?:
+    | 'data_engineer' | 'data_analyst' | 'data_steward'
+    | 'researcher'    | 'platform_admin';
+  /** Mock user-display name. */
+  userName?: string;
+  /**
+   * Embed mode — used by EmbedLayout to wrap an iframe at full height.
+   * When true: no footer, shell-main becomes a flex column at calc(100vh
+   * - topbar-h), and the slotted content can use flex:1 to fill remaining
+   * space below an embed-specific sub-bar.
+   */
+  embedMode?: boolean;
+}
+
+const {
+  title,
+  description = 'UWV Reference Data Platform — v2 shell',
+  activeSection = 'home',
+  activeSubsection,
+  persona = 'data_engineer',
+  userName = 'Karel Goense',
+  embedMode = false,
+} = Astro.props;
+
+// Persona metadata — display label + initials + hue.
+const PERSONAS: Record<string, { label: string; initials: string; color: string }> = {
+  data_engineer:  { label: 'Data Engineer',  initials: 'DE', color: 'var(--persona-engineer)' },
+  data_analyst:   { label: 'Data Analyst',   initials: 'DA', color: 'var(--persona-analyst)' },
+  data_steward:   { label: 'Data Steward',   initials: 'DS', color: 'var(--persona-steward)' },
+  researcher:     { label: 'Researcher',     initials: 'R',  color: 'var(--persona-scientist)' },
+  platform_admin: { label: 'Platform Admin', initials: 'PA', color: 'var(--persona-admin)' },
+};
+const currentPersona = PERSONAS[persona] ?? PERSONAS.data_engineer;
+
+// Inline SVG path-sets per rail-icon, Lucide style. Mounted via set:html.
+const RAIL_ICONS: Record<string, string> = {
+  home:          '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-5h-2v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  workspace:     '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  catalog:       '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+  // Storage = stacked-disk database icon. Echoes MinIO / object-store
+  // visual language (bronze / silver / gold zones live here).
+  storage:       '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
+  // Lineage = DAG-style network icon (3 nodes + connectors). Echo's the
+  // dbt-docs lineage graph visually.
+  lineage:       '<rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
+  workflows:     '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M6.5 10v4a2 2 0 0 0 2 2H14"/>',
+  compute:       '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/>',
+  observability: '<path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/>',
+  academy:       '<path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 3 3 6 3s6-1 6-3v-5"/>',
+  settings:      '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+};
+
+// Left rail sections — one entry per top-level navigation target.
+// URLs map onto existing portal routes; embed-routes deep-link into
+// service UIs via the /embed/<id>/?path=… shell.
+//
+// "Lineage + techn. doc." is the compact label for the dbt-docs route;
+// the full name lives in `title` so the tooltip shows the long form.
+const RAIL_MAIN = [
+  { id: 'home',          label: 'Home',                    href: '/' },
+  { id: 'workspace',     label: 'Mijn werkplek',           href: '/me/' },
+  // Data-foundation block: where data lives + describing it + how it flows.
+  // Storage and Catalog have just one usable service each, so no sub-rail —
+  // the parent is the direct link.
+  { id: 'storage',       label: 'Storage',                 href: '/embed/minio/' },
+  { id: 'catalog',       label: 'Catalog',                 href: '/embed/openmetadata/' },
+  { id: 'lineage',       label: 'Lineage + techn. doc.',   href: '/embed/dbt-docs/',
+    title: 'dbt-docs · lineage + technische documentatie' },
+  // Workflows currently only has Airflow as a working embed; NiFi / Kafka
+  // don't have iframe-safe UIs in this deployment so they're hidden until
+  // they get linkable destinations.
+  { id: 'workflows',     label: 'Workflows',               href: '/embed/airflow/' },
+  { id: 'compute',       label: 'Compute',                 href: '/embed/jupyter/',
+    children: [
+      { id: 'jupyter', label: 'Jupyter', href: '/embed/jupyter/' },
+      { id: 'spark',   label: 'Spark',   href: '/embed/spark/' },
+    ],
+  },
+  { id: 'observability', label: 'Observability',           href: '/embed/grafana/',
+    children: [
+      { id: 'grafana',    label: 'Grafana',    href: '/embed/grafana/' },
+      { id: 'prometheus', label: 'Prometheus', href: '/embed/prometheus/' },
+      { id: 'opensearch', label: 'OpenSearch', href: '/embed/opensearch/' },
+    ],
+  },
+] as const;
+const RAIL_FOOT = [
+  { id: 'academy',  label: 'Academy',       href: '/learn/' },
+  { id: 'settings', label: 'Instellingen',  href: '/styleguide/' },
+] as const;
+
+const userInitial = (userName.trim().charAt(0) || '?').toUpperCase();
+---
+
+<!DOCTYPE html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <title>{title} · UWV Platform Portal v2 (mockup)</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script is:inline>
+      // No-flash theme — same as legacy Layout.astro.
+      (function () {
+        try {
+          var saved = localStorage.getItem('uwv-portal-theme');
+          var prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+          var theme = saved ?? (prefersLight ? 'light' : 'dark');
+          document.documentElement.dataset.theme = theme;
+        } catch (e) { /* localStorage unavailable */ }
+      })();
+    </script>
+    <script is:inline>
+      // ─── Embed-shell rewrite ───
+      // Convert any anchor pointing at a known service-subdomain
+      // (https://<svc>.<tld>[:port]/<path>) into a portal-relative
+      // /embed/<id>/?path=<path> link, so every click stays inside the
+      // unified shell with its top-bar. Runs on ALL hosts (k3d + cloud)
+      // — covers role-shortcuts (build-time helper missed deep-links),
+      // MDX academy content, /go/<svc>/-fallback anchors, and any
+      // hardcoded URL we may add later.
+      //
+      // Keep EMBED_MAP aligned with components.ts entries that have
+      // `embed.mode === 'subdomain'`. Path-routed services are already
+      // portal-relative (/grafana etc) and don't need rewriting.
+      // .embed-topbar links (in EmbedLayout) are skipped so the
+      // "open in nieuw tabblad"-knop blijft naar het service-subdomein
+      // wijzen.
+      (function () {
+        var EMBED_MAP = {
+          'airflow': 'airflow',
+          'superset': 'superset',
+          'grafana': 'grafana',
+          'prometheus': 'prometheus',
+          'openmetadata': 'openmetadata',
+          'jupyter': 'jupyter',
+          'minio-console': 'minio',
+          'multica': 'multica',
+          'nanitics': 'nanitics',
+          'opensearch': 'opensearch',
+          'spark': 'spark'
+        };
+        var TLD_RE = /^https?:\/\/([a-z0-9-]+)\.(uwv-platform\.local|eu-sovereigndataplatform\.com|freshstackable\.com)(:\d+)?(\/[^\s]*)?$/;
+
+        function toEmbedHref(href) {
+          var m = href.match(TLD_RE);
+          if (!m) return null;
+          var id = EMBED_MAP[m[1]];
+          if (!id) return null;
+          var pathPart = m[4] || '/';
+          if (pathPart === '/' || pathPart === '') return '/embed/' + id + '/';
+          return '/embed/' + id + '/?path=' + encodeURIComponent(pathPart);
+        }
+
+        function rewriteEmbed() {
+          var anchors = document.querySelectorAll('a[href]');
+          for (var i = 0; i < anchors.length; i++) {
+            var a = anchors[i];
+            if (a.closest && a.closest('.embed-topbar')) continue;
+            if (!/^https?:\/\//i.test(a.href)) continue;
+            var embed = toEmbedHref(a.href);
+            if (embed) {
+              a.href = embed;
+              // Drop target=_blank/_rel so the link opens inline in
+              // de portal-shell ipv in een nieuw tabblad.
+              a.removeAttribute('target');
+              a.removeAttribute('rel');
+            }
+          }
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', rewriteEmbed);
+        } else {
+          rewriteEmbed();
+        }
+        new MutationObserver(rewriteEmbed).observe(document.documentElement,
+          { childList: true, subtree: true });
+        // Click-time safety net voor anchors die programmatisch worden
+        // gezet vlak voor de klik (MutationObserver mist die race).
+        document.addEventListener('click', function (ev) {
+          var a = ev.target && ev.target.closest && ev.target.closest('a[href]');
+          if (!a) return;
+          if (a.closest && a.closest('.embed-topbar')) return;
+          var embed = toEmbedHref(a.href);
+          if (embed) {
+            a.href = embed;
+            a.removeAttribute('target');
+            a.removeAttribute('rel');
+          }
+        }, true);
+      })();
+
+      // ─── Cross-environment URL rewrite ───
+      // The same Astro build serves k3d (*.uwv-platform.local:8443), AKS
+      // public DNS (*.eu-sovereigndataplatform.com:443), and StackIT SKE
+      // (*.freshstackable.com:443). Component-, role-shortcut, and academy
+      // hrefs are build-time hardcoded as https://<svc>.uwv-platform.local:8443;
+      // on a cloud host we rewrite to https://<svc>.<that-cloud-tld> (port 443).
+      // Runs AFTER embed-rewrite — only non-embedded URLs (keycloak admin,
+      // /go/<svc>/ fallbacks) reach this point.
+      (function () {
+        var host = window.location.hostname;
+
+        var CLOUD_TLDS = ['eu-sovereigndataplatform.com', 'freshstackable.com'];
+        var targetTld = null;
+        for (var t = 0; t < CLOUD_TLDS.length; t++) {
+          if (host === CLOUD_TLDS[t] || host.endsWith('.' + CLOUD_TLDS[t])) {
+            targetTld = CLOUD_TLDS[t]; break;
+          }
+        }
+        if (!targetTld) return;
+
+        // Subdomains that DON'T have a public cloud counterpart.
+        var KEEP_LOCAL = ['multica', 'nanitics'];
+
+        function rewriteHref(href) {
+          var m = href.match(/:\/\/([a-z0-9-]+)\.uwv-platform\.local(:8443)?/);
+          if (m && KEEP_LOCAL.indexOf(m[1]) !== -1) return href;
+          return href
+            .replace(/:\/\/([a-z0-9-]+)\.uwv-platform\.local(:8443)?/g,
+                     '://$1.' + targetTld);
+        }
+
+        function rewrite() {
+          var anchors = document.querySelectorAll('a[href*="uwv-platform.local"]');
+          for (var i = 0; i < anchors.length; i++) {
+            var a = anchors[i];
+            if (!/^https?:\/\//i.test(a.href)) continue;
+            a.href = rewriteHref(a.href);
+          }
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', rewrite);
+        } else {
+          rewrite();
+        }
+        new MutationObserver(rewrite).observe(document.documentElement,
+          { childList: true, subtree: true });
+
+        document.addEventListener('click', function (ev) {
+          var a = ev.target && ev.target.closest && ev.target.closest('a[href*="uwv-platform.local"]');
+          if (a && /^https?:\/\//i.test(a.href)) a.href = rewriteHref(a.href);
+        }, true);
+      })();
+    </script>
+  </head>
+
+  <body class="shell" data-rail="collapsed" data-embed-mode={embedMode ? 'true' : undefined}>
+    <!-- ─── LEFT RAIL ─────────────────────────────────────── -->
+    <aside class="rail" aria-label="Hoofdnavigatie">
+      <a class="rail-brand" href="/" aria-label="UWV Platform Portal">
+        <span class="rail-brand-mark">UWV</span>
+        <span class="rail-brand-text"><b>Platform</b> <span class="rail-brand-sub">v2</span></span>
+      </a>
+
+      <nav class="rail-nav">
+        {RAIL_MAIN.map((s) => (
+          <>
+            <a
+              class:list={['rail-link', { 'rail-link--active': s.id === activeSection }]}
+              href={s.href}
+              title={('title' in s ? (s as { title: string }).title : s.label)}
+              data-section={s.id}
+            >
+              <span class="rail-icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" set:html={RAIL_ICONS[s.id]} />
+              </span>
+              <span class="rail-label">{s.label}</span>
+            </a>
+            {'children' in s && (s as { children?: readonly { id: string; label: string; href: string; external?: boolean }[] }).children && (
+              <div class="rail-sublist" data-parent={s.id}>
+                {(s as { children: readonly { id: string; label: string; href: string; external?: boolean }[] }).children.map((c) => (
+                  <a
+                    class:list={[
+                      'rail-sublink',
+                      {
+                        'rail-sublink--active':
+                          s.id === activeSection && c.id === activeSubsection,
+                      },
+                    ]}
+                    href={c.href}
+                    title={c.label}
+                    data-subsection={c.id}
+                    target={c.external ? '_blank' : undefined}
+                    rel={c.external ? 'noopener noreferrer' : undefined}
+                  >
+                    <span class="rail-sublink-bullet" aria-hidden="true"></span>
+                    <span class="rail-label">
+                      {c.label}
+                      {c.external && <span class="rail-sublink-ext" aria-hidden="true"> ↗</span>}
+                    </span>
+                  </a>
+                ))}
+              </div>
+            )}
+          </>
+        ))}
+      </nav>
+
+      <nav class="rail-nav rail-nav--footer">
+        {RAIL_FOOT.map((s) => (
+          <a
+            class:list={['rail-link', { 'rail-link--active': s.id === activeSection }]}
+            href={s.href}
+            title={s.label}
+            data-section={s.id}
+          >
+            <span class="rail-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" set:html={RAIL_ICONS[s.id]} />
+            </span>
+            <span class="rail-label">{s.label}</span>
+          </a>
+        ))}
+      </nav>
+    </aside>
+
+    <!-- ─── TOP BAR ──────────────────────────────────────── -->
+    <header class="topbarv2">
+      <!-- Search trigger — opens command palette -->
+      <button class="topbarv2-search" type="button" data-open-cmdk>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+        </svg>
+        <span class="topbarv2-search-placeholder">Zoek dashboards, DAGs, tabellen, notebooks…</span>
+        <kbd class="topbarv2-kbd">⌘K</kbd>
+      </button>
+
+      <div class="topbarv2-right">
+        <!-- + New -->
+        <div class="topbarv2-dropdown" data-dropdown="create">
+          <button class="topbarv2-cta" type="button" data-dropdown-toggle="create">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span>Nieuw</span>
+          </button>
+          <div class="topbarv2-panel topbarv2-panel--right" role="menu">
+            <a class="topbarv2-item" href="/embed/superset/?path=/sqllab/">
+              <span class="topbarv2-item-icon" data-color="query">SQL</span>
+              <span class="topbarv2-item-text"><b>SQL query</b><em>Open Superset SQLLab</em></span>
+            </a>
+            <a class="topbarv2-item" href="/embed/jupyter/?path=/lab/">
+              <span class="topbarv2-item-icon" data-color="notebook">NB</span>
+              <span class="topbarv2-item-text"><b>Notebook</b><em>Nieuw in Jupyter</em></span>
+            </a>
+            <a class="topbarv2-item" href="/embed/superset/?path=/dashboard/list/">
+              <span class="topbarv2-item-icon" data-color="dashboard">DSH</span>
+              <span class="topbarv2-item-text"><b>Dashboard</b><em>Superset chart + dashboard</em></span>
+            </a>
+            <a class="topbarv2-item" href="/csv-upload/">
+              <span class="topbarv2-item-icon" data-color="table">CSV</span>
+              <span class="topbarv2-item-text"><b>CSV upload</b><em>Bron toevoegen via MinIO</em></span>
+            </a>
+            <hr class="topbarv2-sep" />
+            <a class="topbarv2-item" href="/access-request/">
+              <span class="topbarv2-item-icon" data-color="admin">+A</span>
+              <span class="topbarv2-item-text"><b>Toegang aanvragen</b><em>Catalog of schema</em></span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Notifications — React Island. Bell button, unread dot,
+             dropdown panel and the mock SSE-feed all live in
+             NotificationBell.tsx. Real /api/portal/events SSE follows
+             in fase D. -->
+        <NotificationBell client:load />
+
+        <!-- Persona switcher -->
+        <div class="topbarv2-dropdown" data-dropdown="persona">
+          <button class="topbarv2-persona" type="button" data-dropdown-toggle="persona">
+            <span class="topbarv2-persona-dot" style={`background: ${currentPersona.color}`}>{currentPersona.initials}</span>
+            <span class="topbarv2-persona-label">{currentPersona.label}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+          <div class="topbarv2-panel topbarv2-panel--right topbarv2-panel--wide" role="menu">
+            <div class="topbarv2-panel-head">Wissel persona</div>
+            {Object.entries(PERSONAS).map(([id, p]) => (
+              <a
+                class:list={['topbarv2-persona-item', { 'is-current': id === persona }]}
+                href="#"
+                data-persona-switch={id}
+              >
+                <span class="topbarv2-persona-dot topbarv2-persona-dot--sm" style={`background: ${p.color}`}>{p.initials}</span>
+                <span class="topbarv2-persona-text"><b>{p.label}</b><em>{id}</em></span>
+                {id === persona && <span class="topbarv2-persona-check">✓</span>}
+              </a>
+            ))}
+          </div>
+        </div>
+
+        <!-- Theme toggle -->
+        <button class="topbarv2-icon-btn" type="button" data-theme-toggle aria-label="Schakel thema">
+          <svg class="topbarv2-theme-icon topbarv2-icon-sun"  width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" /></svg>
+          <svg class="topbarv2-theme-icon topbarv2-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>
+        </button>
+
+        <!-- User pill — opens dropdown with account info + logout -->
+        <div class="topbarv2-dropdown" data-dropdown="user">
+          <button
+            class="topbarv2-user"
+            type="button"
+            data-dropdown-toggle="user"
+            data-who-avatar
+            title={userName}
+            aria-label={userName}
+          >{userInitial}</button>
+          <div class="topbarv2-panel topbarv2-panel--right topbarv2-panel--wide" role="menu">
+            <div class="topbarv2-user-info">
+              <span class="topbarv2-user-info-avatar" data-who-avatar-large>{userInitial}</span>
+              <span class="topbarv2-user-info-text">
+                <b data-who-name>{userName}</b>
+                <em data-who-email>niet ingelogd</em>
+              </span>
+            </div>
+            <hr class="topbarv2-sep" />
+            <a class="topbarv2-item" href="/me/">
+              <span class="topbarv2-item-icon" data-color="dashboard">ME</span>
+              <span class="topbarv2-item-text"><b>Mijn werkplek</b><em>Rol, capabilities, shortcuts</em></span>
+            </a>
+            <a class="topbarv2-item" href="/learn/">
+              <span class="topbarv2-item-icon" data-color="notebook">AC</span>
+              <span class="topbarv2-item-text"><b>Academy</b><em>Jouw leertraject</em></span>
+            </a>
+            <hr class="topbarv2-sep" />
+            <a class="topbarv2-item" href="#logout" data-who-logout>
+              <span class="topbarv2-item-icon" data-color="admin">↗</span>
+              <span class="topbarv2-item-text"><b>Uitloggen</b><em>Beëindig sessie</em></span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ─── MAIN ─────────────────────────────────────────── -->
+    <main class="shell-main">
+      <slot />
+      {!embedMode && (
+        <footer class="shell-footer">
+          <div class="shell-footer-inner">
+            <span class="mono">Referentie-implementatie · synthetische data</span>
+            <span class="shell-footer-links">
+              <a href="/UWV_Platform_Handboek_per_rol.pdf">Handboek</a>
+              <span aria-hidden="true">·</span>
+              <a href="https://github.com/fresh-minds/FreshStackableDataPlatform"
+                 target="_blank" rel="noopener noreferrer">Repo ↗</a>
+              <span aria-hidden="true">·</span>
+              <a href="/styleguide/">Styleguide</a>
+            </span>
+          </div>
+        </footer>
+      )}
+    </main>
+
+    <!-- ─── COMMAND PALETTE (Cmd+K) ──────────────────────── -->
+    <!-- React Island. Manages its own open/close/query/selected state.
+         Listens for the 'cmdk-open' window event (dispatched by the
+         topbar search button) and Cmd+K / Ctrl+K keypresses. CSS is
+         shared with the legacy version below (.cmdk-*). -->
+    <CommandPalette client:load />
+
+
+    <script>
+      // ───────────────────────────────────────────────────
+      // Theme toggle (identical to legacy Layout.astro)
+      // ───────────────────────────────────────────────────
+      const themeBtn = document.querySelector<HTMLButtonElement>('[data-theme-toggle]');
+      themeBtn?.addEventListener('click', () => {
+        const cur = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+        const next = cur === 'light' ? 'dark' : 'light';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('uwv-portal-theme', next); } catch {}
+      });
+
+      // ───────────────────────────────────────────────────
+      // Rail hover-expand: body[data-rail] drives main+topbar shift
+      // ───────────────────────────────────────────────────
+      const rail = document.querySelector<HTMLElement>('.rail');
+      rail?.addEventListener('mouseenter', () => {
+        document.body.dataset.rail = 'expanded';
+      });
+      rail?.addEventListener('mouseleave', () => {
+        document.body.dataset.rail = 'collapsed';
+      });
+
+      // ───────────────────────────────────────────────────
+      // Dropdown toggles — single open at a time, click-outside closes
+      // ───────────────────────────────────────────────────
+      function closeAllDropdowns(): void {
+        document.querySelectorAll('.topbarv2-dropdown[data-open]').forEach((d) => {
+          d.removeAttribute('data-open');
+        });
+      }
+      document.querySelectorAll('[data-dropdown-toggle]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const dd = (btn as HTMLElement).closest('.topbarv2-dropdown') as HTMLElement | null;
+          if (!dd) return;
+          const wasOpen = dd.hasAttribute('data-open');
+          closeAllDropdowns();
+          if (!wasOpen) dd.setAttribute('data-open', '');
+        });
+      });
+      document.addEventListener('click', (e) => {
+        // Only close if click is OUTSIDE any open dropdown panel
+        const target = e.target as HTMLElement;
+        if (!target.closest('.topbarv2-dropdown[data-open]')) closeAllDropdowns();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeAllDropdowns();
+      });
+
+      // ───────────────────────────────────────────────────
+      // Favorites toggle — delegated click handler
+      // ───────────────────────────────────────────────────
+      // Buttons in tiles (ItemTile.astro) carry data-action="favorite-toggle"
+      // plus data-item-* attrs for the backend payload. We catch clicks at
+      // document level so any tile (SSR or client-side rendered) participates
+      // without per-tile JS. Optimistic UI: flip aria-pressed first, then
+      // POST/DELETE; revert on failure.
+      document.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement | null;
+        const btn = target?.closest<HTMLButtonElement>(
+          'button[data-action="favorite-toggle"]'
+        );
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const wasStarred = btn.getAttribute('aria-pressed') === 'true';
+        const newStarred = !wasStarred;
+        const key = btn.dataset.itemKey;
+        if (!key) return;
+
+        // Optimistic UI flip.
+        btn.setAttribute('aria-pressed', String(newStarred));
+        btn.setAttribute(
+          'aria-label',
+          newStarred ? 'Verwijder uit favorieten' : 'Markeer als favoriet',
+        );
+
+        const url = newStarred
+          ? '/api/portal/favorites'
+          : `/api/portal/favorites/${encodeURIComponent(key)}`;
+        const method = newStarred ? 'POST' : 'DELETE';
+        const body = newStarred
+          ? JSON.stringify({
+              key,
+              type:     btn.dataset.itemType ?? 'dashboard',
+              service:  btn.dataset.itemService ?? 'superset',
+              title:    btn.dataset.itemTitle ?? '',
+              subtitle: btn.dataset.itemSubtitle ?? '',
+              href:     btn.dataset.itemHref ?? '',
+            })
+          : undefined;
+
+        fetch(url, {
+          method,
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        })
+          .then((r) => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          })
+          .catch(() => {
+            // Revert on failure (backend down, validation error, etc).
+            btn.setAttribute('aria-pressed', String(wasStarred));
+            btn.setAttribute(
+              'aria-label',
+              wasStarred ? 'Verwijder uit favorieten' : 'Markeer als favoriet',
+            );
+          });
+      });
+
+      // ───────────────────────────────────────────────────
+      // Command Palette (Cmd+K) — open trigger only
+      // ───────────────────────────────────────────────────
+      // The palette itself is a React Island (CommandPalette.tsx) that
+      // owns all state, keyboard nav, and filter logic. We just dispatch
+      // a 'cmdk-open' event when the topbar search button is clicked;
+      // Cmd+K is bound inside the React component.
+      document.querySelectorAll('[data-open-cmdk]').forEach((b) => {
+        b.addEventListener('click', () => {
+          window.dispatchEvent(new Event('cmdk-open'));
+        });
+      });
+
+      // ───────────────────────────────────────────────────
+      // Identity loader — fetch /oauth2/userinfo and update
+      // the user pill + persona switcher with the real role.
+      // SSR defaults are placeholders; this is the real source
+      // of truth in production. Mirrors loadIdentity() in
+      // Layout.astro so the v2 shell behaves identically.
+      // ───────────────────────────────────────────────────
+
+      // Mirror of the Astro front-matter PERSONAS map so renderWho()
+      // can compute label / initials / color for the active role.
+      // Eindgebruiker-rollen (WIA, WW, etc.) get a generic info-blue
+      // dot — they're not in the workspace-persona switcher but should
+      // still render a sensible avatar.
+      type PersonaMeta = { label: string; initials: string; color: string };
+      const SHELL_PERSONAS: Record<string, PersonaMeta> = {
+        data_engineer:            { label: 'Data Engineer',   initials: 'DE', color: 'var(--persona-engineer)' },
+        data_analyst:             { label: 'Data Analyst',    initials: 'DA', color: 'var(--persona-analyst)' },
+        data_steward:             { label: 'Data Steward',    initials: 'DS', color: 'var(--persona-steward)' },
+        researcher:               { label: 'Researcher',      initials: 'R',  color: 'var(--persona-scientist)' },
+        platform_admin:           { label: 'Platform Admin',  initials: 'PA', color: 'var(--persona-admin)' },
+        wia_beoordelaar:          { label: 'WIA-beoordelaar', initials: 'W',  color: 'var(--accent-info)' },
+        ww_handhaver:             { label: 'WW-handhaver',    initials: 'W',  color: 'var(--accent-info)' },
+        wajong_arbeidsdeskundige: { label: 'Wajong AD',       initials: 'WA', color: 'var(--accent-info)' },
+        crm_medewerker:           { label: 'CRM-medewerker',  initials: 'C',  color: 'var(--accent-info)' },
+        fez_analist:              { label: 'FEZ-analist',     initials: 'F',  color: 'var(--accent-info)' },
+        smz_planner:              { label: 'SMZ-planner',     initials: 'S',  color: 'var(--accent-info)' },
+        proactief_dienstverlener: { label: 'Proactief DV',    initials: 'P',  color: 'var(--accent-info)' },
+      };
+      const KNOWN_ROLES = Object.keys(SHELL_PERSONAS);
+
+      async function loadIdentity(): Promise<void> {
+        try {
+          const r = await fetch('/oauth2/userinfo', { credentials: 'include' });
+          if (!r.ok) return;
+          const me = await r.json();
+          const groups: string[] = me.groups ?? me.roles ?? [];
+          const role = groups.find((g) => KNOWN_ROLES.includes(g));
+          if (role) sessionStorage.setItem('uwv-portal-role', role);
+          const user = me.email ?? me.user ?? null;
+          if (user) sessionStorage.setItem('uwv-portal-user', user);
+          renderWho();
+        } catch {
+          /* niet ingelogd / lokale dev — laat de SSR-defaults staan */
+        }
+      }
+
+      function renderWho(): void {
+        const role = sessionStorage.getItem('uwv-portal-role');
+        const user = sessionStorage.getItem('uwv-portal-user');
+
+        if (user) {
+          const initial = user.trim().charAt(0).toUpperCase();
+          document.querySelectorAll<HTMLElement>('[data-who-avatar]').forEach((el) => {
+            el.textContent = initial;
+            el.title = user;
+          });
+          document.querySelectorAll<HTMLElement>('[data-who-avatar-large]').forEach((el) => {
+            el.textContent = initial;
+          });
+          const nameEl = document.querySelector<HTMLElement>('[data-who-name]');
+          if (nameEl) nameEl.textContent = user;
+          const emailEl = document.querySelector<HTMLElement>('[data-who-email]');
+          if (emailEl) emailEl.textContent = user;
+        }
+
+        if (role && SHELL_PERSONAS[role]) {
+          const p = SHELL_PERSONAS[role];
+          const personaDot = document.querySelector<HTMLElement>('.topbarv2-persona .topbarv2-persona-dot');
+          const personaLabel = document.querySelector<HTMLElement>('.topbarv2-persona-label');
+          if (personaDot) {
+            personaDot.style.background = p.color;
+            personaDot.textContent = p.initials;
+          }
+          if (personaLabel) personaLabel.textContent = p.label;
+        }
+      }
+
+      // ───────────────────────────────────────────────────
+      // Logout — TLD-aware Keycloak end-session URL.
+      // ───────────────────────────────────────────────────
+      function buildLogoutUrl(): string {
+        const host = window.location.hostname;
+        let tld = 'uwv-platform.local';
+        let port = ':8443';
+        if (host.endsWith('.eu-sovereigndataplatform.com')) {
+          tld = 'eu-sovereigndataplatform.com'; port = '';
+        } else if (host.endsWith('.freshstackable.com')) {
+          tld = 'freshstackable.com'; port = '';
+        }
+        const post = `https://platform.${tld}${port}/`;
+        const ks   = `https://keycloak.${tld}${port}/realms/uwv/protocol/openid-connect/logout` +
+                     `?client_id=portal&post_logout_redirect_uri=${encodeURIComponent(post)}`;
+        return `/oauth2/sign_out?rd=${encodeURIComponent(ks)}`;
+      }
+      document.querySelectorAll<HTMLAnchorElement>('[data-who-logout]').forEach((a) => {
+        a.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          sessionStorage.removeItem('uwv-portal-role');
+          sessionStorage.removeItem('uwv-portal-user');
+          window.location.href = buildLogoutUrl();
+        });
+      });
+
+      renderWho();      // paint from sessionStorage first (no flicker)
+      loadIdentity();   // then refresh from /oauth2/userinfo
+
+      // ───────────────────────────────────────────────────
+      // Persona switcher — in-tab role change
+      // ───────────────────────────────────────────────────
+      // Klik op een persona-item in de topbar dropdown:
+      //   1. schrijft uwv-portal-role naar sessionStorage,
+      //   2. updated de topbar persona-pill (renderWho lees sessionStorage),
+      //   3. broadcast een 'persona-changed' event zodat de WorkspaceHome
+      //      shortcut-grid (en straks de favorites-filter) mee-switchen.
+      // Geen page reload meer — voelt instant.
+      // Update ook de visuele "✓" markering op de items.
+      function updatePersonaCheckmarks(activeRole: string): void {
+        document.querySelectorAll<HTMLAnchorElement>('[data-persona-switch]').forEach((a) => {
+          const isActive = a.dataset.personaSwitch === activeRole;
+          a.classList.toggle('is-current', isActive);
+          // Re-render the ✓ glyph: remove an existing one and add a new
+          // one in place so we don't drift between SSR and client state.
+          const existing = a.querySelector('.topbarv2-persona-check');
+          existing?.remove();
+          if (isActive) {
+            const check = document.createElement('span');
+            check.className = 'topbarv2-persona-check';
+            check.textContent = '✓';
+            a.appendChild(check);
+          }
+        });
+      }
+      document.querySelectorAll<HTMLAnchorElement>('[data-persona-switch]').forEach((a) => {
+        a.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const role = a.dataset.personaSwitch;
+          if (!role) return;
+          sessionStorage.setItem('uwv-portal-role', role);
+          renderWho();
+          updatePersonaCheckmarks(role);
+          closeAllDropdowns();
+          window.dispatchEvent(
+            new CustomEvent('persona-changed', { detail: { role } }),
+          );
+        });
+      });
+    </script>
+
+    <!-- ─── GLOBAL SHELL STYLES ──────────────────────────── -->
+    <style is:global>
+      /* ─── Body / layout grid ─── */
+      body.shell {
+        background: var(--shell-bg);
+        min-height: 100vh;
+      }
+      .shell-main {
+        margin-left: var(--sidebar-w-collapsed);
+        padding-top: var(--topbar-h);
+        min-height: 100vh;
+        transition: margin-left var(--motion-base);
+      }
+      body.shell[data-rail="expanded"] .shell-main {
+        margin-left: var(--sidebar-w-expanded);
+      }
+
+      /* Embed mode: full-viewport iframe with a sub-bar. shell-main becomes
+         a flex column so the slotted content (sub-bar + iframe wrapper)
+         can fill the remaining viewport without overflowing. */
+      body.shell[data-embed-mode="true"] {
+        overflow: hidden;
+      }
+      body.shell[data-embed-mode="true"] .shell-main {
+        min-height: 0;
+        height: 100vh;
+        padding-top: var(--topbar-h);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ─── Left rail ─── */
+      .rail {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: var(--sidebar-w-collapsed);
+        background: var(--shell-rail-bg);
+        border-right: 1px solid var(--shell-rail-line);
+        display: flex;
+        flex-direction: column;
+        z-index: 20;
+        transition: width var(--motion-base), box-shadow var(--motion-base);
+        overflow: hidden;
+      }
+      .rail:hover {
+        width: var(--sidebar-w-expanded);
+        box-shadow: 8px 0 32px -16px rgba(0, 0, 0, 0.5);
+      }
+
+      .rail-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: var(--topbar-h);
+        padding: 0 14px;
+        border-bottom: 1px solid var(--shell-rail-line);
+        text-decoration: none;
+        flex-shrink: 0;
+      }
+      .rail-brand:hover { text-decoration: none; }
+      .rail-brand-mark {
+        width: 26px;
+        height: 26px;
+        border-radius: var(--radius-sm);
+        background: var(--accent);
+        color: var(--accent-ink);
+        font-weight: var(--weight-bold);
+        font-size: 9px;
+        letter-spacing: 0.04em;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .rail-brand-text {
+        color: var(--ink-1);
+        font-size: var(--text-meta);
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity var(--motion-fast);
+      }
+      .rail-brand-text b { font-weight: var(--weight-semibold); }
+      .rail-brand-sub { color: var(--ink-3); font-family: var(--font-mono); font-size: 11px; margin-left: 2px; }
+      .rail:hover .rail-brand-text { opacity: 1; }
+
+      .rail-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: var(--space-3) var(--space-2);
+      }
+      .rail-nav--footer {
+        margin-top: auto;
+        border-top: 1px solid var(--shell-rail-line);
+        padding-bottom: var(--space-4);
+      }
+
+      .rail-link {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 8px 10px;
+        border-radius: var(--radius-sm);
+        color: var(--ink-3);
+        text-decoration: none;
+        font-size: var(--text-meta);
+        white-space: nowrap;
+        position: relative;
+        transition: background var(--motion-fast), color var(--motion-fast);
+      }
+      .rail-link:hover {
+        background: var(--bg-sunken);
+        color: var(--ink-1);
+        text-decoration: none;
+      }
+      .rail-link--active {
+        color: var(--ink-1);
+        background: color-mix(in oklch, var(--accent) 14%, transparent);
+      }
+      .rail-link--active::before {
+        content: "";
+        position: absolute;
+        left: -10px;
+        top: 6px;
+        bottom: 6px;
+        width: 3px;
+        border-radius: 0 2px 2px 0;
+        background: var(--accent);
+      }
+      .rail-icon {
+        display: inline-flex;
+        width: 22px;
+        height: 22px;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .rail-label {
+        opacity: 0;
+        transition: opacity var(--motion-fast);
+      }
+      .rail:hover .rail-label { opacity: 1; }
+
+      /* ─── Rail sub-list (Observability → Grafana / Prometheus / OpenSearch) ─── */
+      /* Indented under the parent icon. Hidden in collapsed mode (no vertical
+         space + opacity 0) and revealed on rail:hover. The vertical
+         border-left acts as a visual "branch" connecting children to parent.
+         Sublinks have smaller font, a tiny bullet dot, and inherit the
+         active-state colour scheme. */
+      .rail-sublist {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        margin: 0 6px 4px 21px;
+        padding-left: 10px;
+        border-left: 1px solid var(--shell-rail-line);
+        max-height: 0;
+        overflow: hidden;
+        opacity: 0;
+        transition: max-height var(--motion-base), opacity var(--motion-fast),
+                    margin-bottom var(--motion-base);
+      }
+      .rail:hover .rail-sublist {
+        max-height: 160px;
+        opacity: 1;
+      }
+
+      .rail-sublink {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        border-radius: var(--radius-sm);
+        color: var(--ink-3);
+        font-size: 12px;
+        text-decoration: none;
+        white-space: nowrap;
+        transition: background var(--motion-fast), color var(--motion-fast);
+      }
+      .rail-sublink:hover {
+        background: var(--bg-sunken);
+        color: var(--ink-1);
+        text-decoration: none;
+      }
+      .rail-sublink--active {
+        color: var(--ink-1);
+        background: color-mix(in oklch, var(--accent) 10%, transparent);
+      }
+      .rail-sublink-bullet {
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--ink-4);
+        flex-shrink: 0;
+      }
+      .rail-sublink:hover .rail-sublink-bullet,
+      .rail-sublink--active .rail-sublink-bullet {
+        background: var(--accent);
+      }
+      /* External-indicator arrow — shown only when a sub-rail entry has
+         external:true. Visually signals that the link opens a new tab. */
+      .rail-sublink-ext {
+        color: var(--ink-4);
+        font-size: 10px;
+      }
+
+      /* ─── Top bar ─── */
+      .topbarv2 {
+        position: fixed;
+        top: 0;
+        left: var(--sidebar-w-collapsed);
+        right: 0;
+        height: var(--topbar-h);
+        background: color-mix(in oklch, var(--bg-elev) 92%, transparent);
+        backdrop-filter: saturate(140%) blur(8px);
+        -webkit-backdrop-filter: saturate(140%) blur(8px);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        gap: var(--space-4);
+        padding: 0 var(--space-5);
+        z-index: 15;
+        transition: left var(--motion-base);
+      }
+      body.shell[data-rail="expanded"] .topbarv2 {
+        left: var(--sidebar-w-expanded);
+      }
+
+      .topbarv2-search {
+        flex: 1;
+        max-width: 560px;
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        background: var(--bg-sunken);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
+        color: var(--ink-3);
+        height: 34px;
+        padding: 0 var(--space-3);
+        font-size: var(--text-meta);
+        cursor: pointer;
+        transition: border-color var(--motion-fast), background var(--motion-fast);
+        font-family: var(--font-sans);
+      }
+      .topbarv2-search:hover {
+        border-color: var(--ink-4);
+        background: var(--bg-elev);
+        color: var(--ink-2);
+      }
+      .topbarv2-search-placeholder {
+        flex: 1;
+        text-align: left;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .topbarv2-kbd {
+        background: var(--kbd-bg);
+        border: 1px solid var(--kbd-line);
+        border-radius: var(--radius-sm);
+        padding: 1px 6px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--ink-3);
+        flex-shrink: 0;
+      }
+
+      .topbarv2-right {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        margin-left: auto;
+      }
+
+      .topbarv2-cta {
+        height: 32px;
+        padding: 0 12px;
+        font-size: var(--text-meta);
+        font-weight: var(--weight-medium);
+        background: var(--accent);
+        color: var(--accent-ink);
+        border: 0;
+        border-radius: var(--radius-sm);
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        font-family: var(--font-sans);
+        transition: filter var(--motion-fast);
+      }
+      .topbarv2-cta:hover { filter: brightness(1.1); }
+
+      .topbarv2-icon-btn {
+        position: relative;
+        width: 32px;
+        height: 32px;
+        border: 1px solid transparent;
+        border-radius: var(--radius-sm);
+        background: transparent;
+        color: var(--ink-2);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
+      }
+      .topbarv2-icon-btn:hover {
+        background: var(--bg-sunken);
+        color: var(--ink-1);
+        border-color: var(--line);
+      }
+      .topbarv2-dot {
+        position: absolute;
+        top: 5px;
+        right: 6px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--status-down);
+        border: 1.5px solid var(--bg-elev);
+      }
+      .topbarv2-theme-icon { display: none; }
+      [data-theme="dark"]  .topbarv2-icon-sun  { display: block; }
+      [data-theme="light"] .topbarv2-icon-moon { display: block; }
+
+      .topbarv2-persona {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 32px;
+        padding: 0 10px 0 4px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-pill);
+        background: var(--bg-elev);
+        color: var(--ink-1);
+        font-size: var(--text-meta);
+        cursor: pointer;
+        font-family: var(--font-sans);
+        transition: border-color var(--motion-fast);
+      }
+      .topbarv2-persona:hover { border-color: var(--ink-4); }
+      .topbarv2-persona-dot {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        font-size: 10px;
+        font-weight: var(--weight-bold);
+        color: white;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .topbarv2-persona-dot--sm {
+        width: 22px;
+        height: 22px;
+        font-size: 10px;
+      }
+
+      .topbarv2-user {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: var(--accent-ink);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: var(--weight-bold);
+        font-size: 13px;
+        flex-shrink: 0;
+        border: 0;
+        padding: 0;
+        cursor: pointer;
+        font-family: var(--font-sans);
+        transition: filter var(--motion-fast);
+      }
+      .topbarv2-user:hover { filter: brightness(1.1); }
+
+      /* User-info header inside the user dropdown */
+      .topbarv2-user-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px;
+      }
+      .topbarv2-user-info-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: var(--accent-ink);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: var(--weight-bold);
+        font-size: 16px;
+        flex-shrink: 0;
+      }
+      .topbarv2-user-info-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+      .topbarv2-user-info-text b {
+        font-weight: var(--weight-medium);
+        color: var(--ink-1);
+        font-size: var(--text-meta);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 220px;
+      }
+      .topbarv2-user-info-text em {
+        font-style: normal;
+        color: var(--ink-3);
+        font-size: 12px;
+        font-family: var(--font-mono);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 220px;
+      }
+
+      /* ─── Topbar dropdown ─── */
+      .topbarv2-dropdown { position: relative; }
+      .topbarv2-panel {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        min-width: 280px;
+        background: var(--bg-elev);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
+        box-shadow: 0 16px 48px -12px rgba(0, 0, 0, 0.5);
+        padding: 6px;
+        opacity: 0;
+        transform: translateY(-4px);
+        pointer-events: none;
+        transition: opacity var(--motion-fast), transform var(--motion-fast);
+        z-index: 30;
+      }
+      .topbarv2-panel--wide { min-width: 340px; }
+      .topbarv2-panel--right { right: 0; left: auto; }
+      .topbarv2-dropdown[data-open] .topbarv2-panel {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+      }
+
+      .topbarv2-panel-head {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 12px 4px;
+        font-size: var(--text-eyebrow);
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-eyebrow);
+        color: var(--ink-3);
+      }
+      .topbarv2-panel-head span { color: var(--accent-info); }
+      .topbarv2-panel-foot {
+        padding: 8px 12px;
+        border-top: 1px solid var(--line);
+        margin-top: 4px;
+        font-size: var(--text-meta);
+      }
+      .topbarv2-panel-foot a { color: var(--accent-info); }
+
+      .topbarv2-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 10px;
+        border-radius: var(--radius-sm);
+        color: var(--ink-1);
+        text-decoration: none;
+        transition: background var(--motion-fast);
+      }
+      .topbarv2-item:hover {
+        background: var(--bg-sunken);
+        text-decoration: none;
+      }
+      .topbarv2-item-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: var(--weight-bold);
+        color: white;
+        flex-shrink: 0;
+      }
+      .topbarv2-item-icon[data-color="query"]     { background: var(--type-query); }
+      .topbarv2-item-icon[data-color="notebook"]  { background: var(--type-notebook); }
+      .topbarv2-item-icon[data-color="dashboard"] { background: var(--type-dashboard); }
+      .topbarv2-item-icon[data-color="table"]     { background: var(--type-table); }
+      .topbarv2-item-icon[data-color="admin"]     { background: var(--persona-admin); }
+      .topbarv2-item-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: var(--text-meta);
+      }
+      .topbarv2-item-text b  { font-weight: var(--weight-medium); }
+      .topbarv2-item-text em { font-style: normal; color: var(--ink-3); font-size: 12px; }
+      .topbarv2-sep {
+        border: 0;
+        border-top: 1px solid var(--line);
+        margin: 4px 6px;
+      }
+
+      .topbarv2-event {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: var(--radius-sm);
+        color: var(--ink-1);
+        text-decoration: none;
+        transition: background var(--motion-fast);
+      }
+      .topbarv2-event:hover {
+        background: var(--bg-sunken);
+        text-decoration: none;
+      }
+      .topbarv2-event-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-top: 6px;
+        flex-shrink: 0;
+      }
+      .topbarv2-event-dot[data-tone="down"] { background: var(--status-down); }
+      .topbarv2-event-dot[data-tone="ok"]   { background: var(--status-ok); }
+      .topbarv2-event-dot[data-tone="info"] { background: var(--accent-info); }
+      .topbarv2-event-body { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: var(--text-meta); }
+      .topbarv2-event-body b  { font-weight: var(--weight-medium); }
+      .topbarv2-event-body em { font-style: normal; color: var(--ink-3); font-size: 12px; }
+      .topbarv2-event-body code { background: var(--bg-sunken); padding: 0 4px; border-radius: 3px; font-size: 11px; }
+      .topbarv2-event-time { color: var(--ink-3); font-size: 11px; font-family: var(--font-mono); flex-shrink: 0; }
+
+      .topbarv2-event-empty {
+        padding: 16px 12px;
+        color: var(--ink-3);
+        font-size: var(--text-meta);
+        text-align: center;
+      }
+
+      .topbarv2-persona-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: var(--radius-sm);
+        color: var(--ink-1);
+        text-decoration: none;
+        transition: background var(--motion-fast);
+        font-size: var(--text-meta);
+      }
+      .topbarv2-persona-item:hover {
+        background: var(--bg-sunken);
+        text-decoration: none;
+      }
+      .topbarv2-persona-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+      .topbarv2-persona-text b  { font-weight: var(--weight-medium); }
+      .topbarv2-persona-text em { font-style: normal; color: var(--ink-3); font-size: 11px; font-family: var(--font-mono); }
+      .topbarv2-persona-check { color: var(--accent); font-weight: var(--weight-bold); }
+      .topbarv2-persona-item.is-current { background: color-mix(in oklch, var(--accent) 8%, transparent); }
+
+      /* ─── Command palette ─── */
+      .cmdk[hidden] { display: none !important; }
+      .cmdk {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 14vh;
+        animation: cmdk-fade 120ms ease-out;
+      }
+      @keyframes cmdk-fade {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+      .cmdk-overlay {
+        position: absolute;
+        inset: 0;
+        background: var(--cmdk-overlay);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+      }
+      .cmdk-card {
+        position: relative;
+        width: min(640px, calc(100vw - 32px));
+        max-height: 70vh;
+        background: var(--cmdk-bg);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg);
+        box-shadow: 0 24px 80px -24px rgba(0, 0, 0, 0.6);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .cmdk-input-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        color: var(--ink-3);
+        background: var(--cmdk-input-bg);
+      }
+      .cmdk-input {
+        flex: 1;
+        background: transparent;
+        border: 0;
+        outline: 0;
+        color: var(--ink-1);
+        font-family: var(--font-sans);
+        font-size: var(--text-body-lg);
+        padding: 2px 0;
+      }
+      .cmdk-input::placeholder { color: var(--ink-4); }
+      .cmdk-results {
+        flex: 1;
+        overflow-y: auto;
+        padding: 6px;
+      }
+      .cmdk-empty {
+        padding: 24px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        color: var(--ink-3);
+        font-size: var(--text-meta);
+        text-align: center;
+      }
+      .cmdk-empty strong { color: var(--ink-1); font-weight: var(--weight-medium); }
+      .cmdk-empty code { background: var(--bg-sunken); padding: 0 4px; border-radius: 3px; }
+      .cmdk-group { padding: 4px 0; }
+      .cmdk-group-head {
+        padding: 8px 10px 4px;
+        font-size: var(--text-eyebrow);
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-eyebrow);
+        color: var(--ink-3);
+      }
+      .cmdk-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 10px;
+        border-radius: var(--radius-sm);
+        color: var(--ink-1);
+        text-decoration: none;
+        transition: background var(--motion-fast);
+      }
+      .cmdk-item:hover,
+      .cmdk-item[data-cmdk-selected="true"] {
+        background: var(--bg-sunken);
+        text-decoration: none;
+      }
+      .cmdk-item-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: var(--weight-bold);
+        color: white;
+        flex-shrink: 0;
+      }
+      .cmdk-item-icon[data-color="dashboard"] { background: var(--type-dashboard); }
+      .cmdk-item-icon[data-color="dag"]       { background: var(--type-dag); }
+      .cmdk-item-icon[data-color="table"]     { background: var(--type-table); }
+      .cmdk-item-icon[data-color="notebook"]  { background: var(--type-notebook); }
+      .cmdk-item-icon[data-color="query"]     { background: var(--type-query); }
+      .cmdk-item-icon[data-color="pipeline"]  { background: var(--type-pipeline); }
+
+      /* Brand-icon variant in command palette — type-tinted square
+         holding the service brand SVG. Same colour-mix logic as
+         .v2-tile-brand but at 32px footprint. */
+      .cmdk-item-brand {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        background: var(--bg-sunken);
+        border: 1px solid var(--line);
+      }
+      .cmdk-item-brand img { width: 20px; height: 20px; display: block; }
+      .cmdk-item[data-type="dashboard"] .cmdk-item-brand {
+        background: color-mix(in oklch, var(--type-dashboard) 14%, var(--bg-sunken));
+        border-color: color-mix(in oklch, var(--type-dashboard) 30%, var(--line));
+      }
+      .cmdk-item[data-type="dag"] .cmdk-item-brand {
+        background: color-mix(in oklch, var(--type-dag) 14%, var(--bg-sunken));
+        border-color: color-mix(in oklch, var(--type-dag) 30%, var(--line));
+      }
+      .cmdk-item[data-type="table"] .cmdk-item-brand {
+        background: color-mix(in oklch, var(--type-table) 14%, var(--bg-sunken));
+        border-color: color-mix(in oklch, var(--type-table) 30%, var(--line));
+      }
+      .cmdk-item[data-type="notebook"] .cmdk-item-brand {
+        background: color-mix(in oklch, var(--type-notebook) 14%, var(--bg-sunken));
+        border-color: color-mix(in oklch, var(--type-notebook) 30%, var(--line));
+      }
+      .cmdk-item[data-type="query"] .cmdk-item-brand {
+        background: color-mix(in oklch, var(--type-query) 14%, var(--bg-sunken));
+        border-color: color-mix(in oklch, var(--type-query) 30%, var(--line));
+      }
+      .cmdk-item[data-type="pipeline"] .cmdk-item-brand {
+        background: color-mix(in oklch, var(--type-pipeline) 14%, var(--bg-sunken));
+        border-color: color-mix(in oklch, var(--type-pipeline) 30%, var(--line));
+      }
+      .cmdk-item-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+      .cmdk-item-title {
+        font-size: var(--text-meta);
+        font-weight: var(--weight-medium);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .cmdk-item-sub {
+        font-size: 12px;
+        color: var(--ink-3);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .cmdk-foot {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 10px 14px;
+        border-top: 1px solid var(--line);
+        background: var(--cmdk-input-bg);
+        font-size: 11px;
+        color: var(--ink-3);
+      }
+      .cmdk-foot kbd { padding: 1px 5px; }
+      .cmdk-foot-meta {
+        margin-left: auto;
+        font-family: var(--font-mono);
+        color: var(--ink-4);
+      }
+
+      /* ─── Footer ─── */
+      .shell-footer {
+        border-top: 1px solid var(--line);
+        margin-top: var(--space-9);
+      }
+      .shell-footer-inner {
+        max-width: var(--content-max-w);
+        margin: 0 auto;
+        padding: var(--space-5) var(--space-7);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: var(--space-5);
+        color: var(--ink-3);
+        font-size: var(--text-meta);
+        flex-wrap: wrap;
+      }
+      .shell-footer-links {
+        display: inline-flex;
+        gap: var(--space-3);
+        align-items: center;
+      }
+      .shell-footer-inner a {
+        color: var(--ink-3);
+        text-decoration: none;
+      }
+      .shell-footer-inner a:hover { color: var(--ink-1); }
+
+      /* ─── Responsive: hide rail on narrow screens ─── */
+      @media (max-width: 720px) {
+        .rail { transform: translateX(-100%); }
+        .shell-main { margin-left: 0 !important; }
+        .topbarv2 { left: 0 !important; padding: 0 var(--space-3); }
+        .topbarv2-search-placeholder { display: none; }
+        .topbarv2-persona-label { display: none; }
+        .shell-footer-inner { padding: var(--space-4) var(--space-3); }
+      }
+    </style>
+  </body>
+</html>
