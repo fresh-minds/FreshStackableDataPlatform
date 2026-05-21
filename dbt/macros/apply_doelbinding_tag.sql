@@ -10,8 +10,9 @@
        pii_kolommen: [bsn]
        risk_tier: laag
 
-   Deze macro is een no-op; zie scripts/check-meta-completeness.py (TODO fase 9)
-   voor CI-validatie dat elk model verplichte meta-velden heeft.
+   Deze macro is een no-op; zie ci/scripts/check-dbt-meta.py voor CI-validatie
+   dat elk model verplichte meta-velden heeft (strict op marts, soft op staging).
+   Aangeroepen via .pre-commit-config.yaml en .github/workflows/dbt-parse.yml.
 #}
 {% macro apply_doelbinding_tag() %}
     -- no-op
