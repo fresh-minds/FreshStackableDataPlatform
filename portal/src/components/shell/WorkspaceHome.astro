@@ -1,0 +1,551 @@
+---
+/*
+  WorkspaceHome — the v2 homepage body.
+
+  Hero (greeting + KPI stats), Recents, Persona shortcuts, and
+  "Verkennen" categorized service tiles. Designed to drop into any
+  page that uses ShellLayout.
+
+  Used by:
+    - src/pages/index.astro                   (live /)
+    - src/pages/styleguide/portal-v2.astro    (mockup showcase)
+*/
+import ItemTile from './ItemTile.astro';
+import { RECENTS, EXPLORE, HERO_STATS } from '../../data/v2-homepage';
+import type { ItemType, ServiceSlug } from '../../data/v2-homepage';
+import { shortcuts as ROLE_SHORTCUTS, toEmbedHref } from '../../data/role-shortcuts';
+
+interface Props {
+  /** Greeting display name. Defaults to "Karel" for the mockup. */
+  userName?: string;
+  /** Persona label shown under the greeting. */
+  personaLabel?: string;
+}
+const {
+  userName = 'Karel',
+  personaLabel = 'Data Engineer',
+} = Astro.props;
+
+// Map a service-component id onto a tile-type for icon-tint colouring.
+// Default fallback = 'dashboard' since most rol-shortcuts are dashboards.
+function typeForComponent(id: string): ItemType {
+  switch (id) {
+    case 'superset':
+    case 'grafana':       return 'dashboard';
+    case 'openmetadata':
+    case 'hive':
+    case 'minio':         return 'table';
+    case 'airflow':       return 'dag';
+    case 'jupyter':       return 'notebook';
+    case 'trino':
+    case 'prometheus':
+    case 'opa':           return 'query';
+    case 'spark':
+    case 'kafka':
+    case 'nifi':
+    case 'dbt':
+    case 'dbt-docs':
+    case 'multica':       return 'pipeline';
+    default:              return 'dashboard';
+  }
+}
+
+// SSR-default persona — the page paints data_engineer's shortcuts; client-
+// side script swaps to the real persona from sessionStorage right after.
+const DEFAULT_ROLE = 'data_engineer';
+---
+
+<section class="v2-page">
+  <!-- ─── Hero ─── -->
+  <header class="v2-hero">
+    <div class="v2-hero-text">
+      <span class="v2-eyebrow">Mijn werkplek</span>
+      <h1 class="v2-hero-title">Welkom terug, <em>{userName}</em></h1>
+      <p class="v2-hero-sub" data-persona-sub>
+        Persona: <b>{personaLabel}</b> · 3 nieuwe meldingen · 1 DAG vraagt aandacht
+      </p>
+    </div>
+    <div class="v2-hero-stats">
+      {HERO_STATS.map((s) => (
+        <div class="v2-stat">
+          <span class:list={['v2-stat-val', s.tone && `v2-stat-val--${s.tone}`]}>{s.value}</span>
+          <span class="v2-stat-lbl">{s.label}</span>
+        </div>
+      ))}
+    </div>
+  </header>
+
+  <!-- ─── Recents ─── -->
+  <!-- SSR rendert sample-recents (uit v2-homepage.ts) als first paint.
+       Client-side script hieronder fetcht /api/portal/recents en
+       vervangt de inhoud als de backend bereikbaar is. Bij onbereik-
+       bare backend (lokale dev, cluster restart) blijft de sample
+       staan zodat de page niet leeg oogt. -->
+  <section class="v2-section">
+    <header class="v2-section-head">
+      <h2>Recent geopend</h2>
+      <a class="v2-section-more" href="#recents">Alles bekijken →</a>
+    </header>
+    <div class="v2-grid" data-recents-grid>
+      {RECENTS.map((r) => (
+        <ItemTile
+          type={r.type}
+          service={r.service}
+          title={r.title}
+          subtitle={r.subtitle}
+          owner={r.owner}
+          href={r.href}
+          status={r.status}
+          starred={r.starred}
+          itemKey={r.href}
+          starrable={true}
+        />
+      ))}
+    </div>
+  </section>
+
+  <!-- ─── Persona shortcuts ─── -->
+  <!-- All 11 roles render server-side; only the active role's grid is
+       visible (hidden attribute toggled client-side via sessionStorage).
+       Empty role-set falls back to a friendly placeholder. -->
+  <section class="v2-section" id="shortcuts-section">
+    <header class="v2-section-head">
+      <h2>
+        Jouw werkplek
+        <span class="v2-section-sub">— <span data-persona-label>{personaLabel}</span></span>
+      </h2>
+      <a class="v2-section-more" href="/me/">Volledig overzicht →</a>
+    </header>
+    {Object.entries(ROLE_SHORTCUTS).map(([role, items]) => (
+      <div class="v2-grid v2-shortcuts" data-role={role} hidden={role !== DEFAULT_ROLE}>
+        {items.length > 0 ? items.map((s) => (
+          <ItemTile
+            type={typeForComponent(s.component)}
+            service={s.component as ServiceSlug}
+            title={s.title}
+            subtitle={s.hint}
+            href={toEmbedHref(s)}
+            badge="Persona"
+          />
+        )) : (
+          <p class="v2-shortcuts-empty">
+            Nog geen shortcuts voor deze rol — zie <a href="/me/">Mijn werkplek</a>
+            voor capabilities en handleidingen.
+          </p>
+        )}
+      </div>
+    ))}
+  </section>
+
+  <!-- ─── Verkennen ─── -->
+  <section class="v2-section">
+    <header class="v2-section-head">
+      <h2>Verkennen</h2>
+      <a class="v2-section-more" href="#all-services">Architectuur-overzicht →</a>
+    </header>
+    <div class="v2-explore">
+      {EXPLORE.map((cat) => (
+        <article class="v2-cat">
+          <header class="v2-cat-head">
+            <h3>{cat.title}</h3>
+            <span>{cat.sub}</span>
+          </header>
+          <div class="v2-cat-grid">
+            {cat.items.map((item) => (
+              <ItemTile
+                type={item.type}
+                service={item.service}
+                title={item.title}
+                subtitle={item.subtitle}
+                href={item.href}
+              />
+            ))}
+          </div>
+        </article>
+      ))}
+    </div>
+  </section>
+
+  <!-- ─── Foot ─── -->
+  <footer class="v2-foot">
+    <span class="mono">Portal v2 · {new Date().toISOString().slice(0, 10)}</span>
+    <span class="v2-foot-keys">
+      <kbd>⌘K</kbd> zoek &nbsp;·&nbsp;
+      <kbd>esc</kbd> sluit &nbsp;·&nbsp;
+      Hover left rail
+    </span>
+  </footer>
+</section>
+
+<script>
+  // Client-side persona binding for the homepage.
+  //   1. SSR painted with DEFAULT_ROLE (data_engineer) so first-paint
+  //      is fast and stable.
+  //   2. After load: read uwv-portal-role from sessionStorage (set by
+  //      ShellLayout's loadIdentity() from /oauth2/userinfo).
+  //   3. Toggle .v2-shortcuts[hidden] so only the active role's grid
+  //      is visible. Update hero subtitle + section-header label.
+  //   4. ?persona=<role> in URL overrides for local-dev previews.
+
+  const PERSONA_LABELS: Record<string, string> = {
+    // Technical personas (in workspace switcher)
+    data_engineer:            'Data Engineer',
+    data_analyst:             'Data Analyst',
+    data_steward:             'Data Steward',
+    researcher:               'Researcher',
+    platform_admin:           'Platform Admin',
+    // End-user personas (read-only access)
+    wia_beoordelaar:          'WIA-beoordelaar',
+    ww_handhaver:             'WW-handhaver',
+    wajong_arbeidsdeskundige: 'Wajong arbeidsdeskundige',
+    crm_medewerker:           'CRM-medewerker',
+    fez_analist:              'FEZ-analist',
+    smz_planner:              'SMZ-planner',
+    proactief_dienstverlener: 'Proactief dienstverlener',
+  };
+
+  function applyPersona(role: string): void {
+    const label = PERSONA_LABELS[role] ?? role;
+
+    // Toggle the right shortcuts grid.
+    document.querySelectorAll<HTMLElement>('.v2-shortcuts').forEach((el) => {
+      el.hidden = el.dataset.role !== role;
+    });
+
+    // Update hero subtitle.
+    const sub = document.querySelector<HTMLElement>('[data-persona-sub]');
+    if (sub) {
+      sub.innerHTML =
+        `Persona: <b>${label}</b> · 3 nieuwe meldingen · 1 DAG vraagt aandacht`;
+    }
+
+    // Update section-header label.
+    document.querySelectorAll<HTMLElement>('[data-persona-label]').forEach((el) => {
+      el.textContent = label;
+    });
+  }
+
+  // Resolve: URL query (?persona=…) > sessionStorage > default.
+  const params = new URLSearchParams(location.search);
+  const urlRole = params.get('persona');
+  const storedRole = sessionStorage.getItem('uwv-portal-role');
+  const role = urlRole ?? storedRole ?? 'data_engineer';
+  if (PERSONA_LABELS[role]) applyPersona(role);
+
+  // React to sessionStorage updates from ShellLayout's loadIdentity()
+  // (e.g. when /oauth2/userinfo resolves after the page has painted).
+  // The 'storage' event only fires cross-tab, so we also poll briefly
+  // for the same-tab fetch.
+  setTimeout(() => {
+    const r = sessionStorage.getItem('uwv-portal-role');
+    if (r && PERSONA_LABELS[r] && r !== role) applyPersona(r);
+  }, 250);
+
+  // Persona-switcher in the topbar dispatches 'persona-changed' on click.
+  // Switch the shortcuts-grid + hero label in real time, no reload.
+  window.addEventListener('persona-changed', (e) => {
+    const detail = (e as CustomEvent).detail;
+    if (detail?.role && PERSONA_LABELS[detail.role]) {
+      applyPersona(detail.role);
+    }
+  });
+
+  // ───────────────────────────────────────────────────
+  // Recents: fetch live data van /api/portal/recents en
+  // vervang de SSR sample-tegels. Bij failure → laat sample staan.
+  // ───────────────────────────────────────────────────
+  type RecentRow = {
+    key: string;
+    type: string;
+    service: string;
+    title: string;
+    subtitle: string;
+    href: string;
+    opened_at?: string;
+  };
+
+  function escapeHtml(s: string): string {
+    return s.replace(/[&<>"']/g, (c) => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;',
+    }[c]!));
+  }
+
+  // Compact relative-time formatting ("net" / "12m" / "3u" / "2d").
+  function formatAgo(timestamp: string | undefined): string {
+    if (!timestamp) return '';
+    // SQLite stores datetime() as "YYYY-MM-DD HH:MM:SS" in UTC. Replace
+    // the space with 'T' and append 'Z' for ISO parsing.
+    const iso = timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T') + 'Z';
+    const then = new Date(iso).getTime();
+    if (Number.isNaN(then)) return '';
+    const sec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+    if (sec < 60)    return 'net';
+    if (sec < 3600)  return `${Math.floor(sec / 60)}m`;
+    if (sec < 86400) return `${Math.floor(sec / 3600)}u`;
+    return `${Math.floor(sec / 86400)}d`;
+  }
+
+  function renderRecent(item: RecentRow, favoriteKeys: Set<string>): string {
+    const titleEsc = escapeHtml(item.title);
+    const subEsc   = escapeHtml(item.subtitle || '');
+    const ago      = formatAgo(item.opened_at);
+    const sub      = ago && subEsc ? `${ago} · ${subEsc}` : (ago || subEsc);
+    const starred  = favoriteKeys.has(item.key);
+    const keyEsc   = escapeHtml(item.key);
+    const typeEsc  = escapeHtml(item.type);
+    const svcEsc   = escapeHtml(item.service);
+    const hrefEsc  = escapeHtml(item.href);
+    const ariaLbl  = starred ? 'Verwijder uit favorieten' : 'Markeer als favoriet';
+    return `
+      <a class="v2-tile" href="${hrefEsc}" data-type="${typeEsc}" data-item-key="${keyEsc}">
+        <span class="v2-tile-brand" aria-hidden="true">
+          <img src="/icons/brand/${svcEsc}.svg" alt="" width="24" height="24" loading="lazy" />
+        </span>
+        <span class="v2-tile-body">
+          <span class="v2-tile-row">
+            <span class="v2-tile-title">${titleEsc}</span>
+            <button type="button" class="v2-tile-star"
+                    aria-pressed="${starred ? 'true' : 'false'}"
+                    aria-label="${ariaLbl}"
+                    data-action="favorite-toggle"
+                    data-item-key="${keyEsc}"
+                    data-item-type="${typeEsc}"
+                    data-item-service="${svcEsc}"
+                    data-item-title="${titleEsc}"
+                    data-item-subtitle="${subEsc}"
+                    data-item-href="${hrefEsc}">★</button>
+          </span>
+          ${sub ? `<span class="v2-tile-subtitle">${sub}</span>` : ''}
+          <span class="v2-tile-meta">
+            <span class="v2-type-chip" data-type="${typeEsc}">${typeEsc}</span>
+          </span>
+        </span>
+      </a>`;
+  }
+
+  async function fetchJson(url: string): Promise<any | null> {
+    try {
+      const r = await fetch(url, { credentials: 'include' });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async function loadRecents(): Promise<void> {
+    const container = document.querySelector<HTMLElement>('[data-recents-grid]');
+    if (!container) return;
+
+    // Parallel fetch — favorites bepalen welke recents een ster krijgen.
+    const [recentsRes, favoritesRes] = await Promise.all([
+      fetchJson('/api/portal/recents'),
+      fetchJson('/api/portal/favorites'),
+    ]);
+
+    if (!recentsRes || !Array.isArray(recentsRes.items) || recentsRes.items.length === 0) {
+      // Geen backend / lege state → SSR sample blijft staan.
+      return;
+    }
+
+    const favoriteKeys = new Set<string>(
+      Array.isArray(favoritesRes?.items)
+        ? favoritesRes.items.map((f: { key: string }) => f.key)
+        : []
+    );
+
+    container.innerHTML = recentsRes.items
+      .map((row: RecentRow) => renderRecent(row, favoriteKeys))
+      .join('');
+  }
+
+  loadRecents();
+</script>
+
+<style>
+  .v2-page {
+    max-width: var(--content-max-w);
+    margin: 0 auto;
+    padding: var(--space-5) var(--space-7) var(--space-11);
+  }
+
+  /* ─── Hero ─── */
+  .v2-hero {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: var(--space-5);
+    align-items: end;
+    padding: var(--space-7) 0 var(--space-9);
+    border-bottom: 1px solid var(--line);
+    margin-bottom: var(--space-7);
+  }
+  .v2-hero-text { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .v2-eyebrow {
+    font-family: var(--font-mono);
+    font-size: var(--text-eyebrow);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: var(--ink-3);
+  }
+  .v2-hero-title {
+    font-size: 40px;
+    font-weight: var(--weight-medium);
+    letter-spacing: var(--tracking-display);
+    color: var(--ink-1);
+    margin: 0;
+    line-height: 1.05;
+  }
+  .v2-hero-title em {
+    font-family: var(--font-serif);
+    font-style: italic;
+    color: var(--ink-3);
+    font-weight: var(--weight-regular);
+  }
+  .v2-hero-sub {
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+    margin: 0;
+  }
+  .v2-hero-sub b { color: var(--ink-2); font-weight: var(--weight-medium); }
+  .v2-hero-stats {
+    display: flex;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+  }
+  .v2-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: flex-end;
+    padding: 0 var(--space-3);
+    border-right: 1px solid var(--line);
+  }
+  .v2-stat:last-child { border-right: 0; padding-right: 0; }
+  .v2-stat-val {
+    font-family: var(--font-mono);
+    font-feature-settings: 'tnum';
+    font-size: 22px;
+    color: var(--ink-1);
+    font-weight: var(--weight-medium);
+    line-height: 1;
+  }
+  .v2-stat-val--down { color: var(--status-down); }
+  .v2-stat-val--warn { color: var(--status-warn); }
+  .v2-stat-val--ok   { color: var(--status-ok); }
+  .v2-stat-lbl {
+    font-family: var(--font-mono);
+    font-size: var(--text-eyebrow);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: var(--ink-3);
+  }
+
+  /* ─── Section ─── */
+  .v2-section { margin-bottom: var(--space-9); }
+  .v2-section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+  }
+  .v2-section-head h2 {
+    font-size: var(--text-h3);
+    font-weight: var(--weight-medium);
+    color: var(--ink-1);
+    letter-spacing: var(--tracking-tight);
+    margin: 0;
+    border: 0;
+    padding: 0;
+  }
+  .v2-section-sub { color: var(--ink-3); font-weight: var(--weight-regular); }
+  .v2-section-more {
+    color: var(--accent-info);
+    text-decoration: none;
+    font-size: var(--text-meta);
+  }
+  .v2-section-more:hover { text-decoration: underline; }
+
+  .v2-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--space-3);
+  }
+
+  /* Empty-state for roles without configured shortcuts. */
+  .v2-shortcuts-empty {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding: var(--space-5);
+    background: var(--bg-elev);
+    border: 1px dashed var(--line);
+    border-radius: var(--tile-radius);
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+  }
+  .v2-shortcuts-empty a { color: var(--accent-info); }
+
+  /* ─── Verkennen (category sub-grids) ─── */
+  .v2-explore {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: var(--space-5);
+  }
+  .v2-cat {
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--tile-radius);
+    padding: var(--space-5);
+  }
+  .v2-cat-head {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: var(--space-4);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--line);
+  }
+  .v2-cat-head h3 {
+    margin: 0;
+    font-size: var(--text-meta);
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: var(--ink-1);
+    font-weight: var(--weight-medium);
+  }
+  .v2-cat-head span { color: var(--ink-3); font-size: var(--text-meta); }
+  .v2-cat-grid {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  /* ─── Foot ─── */
+  .v2-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-5) 0 0;
+    border-top: 1px solid var(--line);
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+  .v2-foot-keys kbd {
+    background: var(--kbd-bg);
+    border: 1px solid var(--kbd-line);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 720px) {
+    .v2-page { padding: var(--space-3); }
+    .v2-hero { grid-template-columns: 1fr; align-items: start; }
+    .v2-hero-title { font-size: 28px; }
+    .v2-hero-stats { gap: var(--space-2); }
+  }
+</style>

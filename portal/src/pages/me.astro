@@ -1,5 +1,5 @@
 ---
-import Layout from '../layouts/Layout.astro';
+import ShellLayout from '../layouts/ShellLayout.astro';
 import ReferenceArchitecture from '../components/ReferenceArchitecture.astro';
 import Eyebrow from '../components/primitives/Eyebrow.astro';
 import Button from '../components/primitives/Button.astro';
@@ -34,7 +34,8 @@ const payload = {
   capabilities,
 };
 ---
-<Layout title="Mijn werkplek">
+<ShellLayout title="Mijn werkplek" activeSection="workspace">
+  <div class="me-page">
   <!-- ═══════════ Role picker (demo / not logged in) ═══════════ -->
   <section class="me-picker" id="role-picker" hidden>
     <header class="me-hero">
@@ -81,8 +82,8 @@ const payload = {
   <section class="me-section" id="role-upload" hidden>
     <header class="me-section-head">
       <Eyebrow>Data aanleveren</Eyebrow>
-      <h2>Handmatige CSV-upload</h2>
-      <p>Upload een CSV-bestand naar de bronze-laag en start de bronze → silver → gold pipeline.</p>
+      <h2>Upload &amp; convert</h2>
+      <p>Upload elk bestandstype naar MinIO en zet tabulaire data (CSV, TSV, JSON, NDJSON, Parquet) met één klik om naar een Delta-tabel in bronze.</p>
     </header>
     <a href="/csv-upload/" class="upload-cta-card">
       <span class="upload-cta-icon" aria-hidden="true">
@@ -93,8 +94,8 @@ const payload = {
         </svg>
       </span>
       <span class="upload-cta-body">
-        <strong class="upload-cta-title">CSV uploaden</strong>
-        <span class="upload-cta-hint">Stap-voor-stap: MinIO → Airflow trigger → Trino</span>
+        <strong class="upload-cta-title">Upload &amp; convert</strong>
+        <span class="upload-cta-hint">MinIO upload · optioneel convert_to_delta → bronze</span>
       </span>
       <span class="upload-cta-arrow" aria-hidden="true">→</span>
     </a>
@@ -145,6 +146,7 @@ const payload = {
       <Button href="/me/">Andere rol kiezen</Button>
     </div>
   </section>
+  </div>
 
   <script type="application/json" id="me-data" set:html={JSON.stringify(payload)} />
 
@@ -296,6 +298,20 @@ const payload = {
   </script>
 
   <style is:global>
+    /* ─── Page container ─── */
+    /* Under ShellLayout the main slot is full-width (1440px). The me-page
+       wrapper limits content to a comfortable reading column so heroes
+       don't sprawl across the screen. Sections still take 100% of the
+       wrapper, so border-top lines align with the heading-row above. */
+    .me-page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: var(--space-4) var(--space-7) var(--space-9);
+    }
+    @media (max-width: 720px) {
+      .me-page { padding: var(--space-3); }
+    }
+
     /* ─── Hero ─── */
     .me-hero { padding: var(--space-7) 0; max-width: 880px; }
     .me-hero h1 {
@@ -559,4 +575,4 @@ const payload = {
       flex: 1;
     }
   </style>
-</Layout>
+</ShellLayout>

@@ -1,135 +1,181 @@
 ---
-import '@fontsource-variable/inter';
-import '@fontsource-variable/jetbrains-mono';
-import '../styles/tokens.css';
-import '../styles/base.css';
+/*
+  EmbedLayout — wraps a single service UI inside the v2 shell.
 
+  Renders ShellLayout (rail + top bar) with `embedMode=true` so shell-main
+  becomes a flex column at full viewport height. Inside the slot:
+    - an embed sub-bar (breadcrumb · deep-link · open-in-tab · fullscreen)
+    - an iframe that fills the remaining height
+    - loading + blocked + fallback overlays
+
+  The legacy standalone EmbedLayout (its own <html> + theme script + TLD
+  rewrite) has been folded into ShellLayout. We only keep the iframe-src
+  TLD rewrite here since ShellLayout's MutationObserver only swaps <a>
+  href values, not iframe src attributes.
+
+  Fullscreen mode (Esc / "Volledig" button) hides the rail + top bar +
+  sub-bar via [data-fullscreen=true] on <html>, leaving the iframe alone.
+*/
+import ShellLayout from './ShellLayout.astro';
 import type { PlatformComponent } from '../data/components';
 import { resolveEmbedSrc, resolveExternalUrl } from '../data/components';
 
 interface Props {
   component: PlatformComponent;
-  // Deep-link path-met-query relatief aan de service-root. Bijvoorbeeld
-  // "/dashboard/list/?filters=(slug:wia-funnel)" voor Superset.
+  /** Deep-link path-met-query, e.g. "/dashboard/list/?filters=…". */
   deepLink?: string | null;
 }
 
 const { component, deepLink = null } = Astro.props;
 
-// Build-time resolutie. De Layout's runtime TLD-rewrite swap't *.uwv-platform.local
-// op cloud-hosts naar de juiste TLD; we doen hetzelfde voor iframe-src
-// hieronder in <script> zodat AKS/StackIT-bezoekers ook werken.
+// Build-time resolutie. De ShellLayout's runtime TLD-rewrite swap't
+// *.uwv-platform.local op cloud-hosts naar de juiste TLD voor <a>
+// links; we doen hetzelfde voor iframe-src in <script> hieronder.
 const embedSrc = resolveEmbedSrc(component, deepLink);
 const externalUrl = resolveExternalUrl(component, deepLink);
 const canEmbed = embedSrc !== null;
----
-<!DOCTYPE html>
-<html lang="nl">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="referrer" content="same-origin" />
-    <title>{component.name} · UWV Platform Portal</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <script is:inline>
-      (function () {
-        try {
-          var saved = localStorage.getItem('uwv-portal-theme');
-          var prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
-          var theme = saved ?? (prefersLight ? 'light' : 'dark');
-          document.documentElement.dataset.theme = theme;
-        } catch (e) { /* localStorage onbeschikbaar */ }
-      })();
-    </script>
-  </head>
-  <body class="embed-body">
-    <header class="embed-topbar">
-      <div class="embed-topbar-left">
-        <a class="embed-back" href="/" title="Terug naar portal" aria-label="Terug naar portal">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M15 18l-6-6 6-6"/>
-          </svg>
-          <span class="embed-back-label">Portal</span>
-        </a>
-        <span class="embed-divider" aria-hidden="true">/</span>
-        <span class="embed-service">
-          <img class="embed-service-icon" src={component.icon} alt="" width="18" height="18" />
-          <span class="embed-service-name">{component.name}</span>
-        </span>
-        {deepLink && (
-          <>
-            <span class="embed-divider" aria-hidden="true">/</span>
-            <span class="embed-deep mono" title={deepLink}>{deepLink}</span>
-          </>
-        )}
-      </div>
-      <div class="embed-topbar-right">
-        {externalUrl && (
-          <a class="embed-btn" id="embed-open-external"
-             href={externalUrl}
-             target="_blank" rel="noopener noreferrer"
-             title="Open in nieuw tabblad">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M14 3h7v7M10 14L21 3M21 14v7H3V3h7"/>
-            </svg>
-            <span>Nieuw tabblad</span>
-          </a>
-        )}
-        {canEmbed && (
-          <button class="embed-btn" type="button" id="embed-fullscreen"
-                  title="Volledig scherm (verberg balk)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6"/>
-            </svg>
-            <span>Volledig</span>
-          </button>
-        )}
-      </div>
-    </header>
 
-    {canEmbed ? (
-      <>
-        <iframe
-          id="embed-frame"
-          class="embed-frame"
-          src={embedSrc}
-          title={component.name}
-          allow="clipboard-write; fullscreen"
-          referrerpolicy="same-origin"
-        ></iframe>
-        <div id="embed-loading" class="embed-loading" aria-live="polite">
-          <span class="embed-loading-spinner" aria-hidden="true"></span>
-          <span>{component.name} laden…</span>
-        </div>
-        <div id="embed-blocked" class="embed-blocked" hidden>
-          <div class="embed-fallback-card">
-            <h1>De iframe laadt niet</h1>
-            <p>
-              De browser blokkeert het tonen van <strong>{component.name}</strong>
-              binnen de portal. Meestal komt dat door een X-Frame-Options /
-              CSP-header of door een SSO-redirect die in iframe-context faalt.
-            </p>
-            {externalUrl && (
-              <a class="embed-btn embed-btn-primary" href={externalUrl}
-                 target="_blank" rel="noopener noreferrer">
-                <span>Open {component.name} in nieuw tabblad</span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M14 3h7v7M10 14L21 3M21 14v7H3V3h7"/>
-                </svg>
-              </a>
-            )}
-          </div>
-        </div>
-      </>
-    ) : (
-      <div class="embed-fallback">
+// Map service-id to rail section so the right rail-icon lights up.
+const SECTION_BY_ID: Record<string,
+  'home' | 'workspace' | 'storage' | 'catalog' | 'lineage'
+  | 'workflows' | 'compute' | 'observability'
+> = {
+  // Storage
+  minio:        'storage',
+  // Catalog
+  openmetadata: 'catalog',
+  hive:         'catalog',  // still highlights Catalog if someone deep-links there
+  // Lineage
+  'dbt-docs':   'lineage',
+  dbt:          'lineage',
+  // Workflows
+  airflow:      'workflows',
+  nifi:         'workflows',
+  kafka:        'workflows',
+  // Compute
+  spark:        'compute',
+  trino:        'compute',
+  jupyter:      'compute',
+  // Observability
+  grafana:      'observability',
+  prometheus:   'observability',
+  opensearch:   'observability',
+  // superset / keycloak / multica / nanitics / opa
+  // → default 'workspace'
+};
+const activeSection = SECTION_BY_ID[component.id] ?? 'workspace';
+
+// Map a service-id to an item-type for the Recents tile icon-tint.
+// Duplicate of WorkspaceHome.astro's typeForComponent — when both stop
+// changing, extract to a shared util in src/data/.
+function trackTypeFor(id: string): string {
+  switch (id) {
+    case 'superset':
+    case 'grafana':       return 'dashboard';
+    case 'openmetadata':
+    case 'hive':
+    case 'minio':         return 'table';
+    case 'airflow':       return 'dag';
+    case 'jupyter':       return 'notebook';
+    case 'trino':
+    case 'prometheus':
+    case 'opa':           return 'query';
+    case 'spark':
+    case 'kafka':
+    case 'nifi':
+    case 'dbt':
+    case 'dbt-docs':
+    case 'multica':       return 'pipeline';
+    default:              return 'dashboard';
+  }
+}
+
+// Compose a recents-tracking payload. The key is opaque to the backend
+// but stable per (service, deepLink) pair so repeated visits move the
+// same row to the top instead of creating duplicates.
+const trackKey = `embed:${component.id}${deepLink ? ':' + deepLink : ''}`;
+const trackTitle = deepLink
+  ? `${component.name} · ${deepLink.slice(0, 60)}`
+  : component.name;
+const trackSubtitle = component.short ?? '';
+const trackHref = deepLink
+  ? `/embed/${component.id}/?path=${encodeURIComponent(deepLink)}`
+  : `/embed/${component.id}/`;
+---
+
+<ShellLayout
+  title={component.name}
+  description={`${component.name} · embedded in UWV Platform Portal`}
+  activeSection={activeSection}
+  activeSubsection={component.id}
+  embedMode={true}
+>
+  <!-- ─── Embed sub-bar: breadcrumb + actions ─── -->
+  <header class="embed-subbar">
+    <div class="embed-subbar-left">
+      <a class="embed-back" href="/" title="Terug naar portal" aria-label="Terug naar portal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6"/>
+        </svg>
+        <span class="embed-back-label">Portal</span>
+      </a>
+      <span class="embed-divider" aria-hidden="true">/</span>
+      <span class="embed-service">
+        <img class="embed-service-icon" src={component.icon} alt="" width="18" height="18" />
+        <span class="embed-service-name">{component.name}</span>
+      </span>
+      {deepLink && (
+        <>
+          <span class="embed-divider" aria-hidden="true">/</span>
+          <span class="embed-deep mono" title={deepLink}>{deepLink}</span>
+        </>
+      )}
+    </div>
+    <div class="embed-subbar-right">
+      {externalUrl && (
+        <a class="embed-btn" id="embed-open-external"
+           href={externalUrl}
+           target="_blank" rel="noopener noreferrer"
+           title="Open in nieuw tabblad">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 3h7v7M10 14L21 3M21 14v7H3V3h7"/>
+          </svg>
+          <span>Nieuw tabblad</span>
+        </a>
+      )}
+      {canEmbed && (
+        <button class="embed-btn" type="button" id="embed-fullscreen"
+                title="Volledig scherm (verberg shell)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6"/>
+          </svg>
+          <span>Volledig</span>
+        </button>
+      )}
+    </div>
+  </header>
+
+  {canEmbed ? (
+    <div class="embed-frame-wrap">
+      <iframe
+        id="embed-frame"
+        class="embed-frame"
+        src={embedSrc}
+        title={component.name}
+        allow="clipboard-write; fullscreen"
+        referrerpolicy="same-origin"
+      ></iframe>
+      <div id="embed-loading" class="embed-loading" aria-live="polite">
+        <span class="embed-loading-spinner" aria-hidden="true"></span>
+        <span>{component.name} laden…</span>
+      </div>
+      <div id="embed-blocked" class="embed-blocked" hidden>
         <div class="embed-fallback-card">
-          <h1>{component.name} is niet inline embed-baar</h1>
-          <p>{component.purpose}</p>
-          <p class="embed-fallback-reason">
-            {component.embed?.mode === 'none'
-              ? 'Deze service heeft geen iframe-veilige UI (login-redirects of admin-flow).'
-              : 'Geen iframe-URL beschikbaar voor deze omgeving.'}
+          <h1>De iframe laadt niet</h1>
+          <p>
+            De browser blokkeert het tonen van <strong>{component.name}</strong>
+            binnen de portal. Meestal komt dat door een X-Frame-Options /
+            CSP-header of door een SSO-redirect die in iframe-context faalt.
           </p>
           {externalUrl && (
             <a class="embed-btn embed-btn-primary" href={externalUrl}
@@ -140,301 +186,351 @@ const canEmbed = embedSrc !== null;
               </svg>
             </a>
           )}
-          <a class="embed-back-link" href="/">← Terug naar portal</a>
         </div>
       </div>
-    )}
+    </div>
+  ) : (
+    <div class="embed-fallback">
+      <div class="embed-fallback-card">
+        <h1>{component.name} is niet inline embed-baar</h1>
+        <p>{component.purpose}</p>
+        <p class="embed-fallback-reason">
+          {component.embed?.mode === 'none'
+            ? 'Deze service heeft geen iframe-veilige UI (login-redirects of admin-flow).'
+            : 'Geen iframe-URL beschikbaar voor deze omgeving.'}
+        </p>
+        {externalUrl && (
+          <a class="embed-btn embed-btn-primary" href={externalUrl}
+             target="_blank" rel="noopener noreferrer">
+            <span>Open {component.name} in nieuw tabblad</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M14 3h7v7M10 14L21 3M21 14v7H3V3h7"/>
+            </svg>
+          </a>
+        )}
+        <a class="embed-back-link" href="/">← Terug naar portal</a>
+      </div>
+    </div>
+  )}
+</ShellLayout>
 
-    <script>
-      // ─── TLD-rewrite voor iframe-src en open-in-new-tab op cloud-hosts.
-      // Build-time URLs zijn https://<svc>.uwv-platform.local:8443/...; op
-      // *.eu-sovereigndataplatform.com of *.freshstackable.com swappen we
-      // de host en droppen de :8443 (cloud LB op 443).
-      (function () {
-        var host = window.location.hostname;
-        var CLOUD_TLDS = ['eu-sovereigndataplatform.com', 'freshstackable.com'];
-        var targetTld = null;
-        for (var t = 0; t < CLOUD_TLDS.length; t++) {
-          if (host === CLOUD_TLDS[t] || host.endsWith('.' + CLOUD_TLDS[t])) {
-            targetTld = CLOUD_TLDS[t]; break;
-          }
-        }
-        if (!targetTld) return;
-        var KEEP_LOCAL = ['multica', 'nanitics'];
+<script define:vars={{
+  recentPayload: {
+    key:      trackKey,
+    type:     trackTypeFor(component.id),
+    service:  component.id,
+    title:    trackTitle,
+    subtitle: trackSubtitle,
+    href:     trackHref,
+  },
+}}>
+  // ─── Recents tracking ───
+  // Fire-and-forget POST naar /api/portal/recents zodra de iframe-page
+  // laadt. Backend (zie portal-backend.py) dedupliceert op `key` en
+  // bumpt opened_at. Failures zijn stil — als de backend down is, gaat
+  // de portal gewoon door zonder recents-functionaliteit.
+  //
+  // keepalive=true zorgt dat de request afgemaakt wordt als de
+  // gebruiker direct doorklikt naar een andere embed.
+  try {
+    fetch('/api/portal/recents', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(recentPayload),
+      keepalive: true,
+    }).catch(() => { /* silently fail — geen blocking UX */ });
+  } catch {
+    /* fetch onbeschikbaar (oude browser) — skip */
+  }
+</script>
 
-        function rewriteHref(href: string): string {
-          var m = href.match(/:\/\/([a-z0-9-]+)\.uwv-platform\.local(:8443)?/);
-          if (m && KEEP_LOCAL.indexOf(m[1]) !== -1) return href;
-          return href
-            .replace(/:\/\/([a-z0-9-]+)\.uwv-platform\.local(:8443)?/g,
-                     '://$1.' + targetTld);
-        }
+<script>
+  // ─── TLD-rewrite voor iframe-src ───
+  // ShellLayout's rewrite swap't alleen <a href> waarden. De iframe-src
+  // op cloud-hosts (*.eu-sovereigndataplatform.com, *.freshstackable.com)
+  // moet ook bijgewerkt — anders probeert de iframe een onbereikbare
+  // *.uwv-platform.local:8443 host te laden.
+  (function () {
+    const host = window.location.hostname;
+    const CLOUD_TLDS = ['eu-sovereigndataplatform.com', 'freshstackable.com'];
+    let targetTld: string | null = null;
+    for (const t of CLOUD_TLDS) {
+      if (host === t || host.endsWith('.' + t)) { targetTld = t; break; }
+    }
+    if (!targetTld) return;
+    const KEEP_LOCAL = ['multica', 'nanitics'];
 
-        var iframe = document.getElementById('embed-frame') as HTMLIFrameElement | null;
-        if (iframe && iframe.src) iframe.src = rewriteHref(iframe.src);
-        var anchors = document.querySelectorAll<HTMLAnchorElement>('a[href*="uwv-platform.local"]');
-        for (var i = 0; i < anchors.length; i++) anchors[i].href = rewriteHref(anchors[i].href);
-      })();
+    function rewriteHref(href: string): string {
+      const m = href.match(/:\/\/([a-z0-9-]+)\.uwv-platform\.local(:8443)?/);
+      if (m && KEEP_LOCAL.indexOf(m[1]) !== -1) return href;
+      return href.replace(
+        /:\/\/([a-z0-9-]+)\.uwv-platform\.local(:8443)?/g,
+        '://$1.' + targetTld,
+      );
+    }
 
-      // ─── Volledig-scherm toggle. Verbergt de top-bar; klik nogmaals
-      //     om terug te keren. Esc werkt ook als de iframe focus heeft.
-      var fsBtn = document.getElementById('embed-fullscreen');
-      var body = document.body;
-      function exitFull(): void { body.classList.remove('embed-full'); }
-      fsBtn?.addEventListener('click', function () {
-        body.classList.toggle('embed-full');
-      });
-      document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && body.classList.contains('embed-full')) {
-          e.preventDefault();
-          exitFull();
-        }
-      });
+    const iframe = document.getElementById('embed-frame') as HTMLIFrameElement | null;
+    if (iframe && iframe.src) iframe.src = rewriteHref(iframe.src);
+  })();
 
-      // ─── Iframe load / failure UX. Cross-origin iframes geven ons geen
-      // toegang tot contentDocument, maar 'load' vuurt wel zodra de
-      // browser response heeft ontvangen (ook bij X-Frame-Options-blok
-      // op sommige engines). Twee paden:
-      //   - load event binnen 8s → spinner weg, gewoon doorgaan
-      //   - timeout zonder load → toon "blocked"-fallback met
-      //     "open in nieuw tabblad"-knop
-      var frame = document.getElementById('embed-frame') as HTMLIFrameElement | null;
-      var loading = document.getElementById('embed-loading');
-      var blocked = document.getElementById('embed-blocked');
-      if (frame && loading) {
-        var timeoutId: number | undefined = window.setTimeout(function () {
-          if (loading) loading.hidden = true;
-          if (blocked) blocked.hidden = false;
-          if (frame) frame.style.opacity = '0.05';
-        }, 8000);
-        frame.addEventListener('load', function () {
-          if (timeoutId !== undefined) {
-            window.clearTimeout(timeoutId);
-            timeoutId = undefined;
-          }
-          if (loading) loading.hidden = true;
-        });
-      }
-    </script>
+  // ─── Fullscreen toggle ───
+  // Sets html[data-fullscreen=true] which hides the rail, topbar v2,
+  // and the embed sub-bar via global CSS below. Esc returns to normal.
+  const fsBtn = document.getElementById('embed-fullscreen');
+  function setFullscreen(on: boolean): void {
+    if (on) document.documentElement.dataset.fullscreen = 'true';
+    else delete document.documentElement.dataset.fullscreen;
+  }
+  fsBtn?.addEventListener('click', () => {
+    const isOn = document.documentElement.dataset.fullscreen === 'true';
+    setFullscreen(!isOn);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.documentElement.dataset.fullscreen === 'true') {
+      e.preventDefault();
+      setFullscreen(false);
+    }
+  });
 
-    <style is:global>
-      :root, [data-theme="dark"], [data-theme="light"] {
-        /* Inherit theme tokens from base.css/tokens.css */
+  // ─── Iframe load / failure UX ───
+  // Cross-origin iframes geven ons geen toegang tot contentDocument, maar
+  // 'load' vuurt wel zodra de browser response heeft ontvangen.
+  //   - load event binnen 8s → spinner weg
+  //   - timeout zonder load → toon "blocked"-fallback met
+  //     "open in nieuw tabblad"-knop
+  const frame = document.getElementById('embed-frame') as HTMLIFrameElement | null;
+  const loading = document.getElementById('embed-loading');
+  const blocked = document.getElementById('embed-blocked');
+  if (frame && loading) {
+    let timeoutId: number | undefined = window.setTimeout(() => {
+      if (loading) loading.hidden = true;
+      if (blocked) blocked.hidden = false;
+      if (frame) frame.style.opacity = '0.05';
+    }, 8000);
+    frame.addEventListener('load', () => {
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+        timeoutId = undefined;
       }
+      if (loading) loading.hidden = true;
+    });
+  }
+</script>
 
-      html, body { height: 100%; margin: 0; padding: 0; }
-      body.embed-body {
-        background: var(--bg);
-        color: var(--ink-1);
-        font-family: var(--font-sans);
-        display: grid;
-        grid-template-rows: auto 1fr;
-        overflow: hidden;
-      }
+<style is:global>
+  /* ─── Embed sub-bar ─── */
+  /* Sits inside shell-main directly below the v2 topbar. Same height
+     as the legacy embed-topbar (~40px) so existing iframes look right. */
+  .embed-subbar {
+    background: var(--bg-elev);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    gap: var(--space-3);
+    min-height: 40px;
+    flex-shrink: 0;
+  }
+  .embed-subbar-left,
+  .embed-subbar-right {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .embed-subbar-left { flex: 1; min-width: 0; }
 
-      .embed-topbar {
-        background: var(--bg-elev);
-        border-bottom: 1px solid var(--line);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 6px 12px;
-        gap: var(--space-3);
-        min-height: 40px;
-        z-index: 10;
-        transition: transform 0.2s, opacity 0.2s;
-      }
-      .embed-topbar-left,
-      .embed-topbar-right {
-        display: inline-flex;
-        align-items: center;
-        gap: var(--space-2);
-        min-width: 0;
-      }
-      .embed-topbar-left { flex: 1; min-width: 0; }
+  .embed-back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--ink-2);
+    text-decoration: none;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-meta);
+    line-height: 1;
+    transition: background var(--motion-fast), color var(--motion-fast);
+  }
+  .embed-back:hover {
+    background: var(--bg-sunken);
+    color: var(--ink-1);
+    text-decoration: none;
+  }
+  .embed-back-label { font-weight: var(--weight-medium); }
 
-      .embed-back {
-        display: inline-flex;
-        align-items: center;
-        gap: var(--space-2);
-        color: var(--ink-2);
-        text-decoration: none;
-        padding: 4px 8px;
-        border-radius: var(--radius-sm);
-        font-size: var(--text-meta);
-        line-height: 1;
-        transition: background 0.15s, color 0.15s;
-      }
-      .embed-back:hover {
-        background: var(--bg-sunken);
-        color: var(--ink-1);
-        text-decoration: none;
-      }
-      .embed-back-label { font-weight: var(--weight-medium); }
+  .embed-divider {
+    color: var(--ink-4);
+    font-size: var(--text-meta);
+  }
+  .embed-service {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--ink-1);
+    font-size: var(--text-meta);
+  }
+  .embed-service-icon { display: block; flex-shrink: 0; }
+  .embed-service-name { font-weight: var(--weight-medium); }
+  .embed-deep {
+    color: var(--ink-3);
+    font-size: var(--text-micro);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 40ch;
+  }
 
-      .embed-divider {
-        color: var(--ink-4);
-        font-size: var(--text-meta);
-      }
+  .embed-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 4px 10px;
+    background: var(--bg);
+    color: var(--ink-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-micro);
+    line-height: 1;
+    cursor: pointer;
+    text-decoration: none;
+    font-family: var(--font-sans);
+    transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
+  }
+  .embed-btn:hover {
+    background: var(--bg-elev);
+    color: var(--ink-1);
+    border-color: var(--ink-4);
+    text-decoration: none;
+  }
+  .embed-btn-primary {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+    font-size: var(--text-meta);
+    padding: 8px 14px;
+  }
+  .embed-btn-primary:hover {
+    background: var(--accent);
+    color: var(--accent-ink);
+    opacity: 0.92;
+  }
 
-      .embed-service {
-        display: inline-flex;
-        align-items: center;
-        gap: var(--space-2);
-        color: var(--ink-1);
-        font-size: var(--text-meta);
-      }
-      .embed-service-icon {
-        display: block;
-        flex-shrink: 0;
-      }
-      .embed-service-name { font-weight: var(--weight-medium); }
+  /* ─── Iframe wrapper ─── */
+  /* Fills the remaining height of shell-main (which is flex-column at
+     calc(100vh - topbar-h) in embed mode). Loading + blocked overlays
+     are absolute-positioned inside this wrapper. */
+  .embed-frame-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    background: var(--bg-sunken);
+  }
+  .embed-frame {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: var(--bg-sunken);
+    display: block;
+    transition: opacity var(--motion-base);
+  }
 
-      .embed-deep {
-        color: var(--ink-3);
-        font-size: var(--text-micro);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 40ch;
-      }
+  /* Spinner overlay during initial iframe-load. */
+  .embed-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+    background: var(--bg);
+    pointer-events: none;
+    z-index: 5;
+  }
+  .embed-loading[hidden] { display: none; }
+  .embed-loading-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--ink-4);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: embed-spin 0.8s linear infinite;
+  }
+  @keyframes embed-spin { to { transform: rotate(360deg); } }
 
-      .embed-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: var(--space-1);
-        padding: 4px 10px;
-        background: var(--bg);
-        color: var(--ink-2);
-        border: 1px solid var(--line);
-        border-radius: var(--radius-sm);
-        font-size: var(--text-micro);
-        line-height: 1;
-        cursor: pointer;
-        text-decoration: none;
-        transition: background 0.15s, color 0.15s, border-color 0.15s;
-      }
-      .embed-btn:hover {
-        background: var(--bg-elev);
-        color: var(--ink-1);
-        border-color: var(--ink-4);
-        text-decoration: none;
-      }
-      .embed-btn-primary {
-        background: var(--accent);
-        color: var(--accent-ink);
-        border-color: var(--accent);
-        font-size: var(--text-meta);
-        padding: 8px 14px;
-      }
-      .embed-btn-primary:hover {
-        background: var(--accent);
-        color: var(--accent-ink);
-        opacity: 0.92;
-      }
+  /* Blocked overlay (8s load timeout). */
+  .embed-blocked {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: var(--space-7);
+    background: var(--bg);
+    z-index: 6;
+  }
+  .embed-blocked[hidden] { display: none; }
 
-      .embed-frame {
-        width: 100%;
-        height: 100%;
-        border: 0;
-        background: var(--bg-sunken);
-        display: block;
-        transition: opacity 0.2s;
-      }
+  /* Non-embeddable services (mode='none'). Fills the slot at flex:1. */
+  .embed-fallback {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    padding: var(--space-7);
+    background: var(--bg);
+  }
+  .embed-fallback-card {
+    max-width: 480px;
+    text-align: left;
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: var(--space-6);
+    display: grid;
+    gap: var(--space-3);
+  }
+  .embed-fallback-card h1 {
+    font-size: var(--text-h3);
+    margin: 0;
+    border: 0;
+    padding: 0;
+    color: var(--ink-1);
+  }
+  .embed-fallback-card p { margin: 0; color: var(--ink-2); }
+  .embed-fallback-reason {
+    font-size: var(--text-meta);
+    color: var(--ink-3);
+    font-style: italic;
+  }
+  .embed-back-link {
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+    margin-top: var(--space-2);
+    text-decoration: none;
+  }
+  .embed-back-link:hover { color: var(--ink-1); text-decoration: underline; }
 
-      /* Spinner-overlay tijdens initiële iframe-load. Lost in een fade
-         op als 'load' vuurt; gaat weg als de timeout 'm vervangt door
-         de blocked-fallback. */
-      .embed-loading {
-        position: absolute;
-        inset: 40px 0 0 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: var(--space-3);
-        color: var(--ink-3);
-        font-size: var(--text-meta);
-        background: var(--bg);
-        pointer-events: none;
-        z-index: 5;
-      }
-      .embed-loading[hidden] { display: none; }
-      .embed-loading-spinner {
-        width: 14px;
-        height: 14px;
-        border: 2px solid var(--ink-4);
-        border-top-color: var(--accent);
-        border-radius: 50%;
-        animation: embed-spin 0.8s linear infinite;
-      }
-      @keyframes embed-spin { to { transform: rotate(360deg); } }
+  /* ─── Fullscreen mode ─── */
+  /* Toggled by the "Volledig" button. Hides ALL shell chrome (rail,
+     v2 topbar, embed sub-bar) so the iframe gets the full viewport.
+     Esc inside the page or the button itself toggles back. */
+  html[data-fullscreen="true"] .rail,
+  html[data-fullscreen="true"] .topbarv2,
+  html[data-fullscreen="true"] .embed-subbar {
+    display: none !important;
+  }
+  html[data-fullscreen="true"] body.shell .shell-main {
+    margin-left: 0 !important;
+    padding-top: 0 !important;
+  }
 
-      /* Fallback-overlay als de iframe niet binnen 8s laadt (typisch
-         X-Frame-Options/CSP-blokkade die we niet op tijd hebben gefixt).
-         Toont een "open in nieuw tabblad"-knop. */
-      .embed-blocked {
-        position: absolute;
-        inset: 40px 0 0 0;
-        display: grid;
-        place-items: center;
-        padding: var(--space-7);
-        background: var(--bg);
-        z-index: 6;
-      }
-      .embed-blocked[hidden] { display: none; }
-
-      /* Volledig-scherm: top-bar offscreen, iframe pakt alles. */
-      body.embed-full .embed-topbar {
-        transform: translateY(-100%);
-        opacity: 0;
-        pointer-events: none;
-        position: absolute;
-        top: 0; left: 0; right: 0;
-      }
-      body.embed-full {
-        grid-template-rows: 1fr;
-      }
-
-      .embed-fallback {
-        display: grid;
-        place-items: center;
-        padding: var(--space-7);
-        background: var(--bg);
-      }
-      .embed-fallback-card {
-        max-width: 480px;
-        text-align: left;
-        background: var(--bg-elev);
-        border: 1px solid var(--line);
-        border-radius: var(--radius-md);
-        padding: var(--space-6);
-        display: grid;
-        gap: var(--space-3);
-      }
-      .embed-fallback-card h1 {
-        font-size: var(--text-h3);
-        margin: 0;
-        border: 0;
-        padding: 0;
-        color: var(--ink-1);
-      }
-      .embed-fallback-card p { margin: 0; color: var(--ink-2); }
-      .embed-fallback-reason {
-        font-size: var(--text-meta);
-        color: var(--ink-3);
-        font-style: italic;
-      }
-      .embed-back-link {
-        color: var(--ink-3);
-        font-size: var(--text-meta);
-        margin-top: var(--space-2);
-      }
-
-      @media (max-width: 640px) {
-        .embed-back-label { display: none; }
-        .embed-deep { max-width: 18ch; }
-        .embed-btn span { display: none; }
-      }
-    </style>
-  </body>
-</html>
+  @media (max-width: 640px) {
+    .embed-back-label { display: none; }
+    .embed-deep { max-width: 18ch; }
+    .embed-btn span { display: none; }
+  }
+</style>

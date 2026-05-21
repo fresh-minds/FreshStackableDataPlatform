@@ -1,964 +1,135 @@
 ---
-import Layout from '../layouts/Layout.astro';
-import Button from '../components/primitives/Button.astro';
-import Eyebrow from '../components/primitives/Eyebrow.astro';
-import { docsArchitectureUrl } from '../data/external-links';
+import ShellLayout from '../layouts/ShellLayout.astro';
 
-// Browser-side CSV-upload met MinIO STS (AssumeRoleWithWebIdentity).
+// Browser-side any-file upload naar MinIO met optionele Delta-conversie.
 //
 // Flow:
-//   1. Browser GET /api/auth/token  → access-token uit oauth2-proxy sessie.
-//   2. Browser POST minio/?Action=AssumeRoleWithWebIdentity → temp S3-creds.
-//   3. Browser PUT minio/uwv-staging/incoming/<bron>/<ts>.csv met aws4fetch.
-//   4. Airflow `watch_csv_staging` DAG (polling, 2 min) triggert ingest_csv_<bron>.
+//   1. GET /api/auth/token      → access-token uit oauth2-proxy.
+//   2. POST minio/?Action=AssumeRoleWithWebIdentity → temp S3-creds.
+//   3. PUT  minio/uwv-staging/uploads/<email>/<ts>/<filename>.
+//   4. (Tabulair) POST /api/airflow/trigger-convert → bridge sidecar
+//      valideert + roept Airflow REST aan voor convert_to_delta.
 //
-// Autorisatie zit bij MinIO: gebruiker krijgt alleen temp-creds met de
-// `csv-uploader`-policy als z'n Keycloak user-attribute `policy` daarop
-// gemapt staat (zie infrastructure/helm/keycloak/realm-uwv.json).
-
-type Layer = 'bronze' | 'silver' | 'gold';
-type TrinoTarget = { table: string; supersetDb: string; note: string };
-type ColumnSpec = { name: string; type: string; required: boolean };
-type Observability = {
-  // Airflow DAG-namen — voor "open in Airflow"-links.
-  // Volgt convention uit gold_factory.py: gold_<uc-id>_<uc-name>.
-  ingestDag: string;
-  silverDag: string;
-  goldDag: string;
-  // Gold-bucket prefix zodat we naar de juiste schema-folder kunnen
-  // linken (niet alle bronnen volgen dezelfde mart-folder conventie).
-  goldBucketPrefix: string;
-};
-type Source = {
-  name: string;
-  title: string;
-  description: string;
-  bucket: string;
-  prefix: string;
-  dagId: string;
-  // Voorbeeld-bestandsnaam voor de mc-snippet (per bron — gebruiker herkent
-  // de eigen file beter dan een generieke placeholder).
-  exampleFileName: string;
-  // Verwacht CSV-schema. Wordt browser-side gevalideerd vóór upload
-  // (header-check) én getoond in een "Verwacht schema"-collapse.
-  expectedColumns: ColumnSpec[];
-  trino: Record<Layer, TrinoTarget>;
-  // Voorbeeld-SQL voor "Open in Superset SQL Lab" — query op gold-mart.
-  exampleSql: string;
-  // Optioneel — als de bron al een Superset-dashboard heeft, toon link.
-  dashboardSlug?: string;
-  dashboardTitle?: string;
-  // DAG-namen + bucket-paden voor de "Inkijken"-sectie (links naar Airflow,
-  // MinIO, OpenSearch, OpenMetadata, Grafana).
-  observability: Observability;
-};
-
-const sources: Source[] = [
-  {
-    name: 'klanttevredenheid',
-    title: 'Klanttevredenheid',
-    description:
-      'Klanttevredenheid-metingen per kanaal × doelgroep. Demo-bron voor de ' +
-      'CSV-batch upload-flow.',
-    bucket: 'uwv-staging',
-    prefix: 'incoming/klanttevredenheid',
-    dagId: 'ingest_csv_klanttevredenheid',
-    exampleFileName: 'klanttevredenheid-2026Q1.csv',
-    expectedColumns: [
-      { name: 'meting_datum',   type: 'date',    required: true },
-      { name: 'kanaal',         type: 'varchar', required: true },
-      { name: 'doelgroep',      type: 'varchar', required: true },
-      { name: 'score',          type: 'integer', required: true },
-      { name: 'n_respondenten', type: 'integer', required: true },
-      { name: 'opmerking',      type: 'varchar', required: false },
-    ],
-    trino: {
-      bronze: {
-        table: 'bronze.uwv.klanttevredenheid',
-        supersetDb: 'uwv-trino-bronze',
-        note: 'Raw delta-tabel, één rij per CSV-regel (partitie op event_date).',
-      },
-      silver: {
-        table: 'silver.klantcontact.stg_klanttevredenheid',
-        supersetDb: 'uwv-trino-silver',
-        note: 'dbt staging-view; types gecast, kolomnamen genormaliseerd.',
-      },
-      gold: {
-        table: 'gold.uc_klant_tev.mart_uc_klant_tev_kanaal_maand',
-        supersetDb: 'uwv-trino-gold',
-        note: 'Mart: gewogen gemiddelde score per kanaal × maand.',
-      },
-    },
-    exampleSql:
-      'SELECT maand,\n' +
-      '       kanaal,\n' +
-      '       n_respondenten,\n' +
-      '       gemid_score_gewogen\n' +
-      'FROM   gold.uc_klant_tev.mart_uc_klant_tev_kanaal_maand\n' +
-      'ORDER  BY maand DESC, gemid_score_gewogen DESC\n' +
-      'LIMIT  50;',
-    observability: {
-      ingestDag: 'ingest_csv_klanttevredenheid',
-      silverDag: 'silver_klantcontact',
-      goldDag: 'gold_uc_klant_tev_klanttevredenheid',
-      goldBucketPrefix: 'uc_klant_tev',
-    },
-  },
-  {
-    name: 'focus_billing',
-    title: 'FOCUS billing (FinOps)',
-    description:
-      'Cloud-cost billing volgens de FinOps Open Cost and Usage Specification (FOCUS 1.x). ' +
-      '49 kolommen — 39 FOCUS-core + 10 oci_* vendor-extensies. Typische upload: één maand ' +
-      'OCI-export. Zie scripts/finops-generate-focus-csv.py voor een test-CSV.',
-    bucket: 'uwv-staging',
-    prefix: 'incoming/focus',
-    dagId: 'ingest_csv_focus',
-    exampleFileName: 'focus-2026-04.csv',
-    expectedColumns: [
-      // FOCUS 1.x core (39 kolommen) — moet exact matchen met
-      // platform/11-airflow/sources/focus.yml schema.
-      { name: 'BillingAccountId',           type: 'varchar',   required: true  },
-      { name: 'BillingAccountName',         type: 'varchar',   required: false },
-      { name: 'BillingCurrency',            type: 'varchar',   required: true  },
-      { name: 'BillingPeriodStart',         type: 'timestamp', required: true  },
-      { name: 'BillingPeriodEnd',           type: 'timestamp', required: true  },
-      { name: 'ChargePeriodStart',          type: 'timestamp', required: true  },
-      { name: 'ChargePeriodEnd',            type: 'timestamp', required: true  },
-      { name: 'ChargeCategory',             type: 'varchar',   required: true  },
-      { name: 'ChargeSubcategory',          type: 'varchar',   required: false },
-      { name: 'ChargeDescription',          type: 'varchar',   required: false },
-      { name: 'ChargeFrequency',            type: 'varchar',   required: false },
-      { name: 'BilledCost',                 type: 'decimal',   required: true  },
-      { name: 'EffectiveCost',              type: 'decimal',   required: true  },
-      { name: 'ListCost',                   type: 'decimal',   required: false },
-      { name: 'ListUnitPrice',              type: 'decimal',   required: false },
-      { name: 'PricingCategory',            type: 'varchar',   required: false },
-      { name: 'PricingQuantity',            type: 'decimal',   required: false },
-      { name: 'PricingUnit',                type: 'varchar',   required: false },
-      { name: 'UsageQuantity',              type: 'decimal',   required: false },
-      { name: 'UsageUnit',                  type: 'varchar',   required: false },
-      { name: 'CommitmentDiscountCategory', type: 'varchar',   required: false },
-      { name: 'CommitmentDiscountId',       type: 'varchar',   required: false },
-      { name: 'CommitmentDiscountName',     type: 'varchar',   required: false },
-      { name: 'CommitmentDiscountType',     type: 'varchar',   required: false },
-      { name: 'Provider',                   type: 'varchar',   required: true  },
-      { name: 'Publisher',                  type: 'varchar',   required: false },
-      { name: 'InvoiceIssuer',              type: 'varchar',   required: false },
-      { name: 'ServiceCategory',            type: 'varchar',   required: false },
-      { name: 'ServiceName',                type: 'varchar',   required: true  },
-      { name: 'ResourceId',                 type: 'varchar',   required: false },
-      { name: 'ResourceName',               type: 'varchar',   required: false },
-      { name: 'ResourceType',               type: 'varchar',   required: false },
-      { name: 'Region',                     type: 'varchar',   required: false },
-      { name: 'AvailabilityZone',           type: 'varchar',   required: false },
-      { name: 'SkuId',                      type: 'varchar',   required: false },
-      { name: 'SkuPriceId',                 type: 'varchar',   required: false },
-      { name: 'SubAccountId',               type: 'varchar',   required: false },
-      { name: 'SubAccountName',             type: 'varchar',   required: false },
-      { name: 'Tags',                       type: 'varchar',   required: false },
-      // OCI vendor-extensies (10 kolommen) — optioneel voor non-OCI uploads.
-      { name: 'oci_ReferenceNumber',        type: 'varchar',   required: false },
-      { name: 'oci_CompartmentId',          type: 'varchar',   required: false },
-      { name: 'oci_CompartmentName',        type: 'varchar',   required: false },
-      { name: 'oci_OverageFlag',            type: 'varchar',   required: false },
-      { name: 'oci_UnitPriceOverage',       type: 'decimal',   required: false },
-      { name: 'oci_BilledQuantityOverage',  type: 'decimal',   required: false },
-      { name: 'oci_CostOverage',            type: 'decimal',   required: false },
-      { name: 'oci_AttributedUsage',        type: 'decimal',   required: false },
-      { name: 'oci_AttributedCost',         type: 'decimal',   required: false },
-      { name: 'oci_BackReferenceNumber',    type: 'varchar',   required: false },
-    ],
-    trino: {
-      bronze: {
-        table: 'bronze.uwv.focus_billing',
-        supersetDb: 'uwv-trino-bronze',
-        note: 'Raw delta-tabel met alle 49 FOCUS-kolommen (partitie op event_date = upload-datum).',
-      },
-      silver: {
-        table: 'silver.finops.stg_focus_billing',
-        supersetDb: 'uwv-trino-silver',
-        note: 'dbt staging-view: snake_case, tags JSON-parse, afgeleide billing_month + savings_amount.',
-      },
-      gold: {
-        table: 'gold.uc12_focus_finops.mart_uc12_focus_spend_monthly',
-        supersetDb: 'uwv-trino-gold',
-        note: 'Primaire spend-mart: kosten per maand × provider × service-categorie. (4 andere marts beschikbaar voor breakdowns.)',
-      },
-    },
-    exampleSql:
-      'SELECT billing_month,\n' +
-      '       provider,\n' +
-      '       service_category,\n' +
-      '       SUM(effective_cost) AS spend_eur,\n' +
-      '       SUM(savings_amount) AS savings_eur\n' +
-      'FROM   gold.uc12_focus_finops.mart_uc12_focus_spend_monthly\n' +
-      "WHERE  charge_category = 'Usage'\n" +
-      'GROUP  BY billing_month, provider, service_category\n' +
-      'ORDER  BY billing_month DESC, spend_eur DESC\n' +
-      'LIMIT  50;',
-    dashboardSlug: 'uc12-focus-finops',
-    dashboardTitle: 'UC-12 — Cloud Cost (FOCUS / FinOps)',
-    observability: {
-      ingestDag: 'ingest_csv_focus_billing',
-      silverDag: 'silver_finops',
-      goldDag: 'gold_uc12_focus_finops',
-      goldBucketPrefix: 'uc12_focus_finops',
-    },
-  },
-];
-
-const defaultSource = sources[0];
-const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
+// Sanitisation van email → path-segment MOET matchen met
+// portal/scripts/airflow-bridge.py (sanitize_email).
 ---
-<Layout title="CSV upload">
-  <section class="csv-hero">
-    <Eyebrow rule>CSV-upload · staging</Eyebrow>
-    <h1 class="csv-hero-title">
-      Handmatige CSV-upload <em>naar bronze</em>.
-    </h1>
-    <p class="csv-hero-body">
-      Sleep een CSV-bestand in het vak hieronder. Het bestand wordt direct
-      naar MinIO geüpload en binnen 2 minuten door Airflow opgepikt — daarna
-      verschijnt het automatisch in <code>bronze</code> en (via dbt) in
-      silver + gold.
-    </p>
-    <p class="csv-hero-note">
-      Voor streaming-bronnen (WIA, WW, polisadministratie, …) gaat data via
-      Kafka — zie de <a href={docsArchitectureUrl('ingestion')} target="_blank" rel="noopener noreferrer">architectuur-documentatie ↗</a>.
-      CSV-upload is bedoeld voor ad-hoc batch-bronnen.
-    </p>
-  </section>
+<ShellLayout title="Upload" activeSection="workspace">
+  <section class="up">
+    <h1 class="up-title">Upload</h1>
+    <p class="up-sub">Bestand → MinIO. Tabulair → optioneel Delta in bronze.</p>
 
-  <section class="csv-step">
-    <Eyebrow>Bron</Eyebrow>
-    <h2>Welke bron upload je?</h2>
-
-    <div class="csv-pick">
-      <label for="src-select">Kies een bron</label>
-      <select id="src-select" aria-label="Bron">
-        {sources.map((s) => (
-          <option value={s.name}
-                  data-bucket={s.bucket}
-                  data-prefix={s.prefix}
-                  data-dag={s.dagId}
-                  data-desc={s.description}
-                  data-example-file={s.exampleFileName}
-                  data-columns={JSON.stringify(s.expectedColumns)}
-                  data-dashboard-slug={s.dashboardSlug ?? ''}
-                  data-dashboard-title={s.dashboardTitle ?? ''}
-                  data-trino-bronze={s.trino.bronze.table}
-                  data-trino-silver={s.trino.silver.table}
-                  data-trino-gold={s.trino.gold.table}
-                  data-superset-db-bronze={s.trino.bronze.supersetDb}
-                  data-superset-db-silver={s.trino.silver.supersetDb}
-                  data-superset-db-gold={s.trino.gold.supersetDb}
-                  data-trino-note-bronze={s.trino.bronze.note}
-                  data-trino-note-silver={s.trino.silver.note}
-                  data-trino-note-gold={s.trino.gold.note}
-                  data-example-sql={s.exampleSql}
-                  data-obs-ingest={s.observability.ingestDag}
-                  data-obs-silver={s.observability.silverDag}
-                  data-obs-gold={s.observability.goldDag}
-                  data-obs-gold-prefix={s.observability.goldBucketPrefix}>
-            {s.title}
-          </option>
-        ))}
-      </select>
-    </div>
-
-    <p id="src-desc" class="csv-pick-desc">{defaultSource.description}</p>
-
-    <dl class="csv-meta">
-      <div class="csv-meta-row">
-        <dt class="mono">BUCKET</dt>
-        <dd><code id="src-bucket">{defaultSource.bucket}</code></dd>
-      </div>
-      <div class="csv-meta-row">
-        <dt class="mono">PREFIX</dt>
-        <dd><code id="src-prefix">{defaultSource.prefix}</code></dd>
-      </div>
-      <div class="csv-meta-row">
-        <dt class="mono">DAG</dt>
-        <dd><code id="src-dag">{defaultSource.dagId}</code></dd>
-      </div>
-      <div class="csv-meta-row">
-        <dt class="mono">KOLOMMEN</dt>
-        <dd><span id="src-col-count">{defaultSource.expectedColumns.length}</span> · <span id="src-col-required">{defaultSource.expectedColumns.filter(c => c.required).length}</span> verplicht</dd>
-      </div>
-      <div class="csv-meta-row">
-        <dt class="mono">MINIO</dt>
-        <dd>
-          <a id="src-minio-link"
-             class="csv-meta-link"
-             href={`https://minio-console.uwv-platform.local:8443/browser/${defaultSource.bucket}/${encodeURIComponent(defaultSource.prefix + '/')}`}
-             target="_blank" rel="noopener noreferrer">
-            <span id="src-minio-link-label">{defaultSource.bucket}/{defaultSource.prefix}/</span>
-            <span class="csv-copy-hint">open ↗</span>
-          </a>
-        </dd>
-      </div>
-    </dl>
-
-    <details class="csv-schema">
-      <summary>Verwacht CSV-schema — kolomnamen + types</summary>
-      <p class="csv-step-note">
-        Je CSV-header moet deze kolomnamen bevatten (exact, hoofdletter-gevoelig).
-        Ontbrekende verplichte kolommen worden vóór upload gemeld; extra
-        kolommen worden door de ingest-job genegeerd.
-      </p>
-      <table class="csv-schema-table" id="src-schema-table">
-        <thead>
-          <tr><th>Kolom</th><th>Type</th><th>Verplicht</th></tr>
-        </thead>
-        <tbody id="src-schema-tbody">
-          {defaultSource.expectedColumns.map((c) => (
-            <tr>
-              <td class="mono">{c.name}</td>
-              <td class="mono">{c.type}</td>
-              <td>{c.required ? 'ja' : 'optioneel'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </details>
-  </section>
-
-  <section class="csv-step">
-    <Eyebrow>01 · Upload</Eyebrow>
-    <h2>Sleep je CSV-bestand hier</h2>
-
-    <label id="drop-zone" class="csv-drop" for="file-input"
-           data-state="idle"
-           aria-describedby="upload-status">
-      <input id="file-input" type="file" accept=".csv,text/csv" hidden />
-      <div class="csv-drop-inner">
-        <strong class="csv-drop-title">Klik om te kiezen of sleep een .csv hierheen</strong>
-        <span class="csv-drop-sub">Max 500 MB · bestand komt direct in
-          <code id="src-path-1">{defaultSource.bucket}/{defaultSource.prefix}/</code></span>
-      </div>
+    <label id="drop-zone" class="up-drop" for="file-input" data-state="idle">
+      <input id="file-input" type="file" hidden />
+      <span class="up-drop-title">Klik of sleep een bestand</span>
+      <span class="up-drop-sub">elk type · max 500 MB</span>
     </label>
 
-    <div id="upload-status" class="csv-status" role="status" aria-live="polite" hidden>
-      <div class="csv-status-row">
-        <span class="csv-status-label" id="status-label">Wachten…</span>
-        <span class="csv-status-pct mono" id="status-pct"></span>
+    <div id="upload-status" class="up-status" role="status" aria-live="polite" hidden>
+      <div class="up-status-row">
+        <span class="up-status-label" id="status-label">Wachten…</span>
+        <span class="up-status-pct mono" id="status-pct"></span>
       </div>
-      <div class="csv-progress" aria-hidden="true">
-        <div class="csv-progress-bar" id="progress-bar"></div>
+      <div class="up-progress" aria-hidden="true">
+        <div class="up-progress-bar" id="progress-bar"></div>
       </div>
-      <p class="csv-status-detail" id="status-detail"></p>
+      <p class="up-status-detail" id="status-detail"></p>
     </div>
 
-    <details class="csv-alt">
-      <summary>Liever via CLI (<code>mc</code>)?</summary>
-      <p class="csv-step-note">Stel éénmalig de alias in:</p>
-      <pre class="csv-pre"><code>mc alias set minio-uwv https://minio.uwv-platform.local:8443 uwvadmin 'uwv-dev-only-CHANGE-ME-2026' --insecure</code></pre>
-      <p class="csv-step-note">Daarna uploaden:</p>
-      <pre class="csv-pre"><code id="mc-cmd">mc cp ./{defaultSource.exampleFileName} minio-uwv/{defaultSource.bucket}/{defaultSource.prefix}/$(date -u +%Y%m%dT%H%M%S).csv --insecure</code></pre>
-      <p class="csv-step-note">
-        De DAG wordt automatisch getriggerd binnen 2 minuten — een handmatige Airflow-trigger is niet nodig.
-      </p>
-    </details>
-  </section>
-
-  <section class="csv-step">
-    <Eyebrow>02 · Bekijken in Trino</Eyebrow>
-    <h2>Waar landt de data?</h2>
-    <p class="csv-step-body">
-      Na ingest staat de data in drie lagen. Klik op een tabelnaam om te
-      kopiëren; gebruik de knop onderaan om Superset SQL Lab te openen — de
-      voorbeeldquery staat dan al op je klembord.
-    </p>
-
-    <ol class="csv-layers">
-      <li class="csv-layer" data-layer="bronze">
-        <header class="csv-layer-head">
-          <span class="csv-layer-tag mono">BRONZE</span>
-          <button class="csv-table-btn mono" type="button" data-copy-target="trino-bronze">
-            <code id="trino-bronze">{defaultSource.trino.bronze.table}</code>
-            <span class="csv-copy-hint">kopieer</span>
-          </button>
-        </header>
-        <p class="csv-layer-note" id="trino-note-bronze">{defaultSource.trino.bronze.note}</p>
-        <span class="csv-layer-meta">Superset-database: <code id="superset-db-bronze">{defaultSource.trino.bronze.supersetDb}</code></span>
-      </li>
-
-      <li class="csv-layer" data-layer="silver">
-        <header class="csv-layer-head">
-          <span class="csv-layer-tag mono">SILVER</span>
-          <button class="csv-table-btn mono" type="button" data-copy-target="trino-silver">
-            <code id="trino-silver">{defaultSource.trino.silver.table}</code>
-            <span class="csv-copy-hint">kopieer</span>
-          </button>
-        </header>
-        <p class="csv-layer-note" id="trino-note-silver">{defaultSource.trino.silver.note}</p>
-        <span class="csv-layer-meta">Superset-database: <code id="superset-db-silver">{defaultSource.trino.silver.supersetDb}</code></span>
-      </li>
-
-      <li class="csv-layer" data-layer="gold">
-        <header class="csv-layer-head">
-          <span class="csv-layer-tag mono">GOLD</span>
-          <button class="csv-table-btn mono" type="button" data-copy-target="trino-gold">
-            <code id="trino-gold">{defaultSource.trino.gold.table}</code>
-            <span class="csv-copy-hint">kopieer</span>
-          </button>
-        </header>
-        <p class="csv-layer-note" id="trino-note-gold">{defaultSource.trino.gold.note}</p>
-        <span class="csv-layer-meta">Superset-database: <code id="superset-db-gold">{defaultSource.trino.gold.supersetDb}</code></span>
-      </li>
-    </ol>
-
-    <h3 class="csv-sql-h">Voorbeeldquery</h3>
-    <p class="csv-step-note">
-      Klik op <em>Open Superset SQL Lab</em> — de query wordt automatisch naar
-      je klembord gekopieerd. Selecteer in SQL Lab de juiste database
-      (bv. <code>uwv-trino-gold</code>) en plak (⌘V / Ctrl+V).
-    </p>
-    <pre class="csv-pre"><code id="example-sql">{defaultSource.exampleSql}</code></pre>
-
-    <div class="csv-actions">
-      <a id="open-sqllab" class="btn btn--accent"
-         href="https://superset.uwv-platform.local:8443/sqllab/"
-         target="_blank" rel="noopener noreferrer">
-        <span class="btn-label">Open Superset SQL Lab</span>
-        <span class="btn-arrow" aria-hidden="true">↗</span>
-      </a>
-      <button id="copy-sql-btn" type="button" class="btn" data-copy-target="example-sql">
-        <span class="btn-label">Kopieer SQL</span>
-      </button>
+    <div id="convert" class="up-convert" hidden>
+      <div class="up-form-row">
+        <span class="up-form-prefix mono">bronze.</span>
+        <input id="fld-schema" class="up-input mono" type="text" value="sandbox"
+               pattern="^[a-z][a-z0-9_]{0,62}$" required
+               aria-label="Target schema" />
+        <span class="up-form-sep mono">.</span>
+        <input id="fld-table" class="up-input mono" type="text"
+               pattern="^[a-z][a-z0-9_]{0,62}$" required
+               aria-label="Target tabel" placeholder="tabel" />
+        <button id="convert-btn" type="button" class="btn btn--accent" disabled>
+          Convert to Delta →
+        </button>
+      </div>
+      <p id="convert-feedback" class="up-feedback" role="status" aria-live="polite"></p>
     </div>
-    <p class="csv-copy-feedback" id="copy-feedback" role="status" aria-live="polite"></p>
-  </section>
 
-  <section class="csv-step">
-    <Eyebrow>03 · Resultaat</Eyebrow>
-    <h2>Wat gebeurt er daarna?</h2>
-    <ul class="csv-result">
-      <li>
-        <span class="mono">AIRFLOW</span>
-        <span>DAG <code id="src-dag-2">{defaultSource.dagId}</code> wordt binnen 2 min getriggerd door <code>watch_csv_staging</code>.</span>
-      </li>
-      <li>
-        <span class="mono">BRONZE</span>
-        <span>Delta-tabel <code id="result-bronze">{defaultSource.trino.bronze.table}</code> in Trino.</span>
-      </li>
-      <li>
-        <span class="mono">SILVER</span>
-        <span>Getriggerd door bronze-Dataset; dbt staging-view <code id="result-silver">{defaultSource.trino.silver.table}</code>.</span>
-      </li>
-      <li>
-        <span class="mono">GOLD</span>
-        <span>Getriggerd door silver-Dataset; dbt mart-tabel <code id="result-gold">{defaultSource.trino.gold.table}</code>.</span>
-      </li>
-      <li>
-        <span class="mono">SUPERSET</span>
-        <span id="result-superset">{defaultSource.dashboardSlug
-          ? <>Dashboard <em>{defaultSource.dashboardTitle}</em> beschikbaar.</>
-          : <>Geen kant-en-klaar dashboard — gebruik SQL Lab.</>
-        }</span>
-      </li>
-    </ul>
-    <div class="csv-actions">
-      <a id="open-dashboard"
-         class="btn btn--accent"
-         href={defaultSource.dashboardSlug
-                ? `https://superset.uwv-platform.local:8443/superset/dashboard/${defaultSource.dashboardSlug}/`
-                : 'https://superset.uwv-platform.local:8443'}
-         target="_blank" rel="noopener noreferrer"
-         hidden={!defaultSource.dashboardSlug}>
-        <span class="btn-label" id="open-dashboard-label">Open dashboard</span>
-        <span class="btn-arrow" aria-hidden="true">↗</span>
-      </a>
-      <Button href="https://superset.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">Superset</Button>
-      <Button href="https://airflow.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">Airflow</Button>
-      <Button href="https://openmetadata.uwv-platform.local:8443" target="_blank" rel="noopener noreferrer">OpenMetadata</Button>
-    </div>
-  </section>
-
-  <section class="csv-step">
-    <Eyebrow>04 · Inkijken</Eyebrow>
-    <h2>Live volgen — logs, data en lineage</h2>
-    <p class="csv-step-body">
-      Klik direct door naar het juiste venster om je upload door de keten te volgen.
-      Alle links openen in een nieuw tabblad en wijzen naar de exacte DAG, bucket
-      of tabel voor de geselecteerde bron.
-    </p>
-
-    <div class="csv-obs-grid">
-      <div class="csv-obs-card">
-        <header class="csv-obs-head">
-          <span class="csv-obs-tag mono">AIRFLOW</span>
-          <span class="csv-obs-sub">DAG-runs &amp; task-logs</span>
-        </header>
-        <ul class="csv-obs-list">
-          <li><a id="obs-airflow-ingest" target="_blank" rel="noopener noreferrer" href="#">Ingest-DAG&nbsp;<span class="csv-obs-arr">↗</span></a></li>
-          <li><a id="obs-airflow-silver" target="_blank" rel="noopener noreferrer" href="#">Silver-DAG&nbsp;<span class="csv-obs-arr">↗</span></a></li>
-          <li><a id="obs-airflow-gold" target="_blank" rel="noopener noreferrer" href="#">Gold-DAG&nbsp;<span class="csv-obs-arr">↗</span></a></li>
-        </ul>
-      </div>
-
-      <div class="csv-obs-card">
-        <header class="csv-obs-head">
-          <span class="csv-obs-tag mono">MINIO</span>
-          <span class="csv-obs-sub">data-bestanden per laag</span>
-        </header>
-        <ul class="csv-obs-list">
-          <li><a id="obs-minio-incoming" target="_blank" rel="noopener noreferrer" href="#">Incoming&nbsp;<span class="csv-obs-arr">↗</span></a></li>
-          <li><a id="obs-minio-processed" target="_blank" rel="noopener noreferrer" href="#">Processed&nbsp;<span class="csv-obs-arr">↗</span></a></li>
-          <li><a id="obs-minio-bronze" target="_blank" rel="noopener noreferrer" href="#">Bronze-tabel&nbsp;<span class="csv-obs-arr">↗</span></a></li>
-          <li><a id="obs-minio-gold" target="_blank" rel="noopener noreferrer" href="#">Gold-marts&nbsp;<span class="csv-obs-arr">↗</span></a></li>
-        </ul>
-      </div>
-
-      <div class="csv-obs-card">
-        <header class="csv-obs-head">
-          <span class="csv-obs-tag mono">OPENSEARCH</span>
-          <span class="csv-obs-sub">centrale pod-logs</span>
-        </header>
-        <ul class="csv-obs-list">
-          <li><a id="obs-opensearch-discover" target="_blank" rel="noopener noreferrer" href="#">Open Discover&nbsp;<span class="csv-obs-arr">↗</span></a></li>
-        </ul>
-        <p class="csv-obs-hint">Filter zelf op <code>kubernetes.pod_name : csv-to-bronze*</code></p>
-      </div>
-
-      <div class="csv-obs-card">
-        <header class="csv-obs-head">
-          <span class="csv-obs-tag mono">OPENMETADATA</span>
-          <span class="csv-obs-sub">catalog &amp; lineage</span>
-        </header>
-        <ul class="csv-obs-list">
-          <li><a id="obs-om-service" target="_blank" rel="noopener noreferrer" href="#">Open Trino-catalog&nbsp;<span class="csv-obs-arr">↗</span></a></li>
-        </ul>
-        <p class="csv-obs-hint" id="obs-om-hint">Navigeer naar de database &amp; tabel via de service-page.</p>
-      </div>
-
-      <div class="csv-obs-card">
-        <header class="csv-obs-head">
-          <span class="csv-obs-tag mono">GRAFANA</span>
-          <span class="csv-obs-sub">metrics &amp; dashboards</span>
-        </header>
-        <ul class="csv-obs-list">
-          <li><a id="obs-grafana-home" target="_blank" rel="noopener noreferrer" href="#">Dashboards&nbsp;<span class="csv-obs-arr">↗</span></a></li>
-        </ul>
-      </div>
-
-      <div class="csv-obs-card">
-        <header class="csv-obs-head">
-          <span class="csv-obs-tag mono">PROMETHEUS</span>
-          <span class="csv-obs-sub">alerts &amp; raw metrics</span>
-        </header>
-        <ul class="csv-obs-list">
-          <li><a id="obs-prometheus-alerts" target="_blank" rel="noopener noreferrer" href="#">Actieve alerts&nbsp;<span class="csv-obs-arr">↗</span></a></li>
-        </ul>
-      </div>
-    </div>
   </section>
 
   <script>
     import { AwsClient } from 'aws4fetch';
 
-    // Mapping platform-host → MinIO S3-API host. Dezelfde build draait op
-    // k3d (.local), AKS (.eu-sovereigndataplatform.com), en StackIT SKE
-    // (.freshstackable.com).
-    const MINIO_ENDPOINT_MAP: Record<string, string> = {
+    const MINIO_S3_API_MAP: Record<string, string> = {
       'platform.uwv-platform.local':           'https://minio.uwv-platform.local:8443',
       'platform.eu-sovereigndataplatform.com': 'https://minio-api.eu-sovereigndataplatform.com',
       'platform.freshstackable.com':           'https://minio-api.freshstackable.com',
     };
-
-    // ── Source-keuze rendering ─────────────────────────────────────────────
-    const sel  = document.getElementById('src-select') as HTMLSelectElement | null;
-    const desc = document.getElementById('src-desc');
-    const buck = document.getElementById('src-bucket');
-    const pref = document.getElementById('src-prefix');
-    const dag  = document.getElementById('src-dag');
-    const dag2 = document.getElementById('src-dag-2');
-    const path1 = document.getElementById('src-path-1');
-    const mc   = document.getElementById('mc-cmd');
-    const sqlEl = document.getElementById('example-sql');
-
-    type Layer = 'bronze' | 'silver' | 'gold';
-    type ColumnSpec = { name: string; type: string; required: boolean };
-    type Src = {
-      description: string; bucket: string; prefix: string; dagId: string;
-      exampleFileName: string;
-      expectedColumns: ColumnSpec[];
-      dashboardSlug: string;
-      dashboardTitle: string;
-      trino: Record<Layer, { table: string; supersetDb: string; note: string }>;
-      exampleSql: string;
-      obs: { ingestDag: string; silverDag: string; goldDag: string; goldPrefix: string };
-    };
-    const layers: Layer[] = ['bronze', 'silver', 'gold'];
-
-    function parseColumns(raw: string | undefined): ColumnSpec[] {
-      if (!raw) return [];
-      try { return JSON.parse(raw); } catch { return []; }
-    }
-
-    const collected: Record<string, Src> = {};
-    Array.from(sel?.options ?? []).forEach((opt) => {
-      collected[opt.value] = {
-        description:     opt.dataset.desc           ?? '',
-        bucket:          opt.dataset.bucket         ?? '',
-        prefix:          opt.dataset.prefix         ?? '',
-        dagId:           opt.dataset.dag            ?? '',
-        exampleFileName: opt.dataset.exampleFile    ?? 'upload.csv',
-        expectedColumns: parseColumns(opt.dataset.columns),
-        dashboardSlug:   opt.dataset.dashboardSlug  ?? '',
-        dashboardTitle:  opt.dataset.dashboardTitle ?? '',
-        trino: {
-          bronze: { table: opt.dataset.trinoBronze ?? '', supersetDb: opt.dataset.supersetDbBronze ?? '', note: opt.dataset.trinoNoteBronze ?? '' },
-          silver: { table: opt.dataset.trinoSilver ?? '', supersetDb: opt.dataset.supersetDbSilver ?? '', note: opt.dataset.trinoNoteSilver ?? '' },
-          gold:   { table: opt.dataset.trinoGold   ?? '', supersetDb: opt.dataset.supersetDbGold   ?? '', note: opt.dataset.trinoNoteGold   ?? '' },
-        },
-        exampleSql: opt.dataset.exampleSql ?? '',
-        obs: {
-          ingestDag:  opt.dataset.obsIngest     ?? '',
-          silverDag:  opt.dataset.obsSilver     ?? '',
-          goldDag:    opt.dataset.obsGold       ?? '',
-          goldPrefix: opt.dataset.obsGoldPrefix ?? '',
-        },
-      };
-    });
-
-    function currentSource(): Src {
-      const v = sel?.value;
-      return (v && collected[v]) || {
-        description: '', bucket: '', prefix: '', dagId: '',
-        exampleFileName: 'upload.csv',
-        expectedColumns: [],
-        dashboardSlug: '', dashboardTitle: '',
-        trino: {
-          bronze: { table: '', supersetDb: '', note: '' },
-          silver: { table: '', supersetDb: '', note: '' },
-          gold:   { table: '', supersetDb: '', note: '' },
-        },
-        exampleSql: '',
-        obs: { ingestDag: '', silverDag: '', goldDag: '', goldPrefix: '' },
-      };
-    }
-
-    function setText(id: string, value: string) {
-      const el = document.getElementById(id);
-      if (el) el.textContent = value;
-    }
-
-    // ── Superset base-URL (host-aware) ────────────────────────────────────
-    // De portal kan draaien op meerdere hosts (k3d local, AKS public,
-    // StackIT SKE public). De Superset-host wisselt mee — vermijd hardcoded
-    // .local-URLs.
-    const SUPERSET_BASE_MAP: Record<string, string> = {
-      'platform.uwv-platform.local':           'https://superset.uwv-platform.local:8443',
-      'platform.eu-sovereigndataplatform.com': 'https://superset.eu-sovereigndataplatform.com',
-      'platform.freshstackable.com':           'https://superset.freshstackable.com',
-    };
-    const supersetBase =
-      SUPERSET_BASE_MAP[window.location.hostname] ??
-      'https://superset.uwv-platform.local:8443';
-
-    // ── MinIO console base-URL (host-aware) ───────────────────────────────
-    // De MinIO console heeft een eigen subdomein per omgeving. De S3-API
-    // (waar de upload heen gaat) is een ander subdomein — zie
-    // MINIO_ENDPOINT_MAP hierboven.
-    const MINIO_CONSOLE_BASE_MAP: Record<string, string> = {
+    const MINIO_CONSOLE_MAP: Record<string, string> = {
       'platform.uwv-platform.local':           'https://minio-console.uwv-platform.local:8443',
       'platform.eu-sovereigndataplatform.com': 'https://minio-console.eu-sovereigndataplatform.com',
-      // Note: StackIT exposes the MinIO Console UI at minio.freshstackable.com
-      // (the AKS `minio-console.<dom>` entry above is legacy — on AKS the
-      // console is actually reached via minio.eu-sovereigndataplatform.com
-      // per infrastructure/azure/public-ingresses.yaml).
       'platform.freshstackable.com':           'https://minio.freshstackable.com',
     };
-    const minioConsoleBase =
-      MINIO_CONSOLE_BASE_MAP[window.location.hostname] ??
-      'https://minio-console.uwv-platform.local:8443';
-
-    function minioBrowseUrl(bucket: string, prefix: string): string {
-      // MinIO console (>= RELEASE.2023-05-18) verwacht de prefix als
-      // base64-encoded path-segment — niet URL-encoded. Geverifieerd op
-      // RELEASE.2024-04-18: encodeURIComponent landt op de bucket-root, base64
-      // toont wél de juiste subfolder. Trailing slash dwingt folder-modus.
-      // btoa() is veilig: onze prefixes zijn ASCII (a-z, 0-9, /, -, _).
-      const p = prefix.endsWith('/') ? prefix : `${prefix}/`;
-      const b64 = btoa(p).replace(/=+$/, '');     // MinIO strip padding
-      return `${minioConsoleBase}/browser/${bucket}/${b64}`;
-    }
-
-    // ── Overige observability-tools (host-aware) ──────────────────────────
-    // Eén centrale mapping zodat we niet per tool een eigen MAP hoeven.
-    // Subdomeinen volgen het patroon `<service>.<basis>`.
-    const HOSTS: Record<string, Record<string, string>> = {
-      'platform.uwv-platform.local': {
-        airflow:      'https://airflow.uwv-platform.local:8443',
-        opensearch:   'https://opensearch.uwv-platform.local:8443',
-        openmetadata: 'https://openmetadata.uwv-platform.local:8443',
-        grafana:      'https://grafana.uwv-platform.local:8443',
-        prometheus:   'https://prometheus.uwv-platform.local:8443',
-      },
-      'platform.eu-sovereigndataplatform.com': {
-        airflow:      'https://airflow.eu-sovereigndataplatform.com',
-        opensearch:   'https://opensearch.eu-sovereigndataplatform.com',
-        openmetadata: 'https://openmetadata.eu-sovereigndataplatform.com',
-        grafana:      'https://grafana.eu-sovereigndataplatform.com',
-        prometheus:   'https://prometheus.eu-sovereigndataplatform.com',
-      },
+    const AIRFLOW_MAP: Record<string, string> = {
+      'platform.uwv-platform.local':           'https://platform.uwv-platform.local:8443/airflow',
+      'platform.eu-sovereigndataplatform.com': 'https://platform.eu-sovereigndataplatform.com/airflow',
+      'platform.freshstackable.com':           'https://platform.freshstackable.com/airflow',
     };
-    function toolHost(name: string): string {
-      const map = HOSTS[window.location.hostname] ?? HOSTS['platform.uwv-platform.local'];
-      return map[name] ?? '';
-    }
+    const minioApi     = MINIO_S3_API_MAP[window.location.hostname]    ?? MINIO_S3_API_MAP['platform.uwv-platform.local'];
+    const minioConsole = MINIO_CONSOLE_MAP[window.location.hostname]   ?? MINIO_CONSOLE_MAP['platform.uwv-platform.local'];
+    const airflowBase  = AIRFLOW_MAP[window.location.hostname]         ?? AIRFLOW_MAP['platform.uwv-platform.local'];
 
-    function airflowDagUrl(dagId: string): string {
-      // Airflow 3 toont de grid-view direct op /dags/<id> (geen /grid-suffix
-      // meer zoals in Airflow 2.x). De /grid-route bestaat niet meer en geeft
-      // een lege/foutpagina.
-      return dagId
-        ? `${toolHost('airflow')}/dags/${encodeURIComponent(dagId)}`
-        : toolHost('airflow');
-    }
+    const STAGING_BUCKET = 'uwv-staging';
+    const MAX_BYTES = 500 * 1024 * 1024;
+    const CONVERT_DAG_ID = 'convert_to_delta';
 
-    function opensearchDiscoverUrl(): string {
-      // Discover home zonder pre-filter. KQL-URL-params zijn versie-fragile in
-      // OpenSearch Dashboards (state-store-format wisselt per release); de
-      // gebruiker filtert zelf in de UI met bv. `kubernetes.pod_name : csv-to-bronze*`.
-      return `${toolHost('opensearch')}/app/discover`;
-    }
-
-    function omServiceUrl(): string {
-      // OM 1.12 heeft géén werkende deeplinks voor /table/<fqn>, /database/<fqn>
-      // of /databaseSchema/<fqn> — die geven allemaal 404. De `/explore/tables?search=`
-      // werkt qua URL maar crasht server-side op een OpenSearch-mapping bug
-      // (text-field aggregations on glossaryTags). De service-detail-page is het
-      // enige betrouwbare deeplink: gebruikt geen OpenSearch en toont alle
-      // databases (bronze/silver/gold) met klikbare hierarchie.
-      return `${toolHost('openmetadata')}/service/databaseServices/uwv-trino`;
-    }
-
-    function splitTrinoFqn(fqn: string): { catalog: string; schema: string; table: string } {
-      const parts = fqn.split('.');
-      if (parts.length < 3) return { catalog: '', schema: '', table: '' };
-      return { catalog: parts[0], schema: parts[1], table: parts.slice(2).join('.') };
-    }
-
-    const schemaTbody    = document.getElementById('src-schema-tbody');
-    const colCountEl     = document.getElementById('src-col-count');
-    const colRequiredEl  = document.getElementById('src-col-required');
-    const minioLinkEl    = document.getElementById('src-minio-link') as HTMLAnchorElement | null;
-    const minioLabelEl   = document.getElementById('src-minio-link-label');
-    const resultBronzeEl = document.getElementById('result-bronze');
-    const resultSilverEl = document.getElementById('result-silver');
-    const resultGoldEl   = document.getElementById('result-gold');
-    const resultSupersetEl = document.getElementById('result-superset');
-    const openDashEl     = document.getElementById('open-dashboard') as HTMLAnchorElement | null;
-    const openDashLabel  = document.getElementById('open-dashboard-label');
-
-    // Observability-cards — id-conventie `obs-<tool>-<scope>`. Bij elke
-    // render-call swappen we de hrefs zodat ze de huidige bron weerspiegelen.
-    const obsA = (id: string) => document.getElementById(id) as HTMLAnchorElement | null;
-    const obsLinks = {
-      airflowIngest:      obsA('obs-airflow-ingest'),
-      airflowSilver:      obsA('obs-airflow-silver'),
-      airflowGold:        obsA('obs-airflow-gold'),
-      minioIncoming:      obsA('obs-minio-incoming'),
-      minioProcessed:     obsA('obs-minio-processed'),
-      minioBronze:        obsA('obs-minio-bronze'),
-      minioGold:          obsA('obs-minio-gold'),
-      opensearchDiscover: obsA('obs-opensearch-discover'),
-      omService:          obsA('obs-om-service'),
-      grafanaHome:        obsA('obs-grafana-home'),
-      prometheusAlerts:   obsA('obs-prometheus-alerts'),
+    type Convertible = 'csv' | 'tsv' | 'json' | 'ndjson' | 'parquet';
+    const EXT_TO_FORMAT: Record<string, Convertible> = {
+      csv: 'csv', tsv: 'tsv', tab: 'tsv',
+      json: 'json', ndjson: 'ndjson', jsonl: 'ndjson',
+      parquet: 'parquet', pq: 'parquet',
     };
 
-    function renderSchemaTable(cols: ColumnSpec[]) {
-      if (!schemaTbody) return;
-      // Plain DOM (geen innerHTML) — kolomnamen komen uit YAML/code, geen
-      // user input, dus textContent volstaat en is veilig.
-      schemaTbody.replaceChildren();
-      for (const c of cols) {
-        const tr = document.createElement('tr');
-        const td1 = document.createElement('td'); td1.className = 'mono'; td1.textContent = c.name;
-        const td2 = document.createElement('td'); td2.className = 'mono'; td2.textContent = c.type;
-        const td3 = document.createElement('td'); td3.textContent = c.required ? 'ja' : 'optioneel';
-        tr.append(td1, td2, td3);
-        schemaTbody.appendChild(tr);
-      }
-    }
+    // Sanitisation — MOET matchen met airflow-bridge.py sanitize_email().
+    const sanitizeEmail = (email: string): string =>
+      email.trim().toLowerCase().replace(/@/g, '_at_').replace(/\./g, '_').replace(/[^a-z0-9_]/g, '_');
 
-    function render() {
-      const s = currentSource();
-      if (desc) desc.textContent = s.description;
-      if (buck) buck.textContent = s.bucket;
-      if (pref) pref.textContent = s.prefix;
-      if (dag)  dag.textContent  = s.dagId;
-      if (dag2) dag2.textContent = s.dagId;
-      if (path1) path1.textContent = `${s.bucket}/${s.prefix}/`;
-      if (mc)   mc.textContent = `mc cp ./${s.exampleFileName} minio-uwv/${s.bucket}/${s.prefix}/$(date -u +%Y%m%dT%H%M%S).csv --insecure`;
-      layers.forEach((layer) => {
-        setText(`trino-${layer}`,       s.trino[layer].table);
-        setText(`superset-db-${layer}`, s.trino[layer].supersetDb);
-        setText(`trino-note-${layer}`,  s.trino[layer].note);
-      });
-      if (sqlEl) sqlEl.textContent = s.exampleSql;
+    const sanitizeFileName = (name: string): string =>
+      name.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^_+|_+$/g, '');
 
-      // Schema-tabel + counts
-      renderSchemaTable(s.expectedColumns);
-      if (colCountEl)    colCountEl.textContent    = String(s.expectedColumns.length);
-      if (colRequiredEl) colRequiredEl.textContent = String(s.expectedColumns.filter(c => c.required).length);
+    const detectFormat = (name: string): Convertible | null => {
+      const m = name.toLowerCase().match(/\.([a-z0-9]+)$/);
+      return m ? (EXT_TO_FORMAT[m[1]] ?? null) : null;
+    };
 
-      // MinIO console link — per-bron prefix
-      if (minioLinkEl)  minioLinkEl.href        = minioBrowseUrl(s.bucket, s.prefix);
-      if (minioLabelEl) minioLabelEl.textContent = `${s.bucket}/${s.prefix}/`;
+    const defaultTableName = (fileName: string): string => {
+      const base = fileName.replace(/\.[^.]+$/, '').toLowerCase();
+      const snake = base.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      if (!snake || !/^[a-z]/.test(snake)) return `tbl_${snake || 'upload'}`.slice(0, 63);
+      return snake.slice(0, 63);
+    };
 
-      // Result-sectie: tabelnamen + dashboard-status
-      if (resultBronzeEl) resultBronzeEl.textContent = s.trino.bronze.table;
-      if (resultSilverEl) resultSilverEl.textContent = s.trino.silver.table;
-      if (resultGoldEl)   resultGoldEl.textContent   = s.trino.gold.table;
-      if (resultSupersetEl) {
-        resultSupersetEl.replaceChildren();
-        if (s.dashboardSlug && s.dashboardTitle) {
-          resultSupersetEl.append('Dashboard ');
-          const em = document.createElement('em');
-          em.textContent = s.dashboardTitle;
-          resultSupersetEl.appendChild(em);
-          resultSupersetEl.append(' beschikbaar.');
-        } else {
-          resultSupersetEl.textContent = 'Geen kant-en-klaar dashboard — gebruik SQL Lab.';
-        }
-      }
-      if (openDashEl) {
-        if (s.dashboardSlug) {
-          openDashEl.href = `${supersetBase}/superset/dashboard/${s.dashboardSlug}/`;
-          openDashEl.hidden = false;
-          if (openDashLabel) openDashLabel.textContent = `Open dashboard: ${s.dashboardTitle || s.dashboardSlug}`;
-        } else {
-          openDashEl.hidden = true;
-        }
-      }
+    // ── DOM refs ────────────────────────────────────────────────────────────
+    const dropZone   = document.getElementById('drop-zone') as HTMLLabelElement | null;
+    const fileInput  = document.getElementById('file-input') as HTMLInputElement | null;
+    const statusBox  = document.getElementById('upload-status') as HTMLDivElement | null;
+    const statusLbl  = document.getElementById('status-label');
+    const statusPct  = document.getElementById('status-pct');
+    const statusDet  = document.getElementById('status-detail');
+    const progBar    = document.getElementById('progress-bar') as HTMLDivElement | null;
 
-      // ── Inkijken-sectie — observability-deeplinks per bron ───────────────
-      const setHref = (el: HTMLAnchorElement | null, url: string) => { if (el) el.href = url; };
+    const convertBox  = document.getElementById('convert') as HTMLElement | null;
+    const convertBtn  = document.getElementById('convert-btn') as HTMLButtonElement | null;
+    const convertFb   = document.getElementById('convert-feedback');
+    const fldSchema   = document.getElementById('fld-schema') as HTMLInputElement | null;
+    const fldTable    = document.getElementById('fld-table')  as HTMLInputElement | null;
 
-      // Airflow — drie DAG-deeplinks (grid view per DAG)
-      setHref(obsLinks.airflowIngest, airflowDagUrl(s.obs.ingestDag));
-      setHref(obsLinks.airflowSilver, airflowDagUrl(s.obs.silverDag));
-      setHref(obsLinks.airflowGold,   airflowDagUrl(s.obs.goldDag));
+    type UploadedFile = {
+      objectKey: string;
+      fileName:  string;
+      format:    Convertible | null;
+    };
+    let lastUpload: UploadedFile | null = null;
 
-      // MinIO — vier bucket+prefix combinaties
-      setHref(obsLinks.minioIncoming,  minioBrowseUrl(s.bucket, s.prefix));
-      // processed-prefix volgt uit incoming/<bron> → processed/<bron>
-      const processedPrefix = s.prefix.replace(/^incoming\//, 'processed/');
-      setHref(obsLinks.minioProcessed, minioBrowseUrl(s.bucket, processedPrefix));
-      // Bronze tabel-folder: catalog=bronze → bucket uwv-bronze, prefix <schema>/<table>/
-      const bronzeFqn = splitTrinoFqn(s.trino.bronze.table);
-      setHref(obsLinks.minioBronze,
-        minioBrowseUrl(`uwv-${bronzeFqn.catalog}`, `${bronzeFqn.schema}/${bronzeFqn.table}`));
-      // Gold: heel schema (alle marts) — uit observability config
-      setHref(obsLinks.minioGold, minioBrowseUrl('uwv-gold', s.obs.goldPrefix));
-
-      // OpenSearch — discover home (gebruiker filtert zelf op pod-name)
-      setHref(obsLinks.opensearchDiscover, opensearchDiscoverUrl());
-
-      // OpenMetadata — service-detail page (deeplinks naar table/database/schema
-      // bestaan niet of crashen op een index-bug; service-page is werkend).
-      // Hint toont de gebruiker welke FQN ze handmatig moeten kiezen.
-      const silverFqn = splitTrinoFqn(s.trino.silver.table);
-      const goldFqn   = splitTrinoFqn(s.trino.gold.table);
-      setHref(obsLinks.omService, omServiceUrl());
-      const omHint = document.getElementById('obs-om-hint');
-      if (omHint) {
-        omHint.replaceChildren();
-        omHint.append('Bronze: ');
-        const a = document.createElement('code'); a.textContent = `${bronzeFqn.schema}.${bronzeFqn.table}`;
-        omHint.append(a);
-        omHint.append(' · Silver: ');
-        const b = document.createElement('code'); b.textContent = `${silverFqn.schema}.${silverFqn.table}`;
-        omHint.append(b);
-        omHint.append(' · Gold-schema: ');
-        const c = document.createElement('code'); c.textContent = goldFqn.schema;
-        omHint.append(c);
-      }
-
-      // Grafana / Prometheus — nog niet bron-specifiek, root-links
-      setHref(obsLinks.grafanaHome,      toolHost('grafana'));
-      setHref(obsLinks.prometheusAlerts, `${toolHost('prometheus')}/alerts`);
-    }
-    sel?.addEventListener('change', render);
-    render();
-
-    // ── Copy-to-clipboard + Superset SQL Lab open ──────────────────────────
-    const feedback = document.getElementById('copy-feedback');
-    function flashFeedback(msg: string) {
-      if (!feedback) return;
-      feedback.textContent = msg;
-      feedback.classList.add('csv-copy-feedback--on');
-      window.setTimeout(() => {
-        feedback.classList.remove('csv-copy-feedback--on');
-      }, 2400);
-    }
-
-    async function copyTextOfElement(id: string): Promise<boolean> {
-      const el = document.getElementById(id);
-      const txt = el?.textContent?.trim() ?? '';
-      if (!txt) return false;
-      try {
-        await navigator.clipboard.writeText(txt);
-        return true;
-      } catch {
-        // Fallback voor browsers zonder secure-context clipboard API:
-        const ta = document.createElement('textarea');
-        ta.value = txt;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        const ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        return ok;
-      }
-    }
-
-    // Bind alle elementen met data-copy-target — tabelnamen + de "Kopieer SQL" knop.
-    document.querySelectorAll<HTMLElement>('[data-copy-target]').forEach((btn) => {
-      btn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        const target = btn.dataset.copyTarget ?? '';
-        const ok = await copyTextOfElement(target);
-        const label = target === 'example-sql' ? 'SQL'
-                    : target.startsWith('trino-') ? 'Tabelnaam'
-                    : 'Tekst';
-        flashFeedback(ok ? `${label} gekopieerd naar klembord.` : `Kopiëren mislukt — selecteer en kopieer handmatig.`);
-      });
-    });
-
-    // "Open Superset SQL Lab": eerst SQL naar klembord, dan tab openen.
-    const openSqlBtn = document.getElementById('open-sqllab') as HTMLAnchorElement | null;
-    openSqlBtn?.addEventListener('click', async (e) => {
-      // Layout.astro rewrite van .local → .eu-sovereigndataplatform.com is al gedraaid
-      // tegen de tijd dat dit script bindt; openSqlBtn.href bevat de juiste host.
-      const ok = await copyTextOfElement('example-sql');
-      if (ok) flashFeedback('SQL gekopieerd — plak straks met ⌘V / Ctrl+V.');
-      // Niet preventDefault: laat de browser het tabblad open in de href.
-    });
-
-    // ── Endpoint detectie ──────────────────────────────────────────────────
-    const minioEndpoint =
-      MINIO_ENDPOINT_MAP[window.location.hostname] ??
-      'https://minio.uwv-platform.local:8443';
-
-    // ── DOM refs voor upload ───────────────────────────────────────────────
-    const dropZone  = document.getElementById('drop-zone') as HTMLLabelElement | null;
-    const fileInput = document.getElementById('file-input') as HTMLInputElement | null;
-    const statusBox = document.getElementById('upload-status') as HTMLDivElement | null;
-    const statusLbl = document.getElementById('status-label');
-    const statusPct = document.getElementById('status-pct');
-    const statusDet = document.getElementById('status-detail');
-    const progBar   = document.getElementById('progress-bar') as HTMLDivElement | null;
-
-    const MAX_BYTES = 500 * 1024 * 1024;  // 500 MB
-
-    function setState(state: 'idle' | 'busy' | 'ok' | 'err', label: string, detail = '', pct = 0) {
+    function setState(state: 'idle' | 'busy' | 'ok' | 'err',
+                      label: string, detail = '', pct = 0) {
       if (!statusBox) return;
       statusBox.hidden = false;
       dropZone?.setAttribute('data-state', state);
@@ -968,58 +139,74 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
       if (progBar)   progBar.style.width = `${pct}%`;
     }
 
-    // ── Upload-flow ────────────────────────────────────────────────────────
+    function escapeHtml(s: string): string {
+      return s.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]!));
+    }
+
+    function minioBrowseUrl(objectKey: string): string {
+      const prefix = objectKey.split('/').slice(0, -1).join('/') + '/';
+      const b64 = btoa(prefix).replace(/=+$/, '');
+      return `${minioConsole}/browser/${STAGING_BUCKET}/${b64}`;
+    }
+
+    function revealConvert(file: UploadedFile) {
+      if (!convertBox) return;
+      if (!file.format) { convertBox.hidden = true; return; }
+      convertBox.hidden = false;
+      if (fldTable) {
+        fldTable.value = defaultTableName(file.fileName);
+        fldTable.dispatchEvent(new Event('input'));
+      }
+      const recheck = () => {
+        if (!convertBtn) return;
+        convertBtn.disabled =
+          !(fldSchema?.validity.valid ?? false) || !(fldTable?.validity.valid ?? false);
+      };
+      [fldSchema, fldTable].forEach((el) => el?.addEventListener('input', recheck));
+      recheck();
+    }
+
+    // ── Auth / STS ─────────────────────────────────────────────────────────
+    let cachedEmail: string | null = null;
+    async function fetchEmail(): Promise<string> {
+      if (cachedEmail) return cachedEmail;
+      const r = await fetch('/oauth2/userinfo', { credentials: 'same-origin', cache: 'no-store' });
+      if (!r.ok) throw new Error(`/oauth2/userinfo: HTTP ${r.status} — ben je ingelogd?`);
+      const data = await r.json();
+      const email = (data.email || data.user || '').toString().toLowerCase();
+      if (!email) throw new Error('Geen email in oauth2-proxy userinfo.');
+      cachedEmail = email;
+      return email;
+    }
+
     async function fetchAccessToken(forceFresh = false): Promise<string> {
-      // `cache: 'no-store'` voorkomt dat de browser een eerder /api/auth/token
-      // antwoord re-gebruikt. Met `forceFresh` voegen we een cache-buster
-      // querystring toe zodat eventuele proxy-caches ook geomzeild worden —
-      // nuttig bij een tweede poging na "Token is expired".
-      const url = forceFresh
-        ? `/api/auth/token?t=${Date.now()}`
-        : '/api/auth/token';
+      const url = forceFresh ? `/api/auth/token?t=${Date.now()}` : '/api/auth/token';
       const r = await fetch(url, {
-        credentials: 'same-origin',
-        cache: 'no-store',
+        credentials: 'same-origin', cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' },
       });
       if (!r.ok) throw new Error(`/api/auth/token: HTTP ${r.status} — ben je ingelogd?`);
       const token = (await r.text()).trim();
-      if (!token) throw new Error('Geen access-token in sessie. Log opnieuw in.');
+      if (!token) throw new Error('Geen access-token in sessie.');
       return token;
     }
-
-    // Detecteert STS-fouten die opgelost kunnen worden door een vers token.
-    // Keycloak-Access tokens hebben 15-min TTL (zie realm-uwv.json) — bij een
-    // lange browser-sessie verloopt 't tussen page-load en upload-klik.
-    function isExpiredTokenError(err: unknown): boolean {
+    const isExpiredTokenError = (err: unknown): boolean => {
       const msg = err instanceof Error ? err.message : String(err);
       return /Token is expired|ExpiredToken|InvalidWebIdentityToken/i.test(msg);
-    }
-
-    type TempCreds = {
-      accessKeyId: string;
-      secretAccessKey: string;
-      sessionToken: string;
-      expiration: string;
     };
 
+    type TempCreds = { accessKeyId: string; secretAccessKey: string; sessionToken: string; expiration: string };
     async function assumeRoleWithWebIdentity(token: string): Promise<TempCreds> {
       const body = new URLSearchParams({
-        Action:           'AssumeRoleWithWebIdentity',
-        Version:          '2011-06-15',
-        DurationSeconds:  '3600',
-        WebIdentityToken: token,
+        Action: 'AssumeRoleWithWebIdentity', Version: '2011-06-15',
+        DurationSeconds: '3600', WebIdentityToken: token,
       });
-      const r = await fetch(`${minioEndpoint}/`, {
-        method:  'POST',
-        body,
+      const r = await fetch(`${minioApi}/`, {
+        method: 'POST', body, credentials: 'omit',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        credentials: 'omit',
       });
       const text = await r.text();
-      if (!r.ok) {
-        throw new Error(`STS HTTP ${r.status}: ${text.slice(0, 300)}`);
-      }
+      if (!r.ok) throw new Error(`STS HTTP ${r.status}: ${text.slice(0, 300)}`);
       const xml = new DOMParser().parseFromString(text, 'application/xml');
       const get = (tag: string) => xml.getElementsByTagName(tag)[0]?.textContent ?? '';
       const creds: TempCreds = {
@@ -1029,42 +216,29 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
         expiration:      get('Expiration'),
       };
       if (!creds.accessKeyId || !creds.secretAccessKey) {
-        throw new Error('STS antwoord miste credentials — controleer Keycloak policy-claim.');
+        throw new Error('STS antwoord miste credentials — controleer Keycloak policy-claim (csv-uploader).');
       }
       return creds;
     }
 
-    function objectKey(prefix: string, fileName: string): string {
-      const ts = new Date().toISOString()
-        .replace(/[-:]/g, '')
-        .replace(/\.\d+Z$/, 'Z');           // 20260516T143022Z
-      const safe = fileName
-        .replace(/[^A-Za-z0-9._-]/g, '_')
-        .replace(/^_+|_+$/g, '');
-      return `${prefix}/${ts}-${safe || 'upload.csv'}`;
+    function objectKeyFor(email: string, fileName: string): string {
+      const ts = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+      const safe = sanitizeFileName(fileName) || 'upload.bin';
+      return `uploads/${sanitizeEmail(email)}/${ts}/${safe}`;
     }
 
     async function putWithProgress(
-      signedReq: Request,
-      file: File,
-      onProgress: (pct: number) => void,
+      signedReq: Request, file: File, onProgress: (pct: number) => void,
     ): Promise<void> {
-      // aws4fetch geeft een Request terug met getekende headers; XHR gebruikt
-      // diezelfde headers + body zodat we wel een upload-progress event krijgen
-      // (fetch() heeft die niet native).
       return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open(signedReq.method, signedReq.url, true);
         signedReq.headers.forEach((v, k) => {
-          // Browser blokkeert sommige headers (Host, Content-Length, …); negeer
-          // die — XHR zet ze automatisch goed.
           const lk = k.toLowerCase();
           if (lk === 'host' || lk === 'content-length') return;
           try { xhr.setRequestHeader(k, v); } catch { /* ignore */ }
         });
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) onProgress((e.loaded / e.total) * 100);
-        };
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress((e.loaded / e.total) * 100); };
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) resolve();
           else reject(new Error(`PUT HTTP ${xhr.status}: ${xhr.responseText.slice(0, 300)}`));
@@ -1074,108 +248,60 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
       });
     }
 
-    // ── CSV header-validatie ───────────────────────────────────────────────
-    // Lees alleen de eerste regel; voor 500 MB bestand is dit O(8 KB).
-    // Server doet alsnog z'n eigen schema-check; deze browser-side check is
-    // alleen om de gebruiker eerder feedback te geven dan een mislukte DAG-run.
-    type HeaderCheck =
-      | { ok: true; extra: string[] }
-      | { ok: false; reason: string; missing: string[]; extra: string[] };
-
-    async function readCsvHeader(file: File): Promise<string[]> {
-      // Eerste 64 KB — meer dan genoeg voor 49 FOCUS-kolommen (~1 KB).
-      const slice = file.slice(0, 64 * 1024);
-      let text = await slice.text();
-      // Strip UTF-8 BOM (Excel-exports voegen die soms toe).
-      if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-      const newlineIdx = text.search(/\r?\n/);
-      const firstLine = newlineIdx >= 0 ? text.slice(0, newlineIdx) : text;
-      // Simpele comma-split. CSV met komma's binnen quoted kolomnamen
-      // ondersteunen we niet — geen van onze bronnen heeft die.
-      return firstLine.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
-    }
-
-    async function validateCsvHeader(
-      file: File, expected: ColumnSpec[],
-    ): Promise<HeaderCheck> {
-      if (expected.length === 0) {
-        // Geen schema bekend — skip validatie, server moet 'm wel hebben.
-        return { ok: true, extra: [] };
-      }
-      let actual: string[];
-      try {
-        actual = await readCsvHeader(file);
-      } catch (err) {
-        return {
-          ok: false,
-          reason: `Header niet leesbaar: ${err instanceof Error ? err.message : String(err)}`,
-          missing: [], extra: [],
-        };
-      }
-      const actualSet = new Set(actual);
-      const expectedSet = new Set(expected.map((c) => c.name));
-      const missingRequired = expected
-        .filter((c) => c.required && !actualSet.has(c.name))
-        .map((c) => c.name);
-      const extra = actual.filter((n) => n && !expectedSet.has(n));
-      if (missingRequired.length > 0) {
-        return {
-          ok: false,
-          reason: `${missingRequired.length} verplichte kolom(men) ontbreken in de CSV-header.`,
-          missing: missingRequired, extra,
-        };
-      }
-      return { ok: true, extra };
-    }
-
+    // ── Upload ──────────────────────────────────────────────────────────────
     async function handleFile(file: File) {
-      if (!file.name.toLowerCase().endsWith('.csv')) {
-        setState('err', 'Geen CSV-bestand', 'Alleen <code>.csv</code> wordt geaccepteerd.');
-        return;
-      }
       if (file.size > MAX_BYTES) {
-        setState('err', 'Bestand te groot',
+        setState('err', 'Te groot',
           `Max 500 MB; dit bestand is ${(file.size / 1024 / 1024).toFixed(1)} MB.`);
         return;
       }
+      // Reset convert UI on fresh upload.
+      if (convertBox) convertBox.hidden = true;
+      if (convertFb)  convertFb.textContent = '';
+      lastUpload = null;
 
-      const src = currentSource();
-
-      setState('busy', 'Schema-check…', 'Eerste regel van CSV vergeleken met verwacht schema.');
-      const check = await validateCsvHeader(file, src.expectedColumns);
-      if (!check.ok) {
-        const missingList = check.missing.length
-          ? `<br>Ontbrekend: <code>${check.missing.map((s) => s.replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]!))).join('</code>, <code>')}</code>`
-          : '';
-        setState('err', 'CSV-header klopt niet', check.reason + missingList);
+      let email: string;
+      try {
+        setState('busy', 'Sessie checken…');
+        email = await fetchEmail();
+      } catch (err) {
+        setState('err', 'Niet ingelogd', escapeHtml(err instanceof Error ? err.message : String(err)));
         return;
       }
-      // Extra kolommen zijn OK; server negeert ze. Wel zachtjes melden.
-      const extraNote = check.extra.length > 0
-        ? `${check.extra.length} extra kolom(men) in CSV — worden door de ingest-job genegeerd.`
-        : '';
 
-      const key = objectKey(src.prefix, file.name);
-      const url = `${minioEndpoint}/${src.bucket}/${key}`;
+      const key = objectKeyFor(email, file.name);
+      const url = `${minioApi}/${STAGING_BUCKET}/${key}`;
+      const contentType = file.type || 'application/octet-stream';
 
       try {
-        setState('busy', 'Token ophalen…', extraNote || 'Sessie van oauth2-proxy.');
+        setState('busy', 'Token ophalen…');
         let token = await fetchAccessToken();
 
-        setState('busy', 'Temp-credentials via MinIO STS…', 'AssumeRoleWithWebIdentity.');
+        setState('busy', 'STS-credentials…');
         let creds: TempCreds;
         try {
           creds = await assumeRoleWithWebIdentity(token);
         } catch (err) {
-          // "Token is expired" — Keycloak access-token had korter dan 15 min
-          // te leven toen MinIO 'm ontving. Forceer een verse token via
-          // oauth2-proxy en probeer één keer opnieuw. Een tweede mislukking
-          // betekent dat refresh ook niet werkt — login is dan vereist.
           if (!isExpiredTokenError(err)) throw err;
-          setState('busy', 'Token vernieuwen…',
-            'Vorige token was verlopen — verse token ophalen en opnieuw proberen.');
-          token = await fetchAccessToken(/*forceFresh=*/true);
-          creds = await assumeRoleWithWebIdentity(token);
+          // Eerste retry: cache-bust /api/auth/token. Werkt als oauth2-proxy
+          // intussen z'n cookie_refresh-cycle heeft gedraaid.
+          setState('busy', 'Token vernieuwen…');
+          token = await fetchAccessToken(true);
+          try {
+            creds = await assumeRoleWithWebIdentity(token);
+          } catch (err2) {
+            if (!isExpiredTokenError(err2)) throw err2;
+            // Nog steeds verlopen — oauth2-proxy heeft 'm niet ververst.
+            // Forceer full re-auth via Keycloak round-trip; daarna komen we
+            // terug op deze pagina met verse tokens.
+            setState('err', 'Sessie verlopen',
+              'Je wordt heel even doorgestuurd om opnieuw in te loggen…');
+            const rd = encodeURIComponent(window.location.pathname + window.location.search);
+            window.setTimeout(() => {
+              window.location.href = `/oauth2/sign_in?rd=${rd}`;
+            }, 700);
+            return;
+          }
         }
 
         const aws = new AwsClient({
@@ -1183,32 +309,79 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
           secretAccessKey: creds.secretAccessKey,
           sessionToken:    creds.sessionToken,
           service:         's3',
-          region:          'us-east-1',     // MinIO accepteert elke regio; us-east-1 default
+          region:          'us-east-1',
         });
         const signed = await aws.sign(url, {
-          method:  'PUT',
-          body:    file,
-          headers: { 'Content-Type': 'text/csv' },
+          method: 'PUT', body: file,
+          headers: { 'Content-Type': contentType },
         });
 
-        setState('busy', `Uploaden naar ${src.bucket}/${key}…`, '');
+        setState('busy', 'Uploaden…');
         await putWithProgress(signed, file, (pct) =>
-          setState('busy', 'Uploaden…', `${(file.size / 1024 / 1024).toFixed(1)} MB`, pct));
+          setState('busy', 'Uploaden…', `${(file.size / 1024 / 1024).toFixed(2)} MB`, pct));
 
-        const browseHref = minioBrowseUrl(src.bucket, src.prefix);
-        setState('ok', 'Klaar — DAG triggert binnen 2 minuten.',
-          `Object: <code>${src.bucket}/${key}</code><br>` +
-          `<a class="csv-link-inline" href="${browseHref}" target="_blank" rel="noopener noreferrer">Bekijk in MinIO console ↗</a> · ` +
-          `daarna queryable in Trino als <code>${src.trino.bronze.table}</code> ` +
-          `(en via dbt in silver/gold; zie sectie 02 hieronder).`,
-          100);
+        const fmt = detectFormat(file.name);
+        lastUpload = { objectKey: key, fileName: file.name, format: fmt };
+
+        const mb = (file.size / 1024 / 1024).toFixed(2);
+        const browse = minioBrowseUrl(key);
+        const detail =
+          `<code>${escapeHtml(STAGING_BUCKET)}/${escapeHtml(key)}</code> · ${mb} MB · ` +
+          `<a class="up-inline-link" href="${browse}" target="_blank" rel="noopener noreferrer">MinIO ↗</a>` +
+          (fmt ? '' : ' · niet-tabulair — geen Delta-conversie');
+        setState('ok', fmt ? `Klaar — ${fmt.toUpperCase()} gedetecteerd.` : 'Klaar.', detail, 100);
+        revealConvert(lastUpload);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setState('err', 'Upload mislukt', `<code>${msg.replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]!))}</code>`);
+        setState('err', 'Upload mislukt', escapeHtml(err instanceof Error ? err.message : String(err)));
       }
     }
 
-    // ── Event wiring ───────────────────────────────────────────────────────
+    // ── Convert ─────────────────────────────────────────────────────────────
+    function showConvertFb(msg: string, ok = true) {
+      if (!convertFb) return;
+      convertFb.innerHTML = msg;
+      convertFb.dataset.state = ok ? 'ok' : 'err';
+    }
+
+    async function triggerConvert() {
+      if (!lastUpload || !lastUpload.format) return;
+      const schema = fldSchema?.value.trim() ?? '';
+      const table  = fldTable?.value.trim()  ?? '';
+      if (!schema || !table) {
+        showConvertFb('Schema en tabel zijn verplicht.', false);
+        return;
+      }
+      if (convertBtn) convertBtn.disabled = true;
+      showConvertFb('Triggeren…');
+      try {
+        const r = await fetch('/api/airflow/trigger-convert', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            object_key:     lastUpload.objectKey,
+            source_format:  lastUpload.format,
+            target_catalog: 'bronze',
+            target_schema:  schema,
+            target_table:   table,
+            partition_col:  null,
+          }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.detail ?? data.msg ?? `HTTP ${r.status}`);
+        const runId = data.dag_run_id ?? '';
+        const url   = data.airflow_url ?? `${airflowBase}/dags/${CONVERT_DAG_ID}/grid`;
+        showConvertFb(
+          `Getriggerd · <code>bronze.${escapeHtml(schema)}.${escapeHtml(table)}</code> · ` +
+          `<a class="up-inline-link" href="${url}" target="_blank" rel="noopener noreferrer">${escapeHtml(runId || 'open in Airflow')} ↗</a>`,
+        );
+      } catch (err) {
+        showConvertFb(`Trigger mislukt: ${escapeHtml(err instanceof Error ? err.message : String(err))}`, false);
+        if (convertBtn) convertBtn.disabled = false;
+      }
+    }
+
+    // ── Wiring ──────────────────────────────────────────────────────────────
     fileInput?.addEventListener('change', () => {
       const f = fileInput.files?.[0];
       if (f) handleFile(f);
@@ -1218,12 +391,12 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
       ['dragenter', 'dragover'].forEach((ev) =>
         dropZone.addEventListener(ev, (e) => {
           e.preventDefault();
-          dropZone.classList.add('csv-drop--active');
+          dropZone.classList.add('up-drop--active');
         }));
       ['dragleave', 'drop'].forEach((ev) =>
         dropZone.addEventListener(ev, (e) => {
           e.preventDefault();
-          dropZone.classList.remove('csv-drop--active');
+          dropZone.classList.remove('up-drop--active');
         }));
       dropZone.addEventListener('drop', (e) => {
         const dt = (e as DragEvent).dataTransfer;
@@ -1231,35 +404,32 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
         if (f) handleFile(f);
       });
     }
+
+    convertBtn?.addEventListener('click', triggerConvert);
   </script>
 
   <style>
-    .csv-hero { padding: var(--space-9) 0 var(--space-7); max-width: 720px; }
-    .csv-hero-title {
-      font-size: 44px;
-      line-height: var(--leading-display);
-      letter-spacing: var(--tracking-display);
+    .up {
+      max-width: 640px;
+      padding: var(--space-9) 0 var(--space-7);
+      display: flex; flex-direction: column;
+      gap: var(--space-4);
+    }
+    .up-title {
+      font-size: 32px;
+      line-height: var(--leading-h2, 1.2);
+      letter-spacing: var(--tracking-h2, -0.01em);
       font-weight: var(--weight-medium);
       color: var(--ink-1);
-      margin: var(--space-4) 0 var(--space-4);
-      border: 0;
-      padding: 0;
-      text-wrap: balance;
+      margin: 0;
+      border: 0; padding: 0;
     }
-    .csv-hero-title em {
-      font-family: var(--font-serif);
-      font-style: italic;
+    .up-sub {
       color: var(--ink-3);
-      font-weight: var(--weight-regular);
-    }
-    .csv-hero-body, .csv-hero-note {
-      color: var(--ink-2);
-      line-height: var(--leading-body);
+      font-size: var(--text-meta);
       margin: 0 0 var(--space-3);
-      max-width: 56ch;
     }
-    .csv-hero-note { color: var(--ink-3); font-size: var(--text-meta); }
-    .csv-hero code, .csv-step code {
+    .up code {
       background: var(--bg-sunken);
       color: var(--ink-1);
       padding: 1px 6px;
@@ -1268,450 +438,122 @@ const layerOrder: Layer[] = ['bronze', 'silver', 'gold'];
       font-size: 0.92em;
     }
 
-    .csv-step {
-      padding: var(--space-7) 0;
-      border-top: 1px solid var(--line);
-      max-width: 720px;
-    }
-    .csv-step h2 {
-      font-size: var(--text-h2);
-      font-weight: var(--weight-medium);
-      letter-spacing: var(--tracking-tight);
-      color: var(--ink-1);
-      margin: var(--space-3) 0 var(--space-4);
-      border: 0;
-      padding: 0;
-    }
-    .csv-step-body, .csv-step-note {
-      color: var(--ink-2);
-      line-height: var(--leading-body);
-      margin: 0 0 var(--space-4);
-      text-wrap: pretty;
-    }
-    .csv-step-note { color: var(--ink-3); font-size: var(--text-meta); }
-
-    .csv-pick {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-      margin-bottom: var(--space-3);
-    }
-    .csv-pick label {
-      color: var(--ink-3);
-      font-size: var(--text-meta);
-      font-family: var(--font-mono);
-      text-transform: uppercase;
-      letter-spacing: var(--tracking-eyebrow);
-    }
-    .csv-pick select {
-      background: var(--bg-elev);
-      color: var(--ink-1);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-sm);
-      padding: 8px 12px;
-      font: inherit;
-      font-size: var(--text-meta);
-    }
-    .csv-pick-desc { color: var(--ink-3); margin: var(--space-2) 0 var(--space-4); font-size: var(--text-meta); }
-
-    .csv-meta {
-      display: flex;
-      flex-direction: column;
-      background: var(--bg-elev);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-md);
-      margin: 0;
-      overflow: hidden;
-    }
-    .csv-meta-row {
-      display: grid;
-      grid-template-columns: 14ch 1fr;
-      align-items: center;
-      gap: var(--space-3);
-      padding: var(--space-3) var(--space-4);
-      border-bottom: 1px solid var(--line-soft);
-    }
-    .csv-meta-row:last-child { border-bottom: 0; }
-    .csv-meta dt {
-      color: var(--ink-3);
-      font-size: var(--text-eyebrow);
-      letter-spacing: var(--tracking-eyebrow);
-      margin: 0;
-    }
-    .csv-meta dd { margin: 0; }
-    .csv-meta-link {
-      display: inline-flex;
-      align-items: baseline;
+    /* Drop zone — focal point */
+    .up-drop {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
       gap: var(--space-2);
-      color: var(--ink-1);
-      text-decoration: none;
-      border-bottom: 1px dotted var(--line);
-      padding-bottom: 1px;
-      font-family: var(--font-mono);
-      font-size: 0.92em;
-    }
-    .csv-meta-link:hover {
-      border-bottom-color: var(--ink-1);
-      color: var(--accent, var(--ink-1));
-    }
-    .csv-link-inline {
-      color: var(--ink-1);
-      text-decoration: underline;
-      text-decoration-color: var(--line);
-      text-underline-offset: 2px;
-    }
-    .csv-link-inline:hover { text-decoration-color: var(--ink-1); }
-
-    .csv-drop {
-      display: block;
+      min-height: 200px;
       border: 1.5px dashed var(--line);
       border-radius: var(--radius-md);
-      background: var(--bg-elev);
-      padding: var(--space-7) var(--space-4);
-      text-align: center;
+      background: var(--bg-sunken);
       cursor: pointer;
       transition: border-color .15s, background .15s;
-      margin: 0 0 var(--space-4);
+      text-align: center;
+      padding: var(--space-6) var(--space-4);
     }
-    .csv-drop:hover, .csv-drop--active {
-      border-color: var(--accent, var(--ink-1));
-      background: var(--bg-sunken);
+    .up-drop:hover, .up-drop.up-drop--active {
+      border-color: var(--ink-1);
+      background: var(--bg-elev);
     }
-    .csv-drop[data-state="busy"]   { border-color: var(--ink-3); }
-    .csv-drop[data-state="ok"]     { border-color: #4a8a4a; }
-    .csv-drop[data-state="err"]    { border-color: #b35454; }
-    .csv-drop-inner {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-      pointer-events: none;
-    }
-    .csv-drop-title {
+    .up-drop[data-state="busy"] { border-style: solid; border-color: var(--ink-2); }
+    .up-drop[data-state="ok"]   { border-style: solid; border-color: var(--ink-1); }
+    .up-drop[data-state="err"]  { border-style: solid; border-color: #b00020; }
+    .up-drop-title {
       color: var(--ink-1);
+      font-size: 16px;
       font-weight: var(--weight-medium);
     }
-    .csv-drop-sub {
+    .up-drop-sub {
       color: var(--ink-3);
       font-size: var(--text-meta);
     }
 
-    .csv-status {
-      background: var(--bg-elev);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-md);
-      padding: var(--space-3) var(--space-4);
-      margin: 0 0 var(--space-4);
+    /* Status — slim row + thin bar */
+    .up-status {
+      display: flex; flex-direction: column;
+      gap: var(--space-2);
     }
-    .csv-status-row {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
+    .up-status-row {
+      display: flex; align-items: baseline; justify-content: space-between;
       gap: var(--space-3);
-      margin-bottom: var(--space-2);
     }
-    .csv-status-label {
+    .up-status-label {
       color: var(--ink-1);
       font-size: var(--text-meta);
       font-weight: var(--weight-medium);
     }
-    .csv-status-pct {
+    .up-status-pct {
       color: var(--ink-3);
       font-size: var(--text-eyebrow);
     }
-    .csv-status-detail {
+    .up-status-detail {
       color: var(--ink-2);
       font-size: var(--text-meta);
-      margin: var(--space-2) 0 0;
+      margin: 0;
       word-break: break-all;
     }
-    .csv-progress {
-      height: 4px;
+    .up-progress {
+      height: 2px;
       background: var(--bg-sunken);
-      border-radius: 2px;
+      border-radius: 1px;
       overflow: hidden;
     }
-    .csv-progress-bar {
+    .up-progress-bar {
       height: 100%;
       width: 0%;
       background: var(--ink-1);
       transition: width .15s linear;
     }
 
-    .csv-actions {
-      display: flex;
+    /* Convert — one-line inline form */
+    .up-convert {
+      display: flex; flex-direction: column;
+      gap: var(--space-2);
+    }
+    .up-form-row {
+      display: flex; align-items: center;
       gap: var(--space-2);
       flex-wrap: wrap;
-      margin: var(--space-4) 0 0;
     }
-
-    .csv-layers {
-      list-style: none;
-      padding: 0;
-      margin: 0 0 var(--space-5);
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-3);
-    }
-    .csv-layer {
-      background: var(--bg-elev);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-md);
-      padding: var(--space-3) var(--space-4);
-    }
-    .csv-layer-head {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-      flex-wrap: wrap;
-    }
-    .csv-layer-tag {
+    .up-form-prefix, .up-form-sep {
       color: var(--ink-3);
-      font-size: var(--text-eyebrow);
-      letter-spacing: var(--tracking-eyebrow);
-      min-width: 7ch;
+      font-size: var(--text-meta);
     }
-    .csv-table-btn {
-      flex: 1 1 auto;
-      display: inline-flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: var(--space-3);
-      background: var(--bg-sunken);
+    .up-input {
+      font: inherit;
+      font-family: var(--font-mono);
+      font-size: var(--text-meta);
+      padding: 6px 10px;
       border: 1px solid var(--line);
       border-radius: var(--radius-sm);
-      padding: 6px 10px;
-      cursor: pointer;
-      font: inherit;
-      font-size: var(--text-meta);
+      background: var(--bg-sunken);
       color: var(--ink-1);
-      text-align: left;
-      transition: border-color .15s, background .15s;
+      width: 16ch;
+      min-width: 8ch;
     }
-    .csv-table-btn:hover {
+    .up-input:focus {
+      outline: 0;
       border-color: var(--ink-1);
       background: var(--bg-elev);
     }
-    .csv-table-btn code {
-      background: transparent;
-      border: 0;
-      padding: 0;
-      color: var(--ink-1);
+    .up-input:invalid {
+      border-color: #b00020;
     }
-    .csv-copy-hint {
-      color: var(--ink-3);
-      font-size: var(--text-eyebrow);
-      letter-spacing: var(--tracking-eyebrow);
-      text-transform: uppercase;
-    }
-    .csv-layer-note {
+    .up-feedback {
       color: var(--ink-2);
       font-size: var(--text-meta);
-      margin: var(--space-2) 0 var(--space-1);
-      line-height: var(--leading-body);
-    }
-    .csv-layer-meta {
-      color: var(--ink-3);
-      font-size: var(--text-eyebrow);
-      letter-spacing: var(--tracking-eyebrow);
-    }
-
-    .csv-sql-h {
-      font-size: var(--text-meta);
-      font-family: var(--font-mono);
-      text-transform: uppercase;
-      letter-spacing: var(--tracking-eyebrow);
-      color: var(--ink-3);
-      font-weight: var(--weight-regular);
-      margin: var(--space-5) 0 var(--space-2);
-      border: 0;
-      padding: 0;
-    }
-
-    .csv-copy-feedback {
-      color: var(--ink-3);
-      font-size: var(--text-meta);
-      margin: var(--space-3) 0 0;
+      margin: 0;
       min-height: 1.4em;
-      opacity: 0;
-      transform: translateY(-4px);
-      transition: opacity .15s, transform .15s;
     }
-    .csv-copy-feedback.csv-copy-feedback--on {
-      opacity: 1;
-      transform: translateY(0);
+    .up-feedback[data-state="err"] { color: #b00020; }
+    .up-feedback[data-state="ok"]  { color: var(--ink-1); }
+
+    .up-inline-link {
       color: var(--ink-1);
-    }
-
-    .csv-pre {
-      background: var(--bg-sunken);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-sm);
-      padding: var(--space-3) var(--space-4);
-      overflow-x: auto;
-      margin: var(--space-2) 0;
-      font-family: var(--font-mono);
-      font-size: var(--text-meta);
-      color: var(--ink-1);
-    }
-    .csv-pre code {
-      background: transparent;
-      padding: 0;
-      border: 0;
-    }
-
-    .csv-alt summary,
-    .csv-schema summary {
-      cursor: pointer;
-      color: var(--ink-3);
-      font-size: var(--text-meta);
-      list-style: none;
-      padding: var(--space-2) 0;
-    }
-    .csv-alt summary::-webkit-details-marker,
-    .csv-schema summary::-webkit-details-marker { display: none; }
-    .csv-alt summary::before,
-    .csv-schema summary::before {
-      content: '▸';
-      font-family: var(--font-mono);
-      margin-right: var(--space-2);
-      transition: transform .15s;
-      display: inline-block;
-    }
-    .csv-alt[open] summary::before,
-    .csv-schema[open] summary::before { transform: rotate(90deg); }
-    .csv-alt summary:hover,
-    .csv-schema summary:hover { color: var(--ink-1); }
-
-    .csv-schema { margin: var(--space-3) 0 0; }
-    .csv-schema-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: var(--space-2) 0 0;
-      background: var(--bg-elev);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-md);
-      overflow: hidden;
-      font-size: var(--text-meta);
-    }
-    .csv-schema-table th,
-    .csv-schema-table td {
-      padding: 6px var(--space-3);
-      text-align: left;
-      border-bottom: 1px solid var(--line-soft);
-    }
-    .csv-schema-table th {
-      color: var(--ink-3);
-      font-size: var(--text-eyebrow);
-      letter-spacing: var(--tracking-eyebrow);
-      text-transform: uppercase;
-      font-weight: var(--weight-regular);
-      background: var(--bg-sunken);
-    }
-    .csv-schema-table tr:last-child td { border-bottom: 0; }
-    .csv-schema-table td.mono { color: var(--ink-1); }
-
-    /* ─── Inkijken — observability-cards ────────────────────────────────── */
-    .csv-obs-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: var(--space-3);
-      margin: var(--space-4) 0 0;
-    }
-    .csv-obs-card {
-      background: var(--bg-elev);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-md);
-      padding: var(--space-3) var(--space-4);
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-2);
-    }
-    .csv-obs-head {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      border-bottom: 1px solid var(--line-soft);
-      padding-bottom: var(--space-2);
-    }
-    .csv-obs-tag {
-      color: var(--ink-3);
-      font-size: var(--text-eyebrow);
-      letter-spacing: var(--tracking-eyebrow);
-    }
-    .csv-obs-sub {
-      color: var(--ink-2);
-      font-size: var(--text-meta);
-    }
-    .csv-obs-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .csv-obs-list a {
-      display: inline-flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: var(--space-2);
-      color: var(--ink-1);
+      border-bottom: 1px solid var(--line);
       text-decoration: none;
-      font-size: var(--text-meta);
-      padding: 4px 0;
-      border-bottom: 1px dotted transparent;
-      transition: border-color .15s, color .15s;
     }
-    .csv-obs-list a:hover {
-      border-bottom-color: var(--ink-1);
-      color: var(--accent, var(--ink-1));
-    }
-    .csv-obs-arr {
-      color: var(--ink-3);
-      font-size: var(--text-eyebrow);
-      letter-spacing: var(--tracking-eyebrow);
-    }
-    .csv-obs-hint {
-      color: var(--ink-3);
-      font-size: var(--text-eyebrow);
-      margin: var(--space-1) 0 0;
-      line-height: var(--leading-body);
-    }
-    .csv-obs-hint code {
-      background: var(--bg-sunken);
-      border: 1px solid var(--line);
-      padding: 1px 5px;
-      border-radius: 3px;
-      font-size: 0.95em;
-    }
-
-    .csv-result {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-      display: flex;
-      flex-direction: column;
-      background: var(--bg-elev);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-md);
-      overflow: hidden;
-    }
-    .csv-result li {
-      display: grid;
-      grid-template-columns: 12ch 1fr;
-      align-items: center;
-      gap: var(--space-3);
-      padding: var(--space-3) var(--space-4);
-      border-bottom: 1px solid var(--line-soft);
-      color: var(--ink-2);
-      font-size: var(--text-meta);
-    }
-    .csv-result li:last-child { border-bottom: 0; }
-    .csv-result li .mono {
-      color: var(--ink-3);
-      font-size: var(--text-eyebrow);
-      letter-spacing: var(--tracking-eyebrow);
-    }
-    .csv-result em { font-style: italic; color: var(--ink-1); }
+    .up-inline-link:hover { border-bottom-color: var(--ink-1); }
   </style>
-</Layout>
+</ShellLayout>

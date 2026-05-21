@@ -168,8 +168,12 @@ fi
 log "7/10  Portal Docker-image bouwen + in cluster laden (mode=${DEPLOYMENT_MODE})"
 docker build -f portal/Dockerfile -t uwv-platform/portal:dev . >/dev/null
 k3d image import uwv-platform/portal:dev -c "${CLUSTER_NAME:-uwv-platform}" >/dev/null
+# Sidecar voor /api/airflow/* (FastAPI; triggert convert_to_delta DAG).
+docker build -f portal/Dockerfile.airflow-bridge \
+             -t uwv-platform/portal-airflow-bridge:dev . >/dev/null
+k3d image import uwv-platform/portal-airflow-bridge:dev -c "${CLUSTER_NAME:-uwv-platform}" >/dev/null
 kubectl -n uwv-platform rollout restart deployment portal >/dev/null 2>&1 || true
-ok "portal-image gebouwd + geïmporteerd"
+ok "portal + airflow-bridge images gebouwd + geïmporteerd"
 
 # ---------------------------------------------------------------------- 8
 log "8/10  Live-only Keycloak realm patches (TOTP, scopes, mappers, attrs)"

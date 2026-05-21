@@ -1,18 +1,77 @@
-# Handmatige CSV-upload — runbook
+# Upload &amp; convert — runbook
 
-End-to-end pad voor een ad-hoc CSV-bron: van upload tot gold-tabel + Superset.
-Gebruikt de `klanttevredenheid`-bron als demo; pattern is generiek voor elke
-bron met `sla.mode: csv_batch` in [`platform/11-airflow/sources/`](../../platform/11-airflow/sources/).
+Er zijn twee paden naast elkaar: een generieke **any-file → Delta** flow voor
+ad-hoc + sandbox uploads (portal), en het oorspronkelijke **structured
+csv_batch** pad voor bronnen met een vaste schema-spec (klanttevredenheid,
+FOCUS billing). Beide schrijven uiteindelijk Delta in bronze; het verschil zit
+in de schema-validatie en de downstream-keten.
 
 > **SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.**
 
 ---
 
-## Wanneer gebruik je dit pad?
+## Pad A — Generic upload (portal) [aanbevolen voor ad-hoc]
+
+Sinds 2026-05 is [/csv-upload](https://platform.uwv-platform.local:8443/csv-upload/)
+een generieke uploader die **elk** bestandstype accepteert. Voor tabulaire
+bestanden (CSV, TSV, JSON, NDJSON, Parquet) verschijnt na de upload een
+"Convert to Delta"-knop die de `convert_to_delta` DAG triggert via de
+`airflow-bridge` sidecar in de portal-pod.
+
+**Architectuur**
+
+```
+gebruiker  ─▶ POST /api/auth/token              (oauth2-proxy access-token)
+           ─▶ POST minio/?Action=AssumeRoleWithWebIdentity   (temp S3-creds)
+           ─▶ PUT  minio/uwv-staging/uploads/<email>/<ts>/<file>
+           ─▶ POST /api/airflow/trigger-convert (alleen tabulair)
+                  │
+                  ▼
+           portal/airflow-bridge sidecar
+           (X-Auth-Request-Email-check + airflow-api-bot basic auth)
+                  │
+                  ▼
+           Airflow REST: POST /api/v1/dags/convert_to_delta/dagRuns
+                  │
+                  ▼
+           DAG convert_to_delta (KubernetesPodOperator)
+           ├─ leest s3://uwv-staging/<object_key>
+           ├─ parseert op basis van source_format (pyarrow.csv/json/parquet)
+           ├─ voegt event_date + ingestion_ts + source_file metadata-kolommen toe
+           ├─ schrijft Delta naar s3://uwv-<catalog>/<schema>/<table>/
+           ├─ registreert in HMS via Trino `system.register_table`
+           └─ verplaatst bron-bestand naar processed/uploads/...
+```
+
+**Wanneer kies je dit?**
+
+- Sandbox / experimenteer-data — geen schema-validatie nodig.
+- Onbekend of variabel schema; pyarrow's type-inference is goed genoeg.
+- Eenmalige conversie van een Parquet/JSON-bestand.
+- Je hebt geen tijd om een source-YAML te schrijven.
+
+**Beperkingen**
+
+- Geen kolom-niveau validatie. Verkeerde input → de DAG faalt, niet de upload.
+- Geen automatische silver/gold-trigger; daarvoor moet je een dbt-model toevoegen
+  dat naar deze tabel verwijst.
+- Default target_catalog = `bronze`, target_schema = `sandbox` — zorgt dat je
+  curated `bronze.uwv.*` data niet vervuilt.
+
+---
+
+## Pad B — Structured csv_batch (mc CLI of klassieke flow)
+
+Oorspronkelijk pad voor bronnen met vaste schema-spec en silver/gold-keten.
+Gebruikt de `klanttevredenheid`-bron als demo; pattern is generiek voor elke
+bron met `sla.mode: csv_batch` in [`platform/11-airflow/sources/`](../../platform/11-airflow/sources/).
+
+**Wanneer kies je dit?**
 
 - Eénmalige of periodieke CSV uit een bronsysteem zonder Kafka-aansluiting.
 - Klein volume (≤ enkele miljoenen rijen) waarvoor streaming overkill is.
 - Tabel-schema is bekend en stabiel — wordt afgedwongen door de source-YAML.
+- Je wilt dat silver- en gold-DAGs automatisch triggeren via Dataset-publicatie.
 
 Voor continue events (WIA, WW, polisadministratie, …) gebruik je het
 Kafka-pad — zie [ADR-0007](../adr/0007-airflow-pipeline-architecture.md).
@@ -88,10 +147,14 @@ mc cp ./mijn-meting.csv \
   uwv-platform/uwv-staging/incoming/klanttevredenheid/$(date -u +%Y%m%dT%H%M%S).csv
 ```
 
-### Optie C — Portal
+### Optie C — Portal (generic flow)
 
-Open [/csv-upload](https://platform.uwv-platform.local:8443/csv-upload/) — de
-portal toont per bron de juiste deeplinks en commands.
+Open [/csv-upload](https://platform.uwv-platform.local:8443/csv-upload/) — deze
+pagina is sinds 2026-05 generiek (zie **Pad A** boven). Het accepteert elk
+bestandstype, maar **schrijft naar `uwv-staging/uploads/<email>/<ts>/`**, niet
+naar `incoming/<bron>/`. Voor `csv_batch`-bronnen (klanttevredenheid, FOCUS)
+upload je naar `incoming/<bron>/` via optie A of B en trigger je daarna de
+ingest-DAG handmatig (zie Stap 3).
 
 ---
 

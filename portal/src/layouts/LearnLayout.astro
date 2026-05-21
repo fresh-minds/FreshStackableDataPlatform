@@ -1,5 +1,5 @@
 ---
-import Layout from './Layout.astro';
+import ShellLayout from './ShellLayout.astro';
 
 interface Props {
   title: string;
@@ -10,11 +10,11 @@ interface Props {
 
 const { title, description, width = 'wide' } = Astro.props;
 ---
-<Layout title={title} description={description}>
+<ShellLayout title={title} description={description} activeSection="academy">
   <div class={`learn-shell learn-${width}`}>
     <slot />
   </div>
-</Layout>
+</ShellLayout>
 
 <style is:global>
   /* ─── Algemene Learn-stijlen — minimal, hergebruik tokens uit Layout. ─── */

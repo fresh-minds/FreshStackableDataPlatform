@@ -14,13 +14,18 @@
   },
   "dependencies": {
     "@astrojs/mdx": "^3.1.9",
+    "@astrojs/react": "^3.6.3",
     "@fontsource-variable/inter": "^5.1.0",
     "@fontsource-variable/jetbrains-mono": "^5.1.0",
     "astro": "^4.16.18",
-    "aws4fetch": "^1.0.20"
+    "aws4fetch": "^1.0.20",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
     "typescript": "^5.7.2"
   }
 }

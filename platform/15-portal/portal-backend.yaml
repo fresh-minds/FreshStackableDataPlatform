@@ -1,0 +1,133 @@
+# Portal backend — FastAPI service voor /api/portal/* (recents + favorites
+# nu, search aggregator straks). Aparte Deployment met eigen PVC zodat de
+# SQLite-database overleeft pod restarts. nginx in de portal-pod proxyt
+# /api/portal/* hierheen via de udp-portal-backend Service.
+#
+# replicas=1 + strategy=Recreate: SQLite is single-writer, en de PVC
+# (ReadWriteOnce) kan toch maar in één Pod tegelijk gemount worden.
+# Voor schaalbaarheid → Postgres backing-store later.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: udp-portal-backend-data
+  namespace: uwv-platform
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: udp-portal-backend
+  namespace: uwv-platform
+spec:
+  replicas: 1
+  strategy:
+    # Recreate: stop oude pod voordat nieuwe start. SQLite WAL kan
+    # niet vanuit twee processen gelijktijdig op dezelfde DB-file en
+    # de PVC is RWO. RollingUpdate zou een korte downtime door PVC-lock
+    # geven; Recreate is voorspelbaarder.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: udp-portal-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: udp-portal-backend
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000              # PVC moet writable zijn voor UID 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: uwv-platform/portal-backend:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8089
+          # /_ping endpoint vraagt geen auth zodat de probe niet faalt
+          # voordat een gebruiker is ingelogd.
+          readinessProbe:
+            httpGet: { path: /api/portal/_ping, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/portal/_ping, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 10m,  memory: 64Mi  }
+            limits:   { cpu: 200m, memory: 192Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          env:
+            - name: PORTAL_DB_PATH
+              value: /var/lib/portal-backend/portal.db
+            # ─── Search aggregator (fase C) ───
+            # Set these to enable cross-service search via /api/portal/search.
+            # Empty / unset = the aggregator skips that source silently.
+            # OpenMetadata is the primary catalog and indexes Superset
+            # dashboards + Airflow pipelines via OM-ingest, so even with
+            # just OPENMETADATA_URL set the palette has broad coverage.
+            - name: OPENMETADATA_URL
+              value: "http://openmetadata-server.uwv-platform.svc.cluster.local:8585"
+            # Optional bot-token (JWT) — without it OM still accepts
+            # anonymous /api/v1/search/query in clusters that don't enforce
+            # bot-auth on read endpoints.
+            - name: OPENMETADATA_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: portal-backend-secrets
+                  key: openmetadata-token
+                  optional: true
+            - name: AIRFLOW_URL
+              value: "http://uwv-airflow-webserver.uwv-platform.svc.cluster.local:8080"
+            - name: AIRFLOW_USER
+              valueFrom:
+                secretKeyRef: { name: airflow-api-bot, key: username, optional: true }
+            - name: AIRFLOW_PASS
+              valueFrom:
+                secretKeyRef: { name: airflow-api-bot, key: password, optional: true }
+            # Superset / Grafana left blank by default — Superset coverage
+            # comes via OpenMetadata ingest; enable here when you've got
+            # a service-token in place.
+            - name: SUPERSET_URL
+              value: ""
+            - name: GRAFANA_URL
+              value: "http://prometheus-grafana.uwv-monitoring.svc.cluster.local"
+            - name: GRAFANA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: portal-backend-secrets
+                  key: grafana-api-key
+                  optional: true
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/portal-backend
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: udp-portal-backend-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: udp-portal-backend
+  namespace: uwv-platform
+spec:
+  selector:
+    app.kubernetes.io/name: udp-portal-backend
+  ports:
+    - name: http
+      port: 8089
+      targetPort: http

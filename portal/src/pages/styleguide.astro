@@ -1,5 +1,5 @@
 ---
-import Layout from '../layouts/Layout.astro';
+import ShellLayout from '../layouts/ShellLayout.astro';
 import Button from '../components/primitives/Button.astro';
 import Eyebrow from '../components/primitives/Eyebrow.astro';
 import StatusDot from '../components/primitives/StatusDot.astro';
@@ -7,7 +7,7 @@ import Tag from '../components/primitives/Tag.astro';
 import NavLink from '../components/primitives/NavLink.astro';
 import Tile from '../components/primitives/Tile.astro';
 ---
-<Layout title="Styleguide">
+<ShellLayout title="Styleguide" activeSection="settings">
   <article class="sg">
     <header class="sg-head">
       <Eyebrow rule>Internal · Designers + Engineers</Eyebrow>
@@ -216,7 +216,7 @@ import Tile from '../components/primitives/Tile.astro';
       </div>
     </section>
   </article>
-</Layout>
+</ShellLayout>
 
 <style>
   .sg {

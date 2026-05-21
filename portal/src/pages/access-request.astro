@@ -1,5 +1,5 @@
 ---
-import Layout from '../layouts/Layout.astro';
+import ShellLayout from '../layouts/ShellLayout.astro';
 import Button from '../components/primitives/Button.astro';
 import Eyebrow from '../components/primitives/Eyebrow.astro';
 
@@ -32,7 +32,7 @@ const sampleAssets = [
   'uwv-trino.bronze.uwv.crm_contact',
 ];
 ---
-<Layout title="Toegang aanvragen">
+<ShellLayout title="Toegang aanvragen" activeSection="workspace">
   <section class="ar-hero">
     <Eyebrow rule>Toegang aanvragen</Eyebrow>
     <h1 class="ar-hero-title">
@@ -269,4 +269,4 @@ const sampleAssets = [
     .ar-meta dd { margin: 0; }
     .ar-next { font-size: 0.9rem; margin: 0.5rem 0 0; }
   </style>
-</Layout>
+</ShellLayout>
