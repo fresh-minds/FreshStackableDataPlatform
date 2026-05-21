@@ -297,9 +297,18 @@ data:
     # `frame-ancestors 'none'` — dat blokkeert iframe-rendering ook van
     # de portal-shell op dezelfde origin. Override met 'self' + expliciete
     # portal-host (defensief — same-origin volstaat eigenlijk).
+    #
     # Setting wordt als CLI-arg op `jupyterhub-singleuser` doorgegeven;
     # json.dumps zorgt dat de geneste-quote dance correct over de
     # subprocess argv-grens komt.
+    #
+    # ⚠ BELANGRIJK: c.KubeSpawner.cmd MOET expliciet gezet zijn — KubeSpawner
+    # negeert `args` als cmd None is (gebruikt dan de image-ENTRYPOINT
+    # zonder onze args te appenden). Zie kubespawner spawner.py:
+    #   if self.cmd:
+    #       real_cmd = self.cmd + args
+    # Anders blijft real_cmd None → image-ENTRYPOINT loopt zonder args →
+    # geen CSP override → user pod stuurt nog steeds frame-ancestors none.
     import json
     _csp_settings = json.dumps({
         "headers": {
@@ -310,6 +319,7 @@ data:
                 "https://platform.freshstackable.com",
         }
     })
+    c.KubeSpawner.cmd = ["jupyterhub-singleuser"]
     c.KubeSpawner.args = [f"--ServerApp.tornado_settings={_csp_settings}"]
 
     # Sanity log so a smoke test can grep this in the Hub pod logs.
