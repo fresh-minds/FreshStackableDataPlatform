@@ -89,7 +89,7 @@ for h in keycloak openmetadata minio-console multica nanitics opensearch spark s
 done
 
 # ── 4. Grafana stuurt geen X-Frame-Options: DENY (allow_embedding=true).
-log "4/5 Grafana X-Frame-Options niet DENY"
+log "4/6 Grafana X-Frame-Options niet DENY"
 xfo=$(curl -sk -I "${PORTAL}/grafana/" 2>/dev/null | grep -i "x-frame-options" || true)
 if [[ -z "$xfo" ]] || ! echo "$xfo" | grep -qi "deny"; then
   pass "Grafana stuurt geen X-Frame-Options: DENY (${xfo:-geen header})"
@@ -102,7 +102,7 @@ fi
 # (X-Forwarded-Prefix=/airflow/auth) rendert FAB z'n bootstrap.css URL als
 # /airflow/static/appbuilder/... wat 404't, en de hidden modal "User
 # confirmation needed" wordt zichtbaar zonder styling.
-log "5/5 Airflow FAB-rendered static assets onder /airflow/auth/static/"
+log "5/6 Airflow FAB-rendered static assets onder /airflow/auth/static/"
 fab_css_code=$(curl -sk -o /dev/null -w "%{http_code}" "${PORTAL}/airflow/auth/static/appbuilder/css/bootstrap.min.css")
 if [[ "$fab_css_code" == "200" ]]; then
   pass "FAB bootstrap.min.css → HTTP $fab_css_code"
@@ -116,6 +116,28 @@ if echo "$login_href" | grep -q "/airflow/auth/static/"; then
   pass "FAB login-pagina linkt CSS naar /airflow/auth/static/ (juiste prefix)"
 else
   fail "FAB login-pagina linkt CSS naar verkeerd pad: $login_href"
+fi
+
+# ── 6. Portal CSP heeft `font-src 'self' data:` voor dbt-docs.
+# dbt-docs static-bundle bevat 3 inline data:font fonts. Zonder
+# `data:` in font-src valt 'ie naar default-src 'self' → fonts geblokkeerd
+# → page rendert ongestyleerd (geen icons, default typografie).
+# Check direct op nginx in de pod omdat oauth2-proxy 302't en headers
+# niet doorzet aan unauthenticated requests.
+log "6/6 Portal CSP whitelist't data: in font-src (dbt-docs fonts)"
+PORTAL_POD=$(kubectl -n uwv-platform get pod -l app.kubernetes.io/name=portal \
+  -o jsonpath="{.items[0].metadata.name}" 2>/dev/null)
+if [[ -n "$PORTAL_POD" ]]; then
+  font_src=$(kubectl -n uwv-platform exec "$PORTAL_POD" -c portal-web -- \
+    curl -sk -I "http://localhost:8080/dbt-docs.html" 2>/dev/null \
+    | grep -i "content-security-policy" | grep -oE "font-src[^;]+" | head -1)
+  if echo "$font_src" | grep -q "data:"; then
+    pass "Portal CSP: $font_src"
+  else
+    fail "Portal CSP mist 'data:' in font-src: ${font_src:-(geen font-src directive)}"
+  fi
+else
+  skip "Portal pod niet gevonden — CSP check overgeslagen"
 fi
 
 echo
