@@ -118,7 +118,17 @@ data:
             }
 
 
-    # Airflow 3.x: FAB-provider verwacht de class als import-pad-string,
-    # niet als class-referentie. De class moet importable zijn vanaf
-    # PYTHONPATH — deze file zelf is dat (Flask laadt 'm via importlib).
-    FAB_SECURITY_MANAGER_CLASS = "webserver_config.UWVAirflowSecurityManager"
+    # Airflow 3.x / providers-fab 2.x: FabAuthManager.security_manager
+    # leest Flask-config key `SECURITY_MANAGER_CLASS` (NIET het oude
+    # `FAB_SECURITY_MANAGER_CLASS`) en verwacht een class-referentie
+    # (geen import-pad-string). Zie:
+    # airflow/providers/fab/auth_manager/fab_auth_manager.py:
+    #   sm_from_config = self.appbuilder.get_app.config.get(
+    #     "SECURITY_MANAGER_CLASS")
+    #   if not issubclass(sm_from_config, FabAirflowSecurityManagerOverride):
+    #     raise AirflowConfigException(...)
+    # Verkeerde key of een string betekent: FAB valt terug op de
+    # default, onze UWV-override draait niet, role_keys blijft leeg,
+    # AUTH_ROLES_MAPPING doet niks, elke OAuth-user landt op Public.
+    # Resultaat: 403 op /ui/dashboard/dag_stats etc.
+    SECURITY_MANAGER_CLASS = UWVAirflowSecurityManager
