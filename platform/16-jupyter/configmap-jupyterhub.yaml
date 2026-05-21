@@ -291,5 +291,26 @@ data:
         }
     }
 
+    # ─── Single-user server CSP ────────────────────────────────────────
+    # KubeSpawner-spawned notebook pods serve hun OWN HTTP-responses
+    # (proxy passes them through unchanged). jupyter-server-default is
+    # `frame-ancestors 'none'` — dat blokkeert iframe-rendering ook van
+    # de portal-shell op dezelfde origin. Override met 'self' + expliciete
+    # portal-host (defensief — same-origin volstaat eigenlijk).
+    # Setting wordt als CLI-arg op `jupyterhub-singleuser` doorgegeven;
+    # json.dumps zorgt dat de geneste-quote dance correct over de
+    # subprocess argv-grens komt.
+    import json
+    _csp_settings = json.dumps({
+        "headers": {
+            "Content-Security-Policy":
+                "frame-ancestors 'self' "
+                "https://platform.uwv-platform.local:8443 "
+                "https://platform.eu-sovereigndataplatform.com "
+                "https://platform.freshstackable.com",
+        }
+    })
+    c.KubeSpawner.args = [f"--ServerApp.tornado_settings={_csp_settings}"]
+
     # Sanity log so a smoke test can grep this in the Hub pod logs.
     print("uwv-lab: jupyterhub_config loaded", file=sys.stderr, flush=True)
