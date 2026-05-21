@@ -72,19 +72,21 @@ for patch in "${PATCHES[@]}"; do
   UUID=$(echo "$CLIENT" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
   # Merge nieuwe redirects + origins in bestaande lijsten, dedupe.
-  UPDATED=$(echo "$CLIENT" | python3 -c "
+  # Env-vars MOETEN vóór `python3` — anders worden ze als argv doorgegeven
+  # en leest os.environ.get(...) niks (en de patch is een no-op).
+  UPDATED=$(echo "$CLIENT" | NEW_REDIRECTS="$NEW_REDIRECTS" NEW_ORIGINS="$NEW_ORIGINS" python3 -c "
 import sys, json, os
-c = json.load(sys.stdin)
-new_redirects = os.environ.get('NEW_REDIRECTS', '').split(',')
-new_origins = os.environ.get('NEW_ORIGINS', '').split(',')
-existing_redirects = c.get('redirectUris', []) or []
-existing_origins = c.get('webOrigins', []) or []
+c = json.loads(sys.stdin.read())
+new_redirects = [x for x in os.environ.get('NEW_REDIRECTS', '').split(',') if x]
+new_origins = [x for x in os.environ.get('NEW_ORIGINS', '').split(',') if x]
+existing_redirects = [u for u in (c.get('redirectUris') or []) if u]
+existing_origins = [u for u in (c.get('webOrigins') or []) if u]
 merged_redirects = list(dict.fromkeys([*existing_redirects, *new_redirects]))
 merged_origins = list(dict.fromkeys([*existing_origins, *new_origins]))
 c['redirectUris'] = merged_redirects
 c['webOrigins'] = merged_origins
 print(json.dumps(c))
-" NEW_REDIRECTS="$NEW_REDIRECTS" NEW_ORIGINS="$NEW_ORIGINS")
+")
 
   # PUT update
   HTTP=$(curl -fsS -o /dev/null -w '%{http_code}' \

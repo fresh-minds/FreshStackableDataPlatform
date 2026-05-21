@@ -71,6 +71,11 @@ export interface EmbedConfig {
   // Voor 'subpath': pad onder de portal-host (begin met '/').
   // Voor 'subdomain': leeg laten — we gebruiken `url` als basis.
   path?: string;
+  // Override de iframe-src base. Nuttig als `url` naar een portal-pagina
+  // wijst (bv. MinIO's /go/minio/ SSO-bootstrap) maar de iframe gewoon
+  // direct naar het service-subdomein moet. Layout-chrome in een iframe
+  // is verwarrend; betere UX is direct laden.
+  iframeBase?: string;
 }
 
 export interface PlatformComponent {
@@ -143,11 +148,19 @@ export const components: PlatformComponent[] = [
     // /go/minio/ is een portal-redirect die de Keycloak SSO-flow start;
     // zie portal/nginx.conf + portal/src/pages/go/minio.astro voor de
     // workaround voor de embedded MinIO Console-quirk via de externe ingress.
+    // (Nieuwe MinIO Console-builds returnen wel SSO-redirect via externe
+    // /api/v1/login dus /go/minio/ is niet meer strikt noodzakelijk, maar
+    // blijft staan als directe-link entry voor de /me shortcut-lijst.)
     url: '/go/minio/',
     // S3-API moet root-pad zijn (geen subpath mogelijk). De Console heeft
     // OIDC-callback hard-coded op /oauth_callback en is daarom cross-origin
-    // op zijn eigen subdomein.
-    embed: { mode: 'subdomain' },
+    // op zijn eigen subdomein. iframeBase override: iframe direct naar de
+    // Console — Layout-chrome via /go/minio/ in een iframe was verwarrend
+    // (geneste topbars), en de Console doet zelf de SSO-redirect.
+    embed: {
+      mode: 'subdomain',
+      iframeBase: 'https://minio-console.uwv-platform.local:8443',
+    },
     prometheusJob: 'minio',
     rolesUsing: ['platform_admin', 'data_engineer'],
   },
@@ -494,10 +507,11 @@ export function resolveEmbedSrc(
     return base + (cleanDeep.startsWith('/') ? cleanDeep : '/' + cleanDeep);
   }
 
-  // 'subdomain' → externe URL uit `c.url` als basis.
+  // 'subdomain' → externe URL uit embed.iframeBase (override) of c.url.
   if (c.embed.mode === 'subdomain') {
-    if (!c.url) return null;
-    const baseUrl = c.url.replace(/\/+$/, '');
+    const source = c.embed.iframeBase ?? c.url;
+    if (!source) return null;
+    const baseUrl = source.replace(/\/+$/, '');
     if (!cleanDeep) return looksLikeFile(baseUrl) ? baseUrl : baseUrl + '/';
     return baseUrl + (cleanDeep.startsWith('/') ? cleanDeep : '/' + cleanDeep);
   }
@@ -523,6 +537,14 @@ export function resolveExternalUrl(
     const base = (c.embed.path ?? '/').replace(/\/+$/, '');
     if (!cleanDeep) return looksLikeFile(base) ? base : base + '/';
     return base + (cleanDeep.startsWith('/') ? cleanDeep : '/' + cleanDeep);
+  }
+  // Subdomain mode: voor "open in nieuw tabblad" gebruiken we dezelfde
+  // base als de iframe — gebruiker landt op de echte service-URL, niet op
+  // een tussenpagina als /go/minio/.
+  if (c.embed?.mode === 'subdomain' && c.embed.iframeBase) {
+    const baseUrl = c.embed.iframeBase.replace(/\/+$/, '');
+    if (!cleanDeep) return baseUrl;
+    return baseUrl + (cleanDeep.startsWith('/') ? cleanDeep : '/' + cleanDeep);
   }
   if (!c.url) return null;
   if (c.url.startsWith('/')) return c.url; // portal-interne URL (zoals dbt-docs)

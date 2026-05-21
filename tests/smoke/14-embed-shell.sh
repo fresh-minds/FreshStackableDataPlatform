@@ -68,8 +68,12 @@ for entry in \
 done
 
 # ── 3. Subdomain services hebben iframe-allow CSP.
+# keycloak hoort ook in deze lijst — z'n login-page wordt geiframed
+# tijdens OAuth-redirects vanuit path-routed services (Airflow, Jupyter,
+# Grafana) en moest daarom ook X-Frame-Options strippen + CSP
+# frame-ancestors zetten.
 log "3/4 subdomain services sturen frame-ancestors CSP"
-for h in openmetadata minio-console multica nanitics opensearch spark superset; do
+for h in keycloak openmetadata minio-console multica nanitics opensearch spark superset; do
   csp=$(curl -sk -I "https://${h}.${PLATFORM_DOMAIN}${PORT_SUFFIX}/" 2>/dev/null \
     | grep -i "content-security-policy" | grep -i "frame-ancestors" || true)
   if [[ -n "$csp" ]] && echo "$csp" | grep -q "platform.${PLATFORM_DOMAIN}"; then
