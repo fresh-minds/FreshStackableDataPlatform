@@ -80,6 +80,16 @@ jobs:
           sudo tar -xzf /tmp/stackit.tar.gz -C /usr/local/bin stackit
           stackit --version
 
+      - name: Check STACKIT_SA_KEY secret is configured
+        run: |
+          if [ -z '${{ secrets.STACKIT_SA_KEY }}' ]; then
+            echo "::error title=Missing repo secret::STACKIT_SA_KEY is empty. Set it via:"
+            echo "::error::  gh secret set STACKIT_SA_KEY --body \"\$(cat path/to/sa-key.json)\""
+            echo "::error::or paste in Settings → Secrets and variables → Actions."
+            echo "::error::Key must contain credentials.iss and credentials.kid (StackIT SA service-account)."
+            exit 1
+          fi
+
       - name: Stage StackIT SA key
         # Schrijf de JSON-key naar disk — de provider/CLI leest hem via env var.
         run: |

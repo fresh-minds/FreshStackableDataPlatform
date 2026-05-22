@@ -76,6 +76,13 @@ jobs:
           sudo tar -xzf /tmp/stackit.tar.gz -C /usr/local/bin stackit
           stackit --version
 
+      - name: Check STACKIT_SA_KEY secret is configured
+        run: |
+          if [ -z '${{ secrets.STACKIT_SA_KEY }}' ]; then
+            echo "::error title=Missing repo secret::STACKIT_SA_KEY is empty. See stackit-cd.yml for setup."
+            exit 1
+          fi
+
       - name: Stage StackIT SA key
         run: |
           umask 077
