@@ -3,6 +3,7 @@
 Run:
   cd data-generation && uv run pytest -v
 """
+
 from __future__ import annotations
 
 import random
@@ -29,13 +30,13 @@ def test_known_valid_bsns(bsn: str) -> None:
 @pytest.mark.parametrize(
     "bsn",
     [
-        "000000000",   # alle nullen
-        "111111111",   # eenvoud
-        "12345",       # te kort
+        "000000000",  # alle nullen
+        "111111111",  # eenvoud
+        "12345",  # te kort
         "1234567890",  # te lang
-        "abcdefghi",   # niet-numeriek
-        "012345678",   # leading zero
-        "",            # leeg
+        "abcdefghi",  # niet-numeriek
+        "012345678",  # leading zero
+        "",  # leeg
     ],
 )
 def test_known_invalid_bsns(bsn: str) -> None:

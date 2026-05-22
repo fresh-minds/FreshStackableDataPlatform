@@ -3,6 +3,7 @@
 UC-02 hoog-risico AI is in deze referentie placeholder; deze generator levert
 *minimaal* veld-niveau data, geen medische bijzondere PG.
 """
+
 from __future__ import annotations
 
 import random
@@ -17,7 +18,7 @@ from ._common import envelope, make_rng
 class WajongDossier:
     dossier_id: str
     bsn: str
-    regime: str          # 'oude_Wajong' | 'Wajong_2010' | 'Wajong_2015'
+    regime: str  # 'oude_Wajong' | 'Wajong_2010' | 'Wajong_2015'
     arbeidsvermogen: str  # 'volledig' | 'gedeeltelijk' | 'duurzaam_geen'
     ingangsdatum: str
 
@@ -29,9 +30,7 @@ def generate_wajong_dossier(rng: random.Random, bsn: str) -> WajongDossier:
     return WajongDossier(
         dossier_id=f"WAJ-{rng.randint(10**8, 10**9 - 1)}",
         bsn=bsn,
-        regime=rng.choices(
-            ["oude_Wajong", "Wajong_2010", "Wajong_2015"], weights=[20, 50, 30]
-        )[0],
+        regime=rng.choices(["oude_Wajong", "Wajong_2010", "Wajong_2015"], weights=[20, 50, 30])[0],
         arbeidsvermogen=rng.choices(
             ["volledig", "gedeeltelijk", "duurzaam_geen"], weights=[40, 40, 20]
         )[0],
@@ -39,7 +38,9 @@ def generate_wajong_dossier(rng: random.Random, bsn: str) -> WajongDossier:
     )
 
 
-def generate_wajong_dossiers(persona_bsns: list[str], rate: float = 0.05, seed: int | None = None) -> Iterator[WajongDossier]:
+def generate_wajong_dossiers(
+    persona_bsns: list[str], rate: float = 0.05, seed: int | None = None
+) -> Iterator[WajongDossier]:
     rng = make_rng(seed)
     for bsn in persona_bsns:
         if rng.random() < rate:

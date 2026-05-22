@@ -7,6 +7,7 @@ om aan te koppelen), dan dbt-artifacts (lineage + meta).
 Zie docs/adr/0007-airflow-pipeline-architecture.md.
 SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
 """
+
 from __future__ import annotations
 
 from governance_factory import build_om_ingest_dag

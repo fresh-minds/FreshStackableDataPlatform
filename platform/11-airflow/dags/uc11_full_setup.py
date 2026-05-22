@@ -25,6 +25,7 @@ Idempotent: kan onbeperkt worden hergedraaid op dezelfde cluster.
 
 SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -70,9 +71,14 @@ UC11_SILVER_DAGS = [
 _PY_IMAGE = "openmetadata/ingestion:1.5.7"  # heeft Python 3.10 + requests + minio
 
 
-def _py_pod(task_id: str, script: str, *, om_jwt: bool = True,
-            service_account_name: str | None = None,
-            extra_env: list[V1EnvVar] | None = None) -> KubernetesPodOperator:
+def _py_pod(
+    task_id: str,
+    script: str,
+    *,
+    om_jwt: bool = True,
+    service_account_name: str | None = None,
+    extra_env: list[V1EnvVar] | None = None,
+) -> KubernetesPodOperator:
     """Run een inline Python-script als KPO met optioneel OM_JWT_TOKEN.
 
     `service_account_name` is nodig voor tasks die K8s-resources lezen of
@@ -112,7 +118,7 @@ ORCHESTRATOR_SA = "uc11-orchestrator"
 
 # ── scripts ───────────────────────────────────────────────────────────
 
-ENSURE_STREAMING_BRONZE_SCRIPT = '''
+ENSURE_STREAMING_BRONZE_SCRIPT = """
 import json, os, sys, ssl, urllib.request, urllib.error
 print(f"python: {sys.version}", flush=True)
 KAPI = "https://kubernetes.default.svc"
@@ -185,10 +191,10 @@ except urllib.error.HTTPError as e:
 except Exception as e:
     print(f"  ! create exception: {type(e).__name__}: {e}", flush=True)
     raise SystemExit(1)
-'''
+"""
 
 
-ENSURE_SEED_SCRIPT = '''
+ENSURE_SEED_SCRIPT = """
 import json, os, ssl, urllib.request, urllib.error
 KAPI = "https://kubernetes.default.svc"
 with open("/var/run/secrets/kubernetes.io/serviceaccount/token") as f:
@@ -228,10 +234,10 @@ print("seed nog niet gedraaid — run `make seed` eerst, of zet "
       "Airflow Variable `uc11_full_setup.run_seed=true` "
       "(out-of-scope voor deze DAG om secrets/ConfigMaps te beheren).",
       flush=True)
-'''
+"""
 
 
-WAIT_FOR_BRONZE_SCRIPT = '''
+WAIT_FOR_BRONZE_SCRIPT = """
 import json, ssl, time, urllib.request
 ctx = ssl._create_unverified_context()
 url = "https://uwv-trino-coordinator.uwv-platform.svc.cluster.local:8443/v1/statement"
@@ -275,10 +281,10 @@ print(f"[wait_for_bronze] timeout — last error: {last_err}", flush=True)
 print("  Hint: ensure_streaming_bronze task aangemaakt? Of run `make seed` voor data.",
       flush=True)
 raise SystemExit(1)
-'''
+"""
 
 
-RENDER_MANIFEST_SCRIPT = '''
+RENDER_MANIFEST_SCRIPT = """
 import json, os, io, ssl, sys, subprocess, urllib.request
 # Run dbt parse via subprocess — dbt-trino image heeft het ingebakken.
 # Profiles + project staan op /opt/uwv/dbt.
@@ -302,7 +308,7 @@ s3 = boto3.client("s3",
     verify=False)
 s3.put_object(Bucket="uwv-meta", Key="dbt/latest/manifest.json", Body=data)
 print(f"manifest uploaded: {len(data)} bytes", flush=True)
-'''
+"""
 
 
 # Note: dbt-trino-image doesn't have boto3 by default. We use minio package
@@ -315,7 +321,7 @@ print(f"manifest uploaded: {len(data)} bytes", flush=True)
 # image). Easiest of all: use the dbt-trino image and pip-install boto3 in
 # the script. Trade-off: ~30s pip install but single pod.
 
-RENDER_MANIFEST_DBT_SCRIPT = '''
+RENDER_MANIFEST_DBT_SCRIPT = """
 set -eu -o pipefail
 cd /opt/uwv/dbt
 export DBT_PROFILES_DIR=/opt/uwv/dbt
@@ -342,10 +348,10 @@ s3 = boto3.client("s3",
 s3.put_object(Bucket="uwv-meta", Key="dbt/latest/manifest.json", Body=data)
 print(f"manifest uploaded: {len(data)} bytes")
 PY
-'''
+"""
 
 
-CLEANUP_DUPS_SCRIPT = '''
+CLEANUP_DUPS_SCRIPT = """
 import json, os, urllib.parse, urllib.request, urllib.error
 OM = "http://openmetadata.uwv-meta.svc.cluster.local:8585"
 JWT = os.environ["OM_JWT_TOKEN"]
@@ -380,13 +386,13 @@ for fqn in [
     "uwv-trino.silver.uc11_klantreis",
 ]:
     del_by_fqn("databaseSchemas", fqn)
-'''
+"""
 
 
 # Re-creates de superset-dashboards-init Job zodat het UC-11 dashboard
 # pas WORDT GEBOUWD nadat onze gold-marts bestaan. We hergebruiken het
 # bestaande `superset-dashboards-init-script` ConfigMap.
-REBUILD_DASHBOARD_SCRIPT = '''
+REBUILD_DASHBOARD_SCRIPT = """
 import json, os, time, urllib.parse, urllib.request, urllib.error
 KAPI = "https://kubernetes.default.svc"
 with open("/var/run/secrets/kubernetes.io/serviceaccount/token") as f:
@@ -457,7 +463,7 @@ while time.time() < deadline:
     if status.get("failed"):
         raise SystemExit(f"job {JOB} failed")
 raise SystemExit(f"job {JOB} timeout (5 min)")
-'''
+"""
 
 
 # ── DAG definition ────────────────────────────────────────────────────
@@ -470,13 +476,12 @@ with DAG(
         "Superset-dashboard."
     ),
     default_args=DEFAULT_ARGS,
-    schedule=None,        # alleen manueel — dit is een one-shot bootstrap
+    schedule=None,  # alleen manueel — dit is een one-shot bootstrap
     start_date=datetime(2026, 5, 1),
     catchup=False,
     max_active_runs=1,
     tags=["uwv", "uc11", "bootstrap"],
 ) as dag:
-
     ensure_streaming = _py_pod(
         task_id="ensure_streaming_bronze",
         script=ENSURE_STREAMING_BRONZE_SCRIPT,
@@ -572,6 +577,14 @@ with DAG(
     rebuild_dash.trigger_rule = TriggerRule.ALL_DONE
 
     # Flow
-    ensure_streaming >> ensure_seed >> wait_bronze \
-        >> silver_triggers >> trigger_gold >> render_manifest >> trigger_om \
-        >> cleanup >> rebuild_dash
+    (
+        ensure_streaming
+        >> ensure_seed
+        >> wait_bronze
+        >> silver_triggers
+        >> trigger_gold
+        >> render_manifest
+        >> trigger_om
+        >> cleanup
+        >> rebuild_dash
+    )

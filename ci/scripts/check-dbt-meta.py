@@ -4,6 +4,7 @@
 Gebruikt door `.github/workflows/dbt-parse.yml`. Faalt non-zero als één of meer
 mart-models een verplicht `meta`-veld missen. Strict op marts; soft op staging.
 """
+
 from __future__ import annotations
 
 import sys
@@ -50,7 +51,11 @@ def check_yml(path: Path, required: list[str]) -> list[str]:
                 violations.append(f"{model['name']}: missing meta.{field}")
             else:
                 value = meta[field]
-                if isinstance(value, list) and len(value) == 0 and field != "pii_kolommen":
+                if (
+                    isinstance(value, list)
+                    and len(value) == 0
+                    and field != "pii_kolommen"
+                ):
                     violations.append(f"{model['name']}: meta.{field} is leeg")
     return violations
 

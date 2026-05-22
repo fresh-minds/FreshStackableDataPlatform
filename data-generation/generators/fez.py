@@ -2,6 +2,7 @@
 
 Geaggregeerde uitkeringslast per wet x maand x regio. Geen PII.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -15,7 +16,7 @@ from ._common import envelope, make_rng
 class UitkeringslastAggregaat:
     jaar: int
     maand: int
-    wet: str             # 'WW' | 'WIA' | 'Wajong' | 'ZW' | 'TW' | 'WAO'
+    wet: str  # 'WW' | 'WIA' | 'Wajong' | 'ZW' | 'TW' | 'WAO'
     regio_code: str
     uitbetaald_bruto_eur: int
     aantal_uitkeringen: int

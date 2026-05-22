@@ -3,6 +3,7 @@
 SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
 Productie-volwaardige generator: fase 5.
 """
+
 from __future__ import annotations
 
 import random
@@ -19,8 +20,10 @@ class WWAanvraag:
     bsn: str
     aanvraag_datum: str
     laatste_werkdag: str
-    reden_einde_dienstverband: str  # 'ontslag_werkgever' | 'einde_contract' | 'wederzijds_goedvinden' | 'eigen_initiatief'
-    status: str                     # 'INGEDIEND' | 'TOEGEKEND' | 'AFGEWEZEN' | 'IN_BEHANDELING'
+    reden_einde_dienstverband: (
+        str  # 'ontslag_werkgever' | 'einde_contract' | 'wederzijds_goedvinden' | 'eigen_initiatief'
+    )
+    status: str  # 'INGEDIEND' | 'TOEGEKEND' | 'AFGEWEZEN' | 'IN_BEHANDELING'
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -42,7 +45,9 @@ def generate_ww_aanvraag(rng: random.Random, bsn: str) -> WWAanvraag:
     )
 
 
-def generate_ww_aanvragen(persona_bsns: list[str], rate: float = 0.3, seed: int | None = None) -> Iterator[WWAanvraag]:
+def generate_ww_aanvragen(
+    persona_bsns: list[str], rate: float = 0.3, seed: int | None = None
+) -> Iterator[WWAanvraag]:
     """Genereer WW-aanvragen voor een fractie van de personen."""
     rng = make_rng(seed)
     for bsn in persona_bsns:

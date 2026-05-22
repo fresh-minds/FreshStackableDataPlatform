@@ -13,6 +13,7 @@ Elke DAG triggert pas wanneer ALLE benodigde silver-Datasets vers zijn.
 Zie docs/adr/0007-airflow-pipeline-architecture.md.
 SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
 """
+
 from __future__ import annotations
 
 from gold_factory import build_all_gold_dags

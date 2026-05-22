@@ -9,6 +9,7 @@ Vereisten op Spark-image (via SparkApplication.deps.packages):
   - iceberg:  org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.6.x
   - s3a:      hadoop-aws + aws-sdk-bundle (in Stackable-image meestal aanwezig)
 """
+
 from __future__ import annotations
 
 import os
@@ -19,7 +20,9 @@ if TYPE_CHECKING:
 
 TABLE_FORMAT = os.getenv("TABLE_FORMAT", "delta").lower()
 HMS_URI = os.getenv("HIVE_METASTORE_URI", "thrift://uwv-hive:9083")
-S3_ENDPOINT = os.getenv("S3_ENDPOINT", "http://minio.uwv-platform.svc.cluster.local:9000")
+S3_ENDPOINT = os.getenv(
+    "S3_ENDPOINT", "http://minio.uwv-platform.svc.cluster.local:9000"
+)
 S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "uwvadmin")
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "")
 S3_REGION = os.getenv("S3_REGION", "eu-nl-1")
@@ -45,28 +48,35 @@ def get_spark_with_lakehouse_config(app_name: str) -> "SparkSession":
     # overschrijven die en breken TLS naar HTTPS-MinIO.
     if os.getenv("STACKABLE_S3_AUTOCONFIG", "true").lower() != "true":
         builder = (
-            builder
-            .config("spark.hadoop.fs.s3a.endpoint", S3_ENDPOINT)
+            builder.config("spark.hadoop.fs.s3a.endpoint", S3_ENDPOINT)
             .config("spark.hadoop.fs.s3a.path.style.access", "true")
             .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
             .config("spark.hadoop.fs.s3a.access.key", S3_ACCESS_KEY)
             .config("spark.hadoop.fs.s3a.secret.key", S3_SECRET_KEY)
-            .config("spark.hadoop.fs.s3a.aws.credentials.provider",
-                    "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
+            .config(
+                "spark.hadoop.fs.s3a.aws.credentials.provider",
+                "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+            )
         )
 
     if TABLE_FORMAT == "delta":
-        builder = (
-            builder
-            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-            .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        builder = builder.config(
+            "spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension"
+        ).config(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
         )
     elif TABLE_FORMAT == "iceberg":
         builder = (
-            builder
-            .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
+            builder.config(
+                "spark.sql.extensions",
+                "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
+            )
             # spark_catalog upgraded zodat saveAsTable("bronze.uwv.x") correct werkt
-            .config("spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog")
+            .config(
+                "spark.sql.catalog.spark_catalog",
+                "org.apache.iceberg.spark.SparkSessionCatalog",
+            )
             .config("spark.sql.catalog.spark_catalog.type", "hive")
         )
     else:
@@ -75,8 +85,12 @@ def get_spark_with_lakehouse_config(app_name: str) -> "SparkSession":
     return builder.getOrCreate()
 
 
-def write_table(df: "DataFrame", table_name: str, mode: str = "append",
-                partition_by: list[str] | None = None) -> None:
+def write_table(
+    df: "DataFrame",
+    table_name: str,
+    mode: str = "append",
+    partition_by: list[str] | None = None,
+) -> None:
     """Schrijf een batch DataFrame naar Delta of Iceberg.
 
     `table_name` bv. 'bronze.uwv.persona_created'. Tabel wordt lazy gecreëerd.
@@ -87,15 +101,18 @@ def write_table(df: "DataFrame", table_name: str, mode: str = "append",
     writer.saveAsTable(table_name)
 
 
-def write_stream_to_table(df: "DataFrame", table_name: str, checkpoint_path: str,
-                          mode: str = "append",
-                          partition_by: list[str] | None = None,
-                          trigger_seconds: int = 30):
+def write_stream_to_table(
+    df: "DataFrame",
+    table_name: str,
+    checkpoint_path: str,
+    mode: str = "append",
+    partition_by: list[str] | None = None,
+    trigger_seconds: int = 30,
+):
     """Streaming write naar Delta/Iceberg tabel. Returnt StreamingQuery."""
 
     writer = (
-        df.writeStream
-        .format(TABLE_FORMAT)
+        df.writeStream.format(TABLE_FORMAT)
         .option("checkpointLocation", checkpoint_path)
         .outputMode(mode)
         .trigger(processingTime=f"{trigger_seconds} seconds")
@@ -115,5 +132,4 @@ def ensure_bronze_schema(spark: "SparkSession") -> None:
     database-naam met dot interpreteert (geen catalog-registratie voor
     `bronze` in spark_catalog).
     """
-    spark.sql("CREATE SCHEMA IF NOT EXISTS uwv "
-              "LOCATION 's3a://uwv-bronze/uwv/'")
+    spark.sql("CREATE SCHEMA IF NOT EXISTS uwv " "LOCATION 's3a://uwv-bronze/uwv/'")

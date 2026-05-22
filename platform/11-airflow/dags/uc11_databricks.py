@@ -29,6 +29,7 @@ Voorvereisten (in-cluster):
 
 SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta

@@ -29,12 +29,11 @@ Env-vars:
 """
 from __future__ import annotations
 
-import base64
 import json
 import os
 import sys
 from collections import defaultdict
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 
 import requests
 

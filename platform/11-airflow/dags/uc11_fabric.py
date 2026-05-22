@@ -31,6 +31,7 @@ Voorvereisten (eerste deploy):
 
 SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
 """
+
 from __future__ import annotations
 
 import json
@@ -52,7 +53,6 @@ from fabric_helpers import (
     trigger_notebook,
     wait_for_operation,
 )
-from k8s_helpers import SMALL_POD_RESOURCES
 
 DEFAULT_ARGS = {
     "owner": "data-steward",

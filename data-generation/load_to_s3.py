@@ -14,6 +14,7 @@ Voorbeeldgebruik:
 
 In-cluster: zie data-generation/k8s/seed-job.yaml.
 """
+
 from __future__ import annotations
 
 import io
@@ -76,12 +77,10 @@ class _S3Writer:
             return 0
         dt = datetime.now(UTC).strftime("%Y-%m-%d")
         ts = int(time.time())
-        key = (
-            f"{_stream_to_path(stream)}/dt={dt}/"
-            f"part-{self._batch_id}-{ts}.jsonl"
+        key = f"{_stream_to_path(stream)}/dt={dt}/" f"part-{self._batch_id}-{ts}.jsonl"
+        self._s3.put_object(
+            Bucket=self._bucket, Key=key, Body=body, ContentType="application/x-ndjson"
         )
-        self._s3.put_object(Bucket=self._bucket, Key=key, Body=body,
-                            ContentType="application/x-ndjson")
         return self._counts.get(stream, 0)
 
 
@@ -114,20 +113,44 @@ def _emit(writer, stream: str, items: Iterable, to_envelope) -> int:
 @click.command()
 @click.option("--count", default=10000, show_default=True, help="Aantal personas (anchor count).")
 @click.option("--seed", default=2026, show_default=True, help="RNG-seed.")
-@click.option("--bucket", default="uwv-raw", show_default=True,
-              help="S3 bucket voor de raw zone.")
-@click.option("--endpoint", envvar="S3_ENDPOINT",
-              default="https://minio.uwv-platform.svc.cluster.local:9000",
-              show_default=True, help="S3 endpoint URL.")
-@click.option("--region", envvar="S3_REGION", default="us-east-1", show_default=True,
-              help="S3 region (MinIO default = us-east-1).")
-@click.option("--insecure", envvar="S3_INSECURE", is_flag=True,
-              help="TLS certificate verificatie uitschakelen (self-signed MinIO).")
-@click.option("--include-domains", default="persona,polisadm,ww,wia,wajong,zw,crm,fez",
-              show_default=True, help="Comma-separated lijst van domeinen om te publiceren.")
+@click.option("--bucket", default="uwv-raw", show_default=True, help="S3 bucket voor de raw zone.")
+@click.option(
+    "--endpoint",
+    envvar="S3_ENDPOINT",
+    default="https://minio.uwv-platform.svc.cluster.local:9000",
+    show_default=True,
+    help="S3 endpoint URL.",
+)
+@click.option(
+    "--region",
+    envvar="S3_REGION",
+    default="us-east-1",
+    show_default=True,
+    help="S3 region (MinIO default = us-east-1).",
+)
+@click.option(
+    "--insecure",
+    envvar="S3_INSECURE",
+    is_flag=True,
+    help="TLS certificate verificatie uitschakelen (self-signed MinIO).",
+)
+@click.option(
+    "--include-domains",
+    default="persona,polisadm,ww,wia,wajong,zw,crm,fez",
+    show_default=True,
+    help="Comma-separated lijst van domeinen om te publiceren.",
+)
 @click.option("--dry-run", is_flag=True, help="Genereer maar schrijf niet naar S3.")
-def main(count: int, seed: int, bucket: str, endpoint: str, region: str, insecure: bool,
-         include_domains: str, dry_run: bool) -> None:
+def main(
+    count: int,
+    seed: int,
+    bucket: str,
+    endpoint: str,
+    region: str,
+    insecure: bool,
+    include_domains: str,
+    dry_run: bool,
+) -> None:
     """Genereer en publiceer synthetische events naar de S3 raw zone."""
     domains = {d.strip() for d in include_domains.split(",") if d.strip()}
     batch_id = uuid.uuid4().hex[:8]
@@ -144,6 +167,7 @@ def main(count: int, seed: int, bucket: str, endpoint: str, region: str, insecur
             )
         if insecure or endpoint.startswith("https://"):
             import urllib3
+
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         s3 = boto3.client(
             "s3",
@@ -158,8 +182,11 @@ def main(count: int, seed: int, bucket: str, endpoint: str, region: str, insecur
     else:
         writer = _NullWriter()
 
-    print(f"==> Loader start (count={count}, seed={seed}, bucket={bucket}, "
-          f"batch_id={batch_id}, dry_run={dry_run})", flush=True)
+    print(
+        f"==> Loader start (count={count}, seed={seed}, bucket={bucket}, "
+        f"batch_id={batch_id}, dry_run={dry_run})",
+        flush=True,
+    )
 
     personas = list(persona_mod.generate_personas(count, seed=seed))
     bsns = [p.bsn for p in personas]
@@ -167,39 +194,60 @@ def main(count: int, seed: int, bucket: str, endpoint: str, region: str, insecur
         _emit(writer, "uwv.persona.created", personas, persona_mod.to_kafka_envelope)
 
     if "polisadm" in domains:
-        _emit(writer, "uwv.polisadm.ikv",
-              polisadministratie.generate_ikvs(bsns, seed=seed),
-              polisadministratie.to_kafka_envelope)
+        _emit(
+            writer,
+            "uwv.polisadm.ikv",
+            polisadministratie.generate_ikvs(bsns, seed=seed),
+            polisadministratie.to_kafka_envelope,
+        )
 
     if "ww" in domains:
-        _emit(writer, "uwv.ww.aanvraag",
-              ww.generate_ww_aanvragen(bsns, seed=seed),
-              ww.to_kafka_envelope)
+        _emit(
+            writer,
+            "uwv.ww.aanvraag",
+            ww.generate_ww_aanvragen(bsns, seed=seed),
+            ww.to_kafka_envelope,
+        )
 
     if "wia" in domains:
-        _emit(writer, "uwv.wia.aanvraag",
-              wia.generate_wia_aanvragen(bsns, seed=seed),
-              wia.to_kafka_envelope)
+        _emit(
+            writer,
+            "uwv.wia.aanvraag",
+            wia.generate_wia_aanvragen(bsns, seed=seed),
+            wia.to_kafka_envelope,
+        )
 
     if "wajong" in domains:
-        _emit(writer, "uwv.wajong.dossier",
-              wajong.generate_wajong_dossiers(bsns, seed=seed),
-              wajong.to_kafka_envelope)
+        _emit(
+            writer,
+            "uwv.wajong.dossier",
+            wajong.generate_wajong_dossiers(bsns, seed=seed),
+            wajong.to_kafka_envelope,
+        )
 
     if "zw" in domains:
-        _emit(writer, "uwv.zw.melding",
-              zw.generate_zw_meldingen(bsns, seed=seed),
-              zw.to_kafka_envelope)
+        _emit(
+            writer,
+            "uwv.zw.melding",
+            zw.generate_zw_meldingen(bsns, seed=seed),
+            zw.to_kafka_envelope,
+        )
 
     if "crm" in domains:
-        _emit(writer, "uwv.crm.contact",
-              crm.generate_klantcontacten(bsns, seed=seed),
-              crm.to_kafka_envelope)
+        _emit(
+            writer,
+            "uwv.crm.contact",
+            crm.generate_klantcontacten(bsns, seed=seed),
+            crm.to_kafka_envelope,
+        )
 
     if "fez" in domains:
-        _emit(writer, "uwv.fez.uitkeringslast",
-              fez.generate_fez_aggregaten(seed=seed),
-              fez.to_kafka_envelope)
+        _emit(
+            writer,
+            "uwv.fez.uitkeringslast",
+            fez.generate_fez_aggregaten(seed=seed),
+            fez.to_kafka_envelope,
+        )
 
     print("==> Loader klaar.", flush=True)
 

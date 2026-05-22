@@ -12,6 +12,7 @@ Elke DAG:
 Zie docs/adr/0007-airflow-pipeline-architecture.md.
 SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
 """
+
 from __future__ import annotations
 
 from silver_factory import build_all_silver_dags

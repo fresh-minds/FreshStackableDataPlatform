@@ -5,6 +5,7 @@ SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
 Test-BSN's beginnen met '9'. BRP geeft die niet uit aan natuurlijke personen.
 Elke BSN doorstaat de 11-proef (zie `is_valid_bsn`).
 """
+
 from __future__ import annotations
 
 import random

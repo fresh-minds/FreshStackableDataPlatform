@@ -8,6 +8,7 @@ Gebruikt KubernetesJobOperator (Airflow 2.10+) met inline-spec.
 
 SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
 """
+
 from __future__ import annotations
 
 from datetime import datetime

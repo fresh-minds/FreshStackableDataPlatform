@@ -8,6 +8,7 @@ Productie-overweging: voor immutable Delta-tabellen is `DELETE FROM` mogelijk
 maar zwaarder dan een PARTITION DROP. Voor dagelijks-gepartitioneerde tabellen
 zou een aparte DROP PARTITION-pad efficiënter zijn.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -28,17 +29,44 @@ DEFAULT_ARGS = {
 # In productie zou dit dynamisch via OpenMetadata custom-properties komen.
 RETENTION_RULES = [
     # (catalog, schema, table, year_column, retention_years, dry_run_only)
-    ("silver",  "crm",            "stg_crm_contact",                 "event_date",      2,  False),
-    ("bronze",  "uwv",            "crm_contact",                     "event_date",      2,  False),
-    ("silver",  "fez",            "stg_fez_uitkeringslast",          "event_date",      10, True),  # publiek-publiceerbaar; bewust dry-run
-    ("gold",    "uc01_wia_funnel","mart_uc01_wia_funnel_daily",      "aanvraag_datum",  7,  False),
-    ("gold",    "uc05_client_360","mart_uc05_client_360",            None,              7,  True),   # geen tijdsdimensie; alleen flag
-    ("silver",  "audit",          "client_360_reads",                "event_date",      7,  False),
+    ("silver", "crm", "stg_crm_contact", "event_date", 2, False),
+    ("bronze", "uwv", "crm_contact", "event_date", 2, False),
+    (
+        "silver",
+        "fez",
+        "stg_fez_uitkeringslast",
+        "event_date",
+        10,
+        True,
+    ),  # publiek-publiceerbaar; bewust dry-run
+    (
+        "gold",
+        "uc01_wia_funnel",
+        "mart_uc01_wia_funnel_daily",
+        "aanvraag_datum",
+        7,
+        False,
+    ),
+    (
+        "gold",
+        "uc05_client_360",
+        "mart_uc05_client_360",
+        None,
+        7,
+        True,
+    ),  # geen tijdsdimensie; alleen flag
+    ("silver", "audit", "client_360_reads", "event_date", 7, False),
 ]
 
 
-def _delete_sql(catalog: str, schema: str, table: str, year_col: str | None,
-                years: int, dry_run: bool) -> str:
+def _delete_sql(
+    catalog: str,
+    schema: str,
+    table: str,
+    year_col: str | None,
+    years: int,
+    dry_run: bool,
+) -> str:
     fq = f'"{catalog}"."{schema}"."{table}"'
     if year_col is None:
         # Geen tijdsdimensie — geen automatische cleanup mogelijk.

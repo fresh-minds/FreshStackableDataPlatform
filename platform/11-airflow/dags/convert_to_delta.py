@@ -20,13 +20,19 @@ Trigger-conf (optioneel):
 
 SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
-from kubernetes.client.models import V1ConfigMapVolumeSource, V1EnvVar, V1Volume, V1VolumeMount
+from kubernetes.client.models import (
+    V1ConfigMapVolumeSource,
+    V1EnvVar,
+    V1Volume,
+    V1VolumeMount,
+)
 
 from k8s_helpers import (
     SMALL_POD_RESOURCES,
@@ -72,29 +78,37 @@ def _pip_args() -> list[str]:
 def _env_vars() -> list[V1EnvVar]:
     # Conf-velden worden via Jinja templating doorgegeven aan de pod.
     return [
-        V1EnvVar(name="UWV_OBJECT_KEY",     value="{{ dag_run.conf['object_key'] }}"),
-        V1EnvVar(name="UWV_SOURCE_FORMAT",  value="{{ dag_run.conf['source_format'] }}"),
-        V1EnvVar(name="UWV_TARGET_CATALOG", value="{{ dag_run.conf.get('target_catalog', 'bronze') }}"),
-        V1EnvVar(name="UWV_TARGET_SCHEMA",  value="{{ dag_run.conf['target_schema'] }}"),
-        V1EnvVar(name="UWV_TARGET_TABLE",   value="{{ dag_run.conf['target_table'] }}"),
-        V1EnvVar(name="UWV_PARTITION_COL",  value="{{ dag_run.conf.get('partition_col', '') }}"),
-        V1EnvVar(name="UWV_SOURCE_EMAIL",   value="{{ dag_run.conf.get('source_email', '') }}"),
+        V1EnvVar(name="UWV_OBJECT_KEY", value="{{ dag_run.conf['object_key'] }}"),
+        V1EnvVar(name="UWV_SOURCE_FORMAT", value="{{ dag_run.conf['source_format'] }}"),
+        V1EnvVar(
+            name="UWV_TARGET_CATALOG",
+            value="{{ dag_run.conf.get('target_catalog', 'bronze') }}",
+        ),
+        V1EnvVar(name="UWV_TARGET_SCHEMA", value="{{ dag_run.conf['target_schema'] }}"),
+        V1EnvVar(name="UWV_TARGET_TABLE", value="{{ dag_run.conf['target_table'] }}"),
+        V1EnvVar(
+            name="UWV_PARTITION_COL",
+            value="{{ dag_run.conf.get('partition_col', '') }}",
+        ),
+        V1EnvVar(
+            name="UWV_SOURCE_EMAIL", value="{{ dag_run.conf.get('source_email', '') }}"
+        ),
         V1EnvVar(name="UWV_STAGING_BUCKET", value="uwv-staging"),
         # MinIO
         V1EnvVar(name="S3_ENDPOINT", value=S3_ENDPOINT),
-        V1EnvVar(name="S3_REGION",   value="eu-nl-1"),
+        V1EnvVar(name="S3_REGION", value="eu-nl-1"),
         secret_env("S3_ACCESS_KEY", "minio-s3-credentials", "accessKey"),
         secret_env("S3_SECRET_KEY", "minio-s3-credentials", "secretKey"),
         # Trino
-        V1EnvVar(name="TRINO_HOST",        value=TRINO_HOST),
-        V1EnvVar(name="TRINO_PORT",        value=TRINO_PORT),
-        V1EnvVar(name="TRINO_USER",        value=TRINO_USER),
+        V1EnvVar(name="TRINO_HOST", value=TRINO_HOST),
+        V1EnvVar(name="TRINO_PORT", value=TRINO_PORT),
+        V1EnvVar(name="TRINO_USER", value=TRINO_USER),
         V1EnvVar(name="TRINO_HTTP_SCHEME", value="https"),
-        V1EnvVar(name="TRINO_VERIFY",      value="/etc/uwv-ca/ca.crt"),
+        V1EnvVar(name="TRINO_VERIFY", value="/etc/uwv-ca/ca.crt"),
         secret_env("TRINO_PASSWORD", "trino-static-users", TRINO_USER),
         # CA-bundle
         V1EnvVar(name="REQUESTS_CA_BUNDLE", value="/etc/uwv-ca/ca.crt"),
-        V1EnvVar(name="SSL_CERT_FILE",      value="/etc/uwv-ca/ca.crt"),
+        V1EnvVar(name="SSL_CERT_FILE", value="/etc/uwv-ca/ca.crt"),
     ]
 
 
@@ -107,22 +121,21 @@ with DAG(
         "en registreert in Hive Metastore via Trino."
     ),
     default_args=DEFAULT_ARGS,
-    schedule=None,                          # alleen via REST trigger
+    schedule=None,  # alleen via REST trigger
     start_date=datetime(2026, 5, 1),
     catchup=False,
-    max_active_runs=4,                      # meerdere parallelle uploads OK
+    max_active_runs=4,  # meerdere parallelle uploads OK
     is_paused_upon_creation=False,
     params={
-        "object_key":     "uploads/<email>/<ts>/<file>",
-        "source_format":  "csv",
+        "object_key": "uploads/<email>/<ts>/<file>",
+        "source_format": "csv",
         "target_catalog": "bronze",
-        "target_schema":  "sandbox",
-        "target_table":   "my_table",
-        "partition_col":  "",
+        "target_schema": "sandbox",
+        "target_table": "my_table",
+        "partition_col": "",
     },
     tags=["convert", "delta", "any-file", "portal-trigger"],
 ) as dag:
-
     KubernetesPodOperator(
         task_id="convert",
         name="convert-to-delta",
@@ -133,7 +146,9 @@ with DAG(
         env_vars=_env_vars(),
         volumes=[
             ca_volume(),
-            V1Volume(name="airflow-jobs", config_map=V1ConfigMapVolumeSource(name=JOBS_CM)),
+            V1Volume(
+                name="airflow-jobs", config_map=V1ConfigMapVolumeSource(name=JOBS_CM)
+            ),
         ],
         volume_mounts=[
             ca_mount(),

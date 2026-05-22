@@ -5,6 +5,7 @@ SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
 Productie-volwaardige generator komt in fase 5 zodra dbt staging-models
 de structuur eisen (UC-07 datakwaliteit als anchor).
 """
+
 from __future__ import annotations
 
 import random
@@ -19,9 +20,9 @@ from ._common import envelope, make_faker, make_rng
 class IKV:
     """Inkomstenverhouding — kerneenheid polisadministratie."""
 
-    ikv_id: str           # UUID-achtig, opaque
-    bsn: str              # FK naar persona
-    lh_nummer: str        # Loonheffingennummer werkgever (synthetisch)
+    ikv_id: str  # UUID-achtig, opaque
+    bsn: str  # FK naar persona
+    lh_nummer: str  # Loonheffingennummer werkgever (synthetisch)
     werkgever_naam: str
     aanvang_dienstverband: str  # ISO-date
     einde_dienstverband: str | None  # null = lopend
@@ -61,9 +62,7 @@ def generate_ikv(rng: random.Random, fake, bsn: str) -> IKV:
     )
 
 
-def generate_ikvs_for_persona(
-    rng: random.Random, fake, bsn: str, max_ikvs: int = 3
-) -> list[IKV]:
+def generate_ikvs_for_persona(rng: random.Random, fake, bsn: str, max_ikvs: int = 3) -> list[IKV]:
     """1..max_ikvs IKV's per persoon. Realiteit: ~1.5 gemiddeld."""
     n = rng.choices([1, 2, 3], weights=[60, 30, 10])[0]
     n = min(n, max_ikvs)

@@ -1,4 +1,5 @@
 """WIA-aanvragen stub. SYNTHETIC DATA — NOT FOR REAL USE."""
+
 from __future__ import annotations
 
 import random
@@ -15,9 +16,9 @@ class WIAAanvraag:
     bsn: str
     aanvraag_datum: str
     eerste_ziektedag: str
-    onderdeel: str        # 'WGA' | 'IVA'
-    regio_code: str       # NL-regio (synthetisch)
-    status: str           # 'INGEDIEND' | 'IN_BEHANDELING' | 'TOEGEKEND_WGA' | 'TOEGEKEND_IVA' | 'AFGEWEZEN'
+    onderdeel: str  # 'WGA' | 'IVA'
+    regio_code: str  # NL-regio (synthetisch)
+    status: str  # 'INGEDIEND' | 'IN_BEHANDELING' | 'TOEGEKEND_WGA' | 'TOEGEKEND_IVA' | 'AFGEWEZEN'
     arbeidsongeschikt_pct: int  # 0..100
 
     def to_dict(self) -> dict[str, Any]:
@@ -45,7 +46,9 @@ def generate_wia_aanvraag(rng: random.Random, bsn: str) -> WIAAanvraag:
     )
 
 
-def generate_wia_aanvragen(persona_bsns: list[str], rate: float = 0.15, seed: int | None = None) -> Iterator[WIAAanvraag]:
+def generate_wia_aanvragen(
+    persona_bsns: list[str], rate: float = 0.15, seed: int | None = None
+) -> Iterator[WIAAanvraag]:
     rng = make_rng(seed)
     for bsn in persona_bsns:
         if rng.random() < rate:

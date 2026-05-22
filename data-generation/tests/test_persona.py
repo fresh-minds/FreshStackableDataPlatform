@@ -1,4 +1,5 @@
 """Tests voor persona-generator."""
+
 from __future__ import annotations
 
 from generators.persona import generate_personas, is_valid_bsn

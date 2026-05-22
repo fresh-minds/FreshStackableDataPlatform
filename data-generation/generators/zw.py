@@ -1,4 +1,5 @@
 """Ziektewet-meldingen stub. SYNTHETIC — NOT FOR REAL USE."""
+
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -19,7 +20,9 @@ class ZWMelding:
         return asdict(self)
 
 
-def generate_zw_meldingen(persona_bsns: list[str], rate: float = 0.2, seed: int | None = None) -> Iterator[ZWMelding]:
+def generate_zw_meldingen(
+    persona_bsns: list[str], rate: float = 0.2, seed: int | None = None
+) -> Iterator[ZWMelding]:
     rng = make_rng(seed)
     for bsn in persona_bsns:
         if rng.random() < rate:

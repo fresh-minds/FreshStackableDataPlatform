@@ -9,6 +9,7 @@ Per bronze/silver/gold-tabel één task; faalt graceful als tabel niet bestaat.
 
 SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta

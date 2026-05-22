@@ -207,7 +207,7 @@ def _build_issue_payload(
     description = (
         _wrap_body_with_approval_checklist(body, fingerprint)
         + f"\n\n<!-- watcher-fingerprint: {fingerprint} -->\n"
-        + f"<!-- watcher-version: slice-6 -->\n"
+        + "<!-- watcher-version: slice-6 -->\n"
         + f"<!-- watcher-severity: {severity} -->\n"
         + f"<!-- watcher-area: {area} -->\n"
     )

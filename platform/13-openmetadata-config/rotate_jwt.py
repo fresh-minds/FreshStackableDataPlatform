@@ -80,7 +80,7 @@ def fetch_encrypted_token() -> str:
             )
             row = cur.fetchone()
             if not row or not row[0]:
-                raise RuntimeError(f"ingestion-bot.JWTToken niet gevonden in DB")
+                raise RuntimeError("ingestion-bot.JWTToken niet gevonden in DB")
             return row[0]
     finally:
         conn.close()

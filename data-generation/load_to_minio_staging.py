@@ -6,6 +6,7 @@ direct Spark batch reads).
 
 SYNTHETIC DATA — NOT FOR REAL USE. STUB.
 """
+
 from __future__ import annotations
 
 import sys

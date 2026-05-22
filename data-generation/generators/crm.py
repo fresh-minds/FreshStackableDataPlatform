@@ -1,4 +1,5 @@
 """CRM klantcontact stub. SYNTHETIC — NOT FOR REAL USE."""
+
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -12,8 +13,8 @@ from ._common import envelope, make_rng
 class KlantContact:
     contact_id: str
     bsn: str
-    kanaal: str       # 'telefoon' | 'balie' | 'beeldbellen' | 'werkmap_bericht' | 'mail'
-    onderwerp: str    # 'WW' | 'WIA' | 'Wajong' | 'algemeen'
+    kanaal: str  # 'telefoon' | 'balie' | 'beeldbellen' | 'werkmap_bericht' | 'mail'
+    onderwerp: str  # 'WW' | 'WIA' | 'Wajong' | 'algemeen'
     timestamp: str
     duur_seconden: int | None
 
@@ -38,7 +39,7 @@ def generate_klantcontacten(
                 kanaal=kanaal,
                 onderwerp=rng.choice(onderwerpen),
                 timestamp=f"2025-{rng.randint(1, 12):02d}-{rng.randint(1, 28):02d}T"
-                          f"{rng.randint(8, 17):02d}:{rng.randint(0, 59):02d}:00Z",
+                f"{rng.randint(8, 17):02d}:{rng.randint(0, 59):02d}:00Z",
                 duur_seconden=duur,
             )
 

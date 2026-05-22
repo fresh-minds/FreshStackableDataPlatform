@@ -15,6 +15,7 @@ Bronze schema (per tabel `bronze.uwv.<domain>_<entity>`):
 
 dbt staging-models in fase 5 parsen `payload` naar getypte silver-tabellen.
 """
+
 from __future__ import annotations
 
 import os
@@ -81,12 +82,18 @@ def process_batch(batch_df, batch_id: int) -> None:
     if batch_df.rdd.isEmpty():
         return
     spark = batch_df.sparkSession
-    streams = [r["stream"] for r in batch_df.select("stream").distinct().collect()
-               if r["stream"] is not None]
+    streams = [
+        r["stream"]
+        for r in batch_df.select("stream").distinct().collect()
+        if r["stream"] is not None
+    ]
     for stream in streams:
         table = stream_to_table(stream)
         if table is None:
-            print(f"  [batch {batch_id}] skip onbekende stream-format: {stream}", flush=True)
+            print(
+                f"  [batch {batch_id}] skip onbekende stream-format: {stream}",
+                flush=True,
+            )
             continue
         # `table` = "uwv.persona_created" -> entity = "persona_created"
         entity = table.split(".", 1)[1]
@@ -97,19 +104,20 @@ def process_batch(batch_df, batch_id: int) -> None:
         # Idempotente registratie. Hive-table-not-Delta restanten worden
         # eerst gedropt zodat de nieuwe registratie schoon kan landen.
         spark.sql(f"DROP TABLE IF EXISTS {table}")
-        spark.sql(
-            f"CREATE TABLE IF NOT EXISTS {table} USING DELTA LOCATION '{path}'"
-        )
+        spark.sql(f"CREATE TABLE IF NOT EXISTS {table} USING DELTA LOCATION '{path}'")
         cnt = stream_df.count()
-        print(f"  [batch {batch_id}] {stream} → {table} ({path}): {cnt} rows",
-              flush=True)
+        print(
+            f"  [batch {batch_id}] {stream} → {table} ({path}): {cnt} rows", flush=True
+        )
 
 
 def main() -> int:
     spark = get_spark_with_lakehouse_config("uwv-streaming-files-to-bronze")
     spark.sparkContext.setLogLevel("WARN")
-    print(f"==> Streaming start (TABLE_FORMAT={TABLE_FORMAT}, raw_path={RAW_PATH})",
-          flush=True)
+    print(
+        f"==> Streaming start (TABLE_FORMAT={TABLE_FORMAT}, raw_path={RAW_PATH})",
+        flush=True,
+    )
 
     ensure_bronze_schema(spark)
 
@@ -117,28 +125,31 @@ def main() -> int:
     extract_stream_udf = F.udf(_extract_stream_from_path)
 
     raw = (
-        spark.readStream
-        .format("text")
+        spark.readStream.format("text")
         .option("recursiveFileLookup", "true")
         .option("pathGlobFilter", "*.jsonl")
         .load(RAW_PATH)
     )
 
     enriched = (
-        raw
-        .withColumnRenamed("value", "payload")
+        raw.withColumnRenamed("value", "payload")
         .withColumn("source_file", F.input_file_name())
         .withColumn("stream", extract_stream_udf(F.col("source_file")))
         .withColumn("ingestion_ts", F.current_timestamp())
         .withColumn("source_ts", F.col("ingestion_ts"))
         .withColumn("event_date", F.to_date("source_ts"))
-        .select("payload", "stream", "source_file", "source_ts",
-                "ingestion_ts", "event_date")
+        .select(
+            "payload",
+            "stream",
+            "source_file",
+            "source_ts",
+            "ingestion_ts",
+            "event_date",
+        )
     )
 
     query = (
-        enriched.writeStream
-        .foreachBatch(process_batch)
+        enriched.writeStream.foreachBatch(process_batch)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/files-to-bronze")
         .trigger(processingTime=f"{TRIGGER_SECONDS} seconds")
         .start()
