@@ -1,0 +1,171 @@
+# HorizontalPodAutoscalers — stateless services
+#
+# Adds HPAs for the stateless Deployments that benefit from horizontal scaling
+# under load. Stateful services (Postgres, Hive Metastore, Keycloak,
+# OpenSearch) are deliberately excluded; they need vertical scaling or
+# operator-managed replicas instead.
+#
+# Trino workers have their own HPA in hpa-trino.yaml (StatefulSet target).
+#
+# Requires:
+#   - metrics-server installed in the cluster (AKS + StackIT have it by
+#     default; k3d's k3s ships it but it's currently disabled in our
+#     cluster-config — flip in scripts/cluster.sh if you want HPA on k3d).
+#
+# Cost note: minReplicas is set to 1 across the board so a quiet cluster
+# stays cheap. Production should raise minReplicas to 2 for the
+# auth-critical path (oauth2-proxy on portal) to remove the cold-start
+# during scaling.
+#
+# Target name verification: Stackable 26.3 generates StatefulSets named
+# `<cluster>-<role>-<roleGroup>` (singular `role`, e.g.
+# `uwv-superset-node-default`, not `nodes`). If a HPA shows
+#   <unknown>/<unknown>   in `kubectl get hpa` after first deploy, the
+# target ref doesn't match the actual workload name — check with
+#   kubectl -n uwv-platform get statefulset,deployment
+# and align the `scaleTargetRef.name` below.
+---
+# Airflow scheduler — peak CPU during DAG-parse + Cosmos task-deserialization
+# bursts. Stateless w.r.t. metadata DB (each scheduler can take leadership).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: uwv-airflow-scheduler-hpa
+  namespace: uwv-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: uwv-airflow-scheduler-default
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+    scaleDown:
+      # Long stabilization to avoid flapping during DAG-load lulls.
+      stabilizationWindowSeconds: 900
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+---
+# Airflow webserver / API-server — dashboard requests + REST API.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: uwv-airflow-webserver-hpa
+  namespace: uwv-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: uwv-airflow-webserver-default
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+---
+# Superset — dashboard rendering can spike when several users hit it.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: uwv-superset-hpa
+  namespace: uwv-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: uwv-superset-node-default
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+---
+# Portal (nginx + airflow-bridge + oauth2-proxy sidecar trio) —
+# cheap to scale; SSO-cookie sessions are sticky enough.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: portal-hpa
+  namespace: uwv-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: portal
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 15
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

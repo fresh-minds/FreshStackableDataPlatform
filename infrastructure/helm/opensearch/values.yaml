@@ -31,8 +31,24 @@ resources:
     cpu: 1000m
     memory: 2Gi
 
-# Java heap zit nu in opensearchJavaOpts (bekende OpenSearch-config).
-opensearchJavaOpts: "-Xms512m -Xmx512m"
+# Java heap + GC tuning.
+#
+# Heap = ~50% of pod memory (rest is direct buffers + JNI + page cache).
+# 512m heap on a 2Gi pod fits k3d. AKS/StackIT overrides bump this in
+# values-aks.yaml / values-stackit.yaml.
+#
+# G1GC + MaxGCPauseMillis=200ms gives tighter p99 query latencies than
+# the default ParallelGC, which can stall the world for seconds under
+# index pressure. The trade-off is slightly more CPU spent on GC — fine
+# on a search/log node that's I/O-bound rather than CPU-bound.
+opensearchJavaOpts: >-
+  -Xms512m -Xmx512m
+  -XX:+UseG1GC
+  -XX:MaxGCPauseMillis=200
+  -XX:InitiatingHeapOccupancyPercent=35
+  -XX:+ExplicitGCInvokesConcurrent
+  -XX:+ParallelRefProcEnabled
+  -Djava.awt.headless=true
 
 persistence:
   enabled: true

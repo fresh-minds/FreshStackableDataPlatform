@@ -37,5 +37,9 @@ spec:
             cpu:
               min: "200m"
               max: "1000m"
+            # Stackable's MemoryLimits has only `limit`. The operator copies
+            # the value into BOTH `requests.memory` and `limits.memory` on
+            # the generated Pod (Guaranteed QoS), so this single value
+            # functions as the memory reservation.
             memory:
               limit: "1Gi"

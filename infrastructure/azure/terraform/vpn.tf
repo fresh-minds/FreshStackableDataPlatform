@@ -5,9 +5,9 @@
 # you'd swap this for a real PKI integration.
 
 resource "tls_private_key" "vpn_root" {
-  count       = var.vpn_gateway_enabled ? 1 : 0
-  algorithm   = "RSA"
-  rsa_bits    = 2048
+  count     = var.vpn_gateway_enabled ? 1 : 0
+  algorithm = "RSA"
+  rsa_bits  = 2048
 }
 
 resource "tls_self_signed_cert" "vpn_root" {
@@ -52,10 +52,10 @@ resource "tls_cert_request" "vpn_client" {
 }
 
 resource "tls_locally_signed_cert" "vpn_client" {
-  count               = var.vpn_gateway_enabled ? 1 : 0
-  cert_request_pem    = tls_cert_request.vpn_client[0].cert_request_pem
-  ca_private_key_pem  = tls_private_key.vpn_root[0].private_key_pem
-  ca_cert_pem         = tls_self_signed_cert.vpn_root[0].cert_pem
+  count              = var.vpn_gateway_enabled ? 1 : 0
+  cert_request_pem   = tls_cert_request.vpn_client[0].cert_request_pem
+  ca_private_key_pem = tls_private_key.vpn_root[0].private_key_pem
+  ca_cert_pem        = tls_self_signed_cert.vpn_root[0].cert_pem
 
   validity_period_hours = 8760 # 1 year
 

@@ -48,6 +48,31 @@ customConfig:
         .uwv_platform = "uwv-data-platform"
         .uwv_zone = "dev-k3d"
 
+        # ---- Cardinality reduction ----
+        # OpenSearch index size grows roughly linearly with the number of
+        # distinct (field, value) pairs across documents. Vector's
+        # kubernetes_logs source enriches every event with a handful of
+        # very-high-cardinality fields that we don't query on:
+        #
+        #   - pod_uid              — unique UUID per pod (every restart)
+        #   - container_id         — unique per container restart
+        #   - container_image_id   — full SHA256 digest
+        #   - pod_annotations      — arbitrary user dictionary, can be huge
+        #   - pod_labels           — same
+        #   - pod_ips              — array form (we keep pod_ip)
+        #
+        # Dropping them shrinks each event by 200-500 bytes AND keeps
+        # OpenSearch from creating millions of unique-mapping fields per
+        # rolling-restart cycle. We retain pod_name, pod_namespace,
+        # node_name, container_name, container_image — the ones we
+        # actually use in dashboards and alerts.
+        del(.kubernetes.pod_uid)
+        del(.kubernetes.container_id)
+        del(.kubernetes.container_image_id)
+        del(.kubernetes.pod_annotations)
+        del(.kubernetes.pod_labels)
+        del(.kubernetes.pod_ips)
+
     # Improvements #12 — splits OPA decision-logs af voor 7-jaars-retentie
     # en aparte audit-index (R-AVG-15, R-BIO-20).
     route_audit_logs:

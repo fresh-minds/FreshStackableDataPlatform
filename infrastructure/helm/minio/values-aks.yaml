@@ -1,11 +1,16 @@
 # MinIO — AKS-specific overrides.
 #
-# Replaces the k3d-only `local-path` storage class with AKS's Premium SSD CSI
+# Replaces the k3d-only `local-path` storage class with AKS's Standard SSD CSI
 # class, and bumps capacity to a more realistic cloud size. Merged on top of
 # infrastructure/helm/minio/values.yaml via a second --values flag.
+#
+# storageClass note: 'managed-csi' (Standard SSD) is ~5x cheaper than
+# 'managed-csi-premium' (~€12/mo per 100Gi saved) and ample for S3-style
+# object I/O in a reference platform. Flip to 'managed-csi-premium' only if
+# you actually need <1ms p99 reads (analytical workloads typically don't).
 
 persistence:
-  storageClass: "managed-csi-premium"
+  storageClass: "managed-csi"
   size: 100Gi
 
 # Chart-managed ingress hostnames stay on .uwv-platform.local (in-cluster

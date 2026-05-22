@@ -2,17 +2,40 @@
 # Secret (sp_client_secret) is NOT in this file — pass it via TF_VAR_sp_client_secret env var
 # (set by `source scripts/azure/env.sh`).
 
-subscription_id     = "4910a5a6-aec6-405d-9294-c7f2845512a4"
-tenant_id           = "fedcef2f-0c85-40dd-8f55-e23143dcb367"
+subscription_id     = "REPLACE-WITH-YOUR-SUBSCRIPTION-ID"
+tenant_id           = "REPLACE-WITH-YOUR-TENANT-ID"
 resource_group_name = "dev-stackable-rg"
 location            = "westeurope"
 
 cluster_name = "uwv-platform-aks"
 dns_prefix   = "uwv-platform"
 
-node_count           = 3
-node_vm_size         = "Standard_D8s_v5"
+# ---- System node pool (kube-system, CoreDNS, metrics-server) ----
+# Burstable B4ms (4 vCPU / 16 GiB) is ample for a dev/test cluster.
+# Override to D-series only if you actually need sustained CPU here.
+node_count           = 2
+node_vm_size         = "Standard_B4ms"
 node_os_disk_size_gb = 128
 
+# ---- User node pool (applications) ----
+# B8ms burstable fits the Stackable + OpenMetadata stack well; HPA + autoscaler
+# scale 1..4 nodes. Disable (user_pool_enabled = false) to run everything on
+# the system pool for the smallest-possible footprint.
+user_pool_enabled    = true
+user_pool_vm_size    = "Standard_B8ms"
+user_pool_min_count  = 1
+user_pool_max_count  = 4
+
+# ---- Spot pool (optional) ----
+# 70-90% cheaper than on-demand; pods with toleration "workload=batch:NoSchedule"
+# (e.g. Spark executors, dbt runs) can land here.
+spot_pool_enabled = false
+spot_pool_vm_size = "Standard_D4s_v5"
+
 # Service principal used as AKS cluster identity.
-sp_client_id = "7e14e768-6dac-44f4-886f-ba2990447f1f"
+sp_client_id = "REPLACE-WITH-YOUR-SERVICE-PRINCIPAL-CLIENT-ID"
+
+# ---- VPN Gateway (optional; off by default — saves ~€260/mo) ----
+# Use 'bash scripts/azure/aks-pf.sh' for kubectl access without VPN.
+# Flip to true only if you specifically need Windows P2S VPN on the AKS VNet.
+vpn_gateway_enabled = false

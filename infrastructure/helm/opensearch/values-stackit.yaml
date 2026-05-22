@@ -1,4 +1,23 @@
 # OpenSearch — StackIT SKE overrides.
+#
+# Sized to match the AKS overlay; SKE has comparable workload patterns.
 persistence:
   storageClass: "premium-perf1-stackit"
-  size: 10Gi
+  size: 30Gi
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+
+opensearchJavaOpts: >-
+  -Xms2g -Xmx2g
+  -XX:+UseG1GC
+  -XX:MaxGCPauseMillis=200
+  -XX:InitiatingHeapOccupancyPercent=35
+  -XX:+ExplicitGCInvokesConcurrent
+  -XX:+ParallelRefProcEnabled
+  -Djava.awt.headless=true

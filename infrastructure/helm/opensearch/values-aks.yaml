@@ -1,4 +1,26 @@
 # OpenSearch — AKS-specific overrides.
+#
+# Cloud cluster has more headroom + more log volume than k3d, so we bump
+# both pod memory and JVM heap. ILM keeps app-logs at 30d / audit-logs at
+# 7y (see platform/14-monitoring/opensearch-ilm-job.yaml).
 persistence:
   storageClass: "managed-csi"
-  size: 10Gi
+  size: 30Gi
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+
+# Heap ~50% of pod memory. G1GC tuned for index-write + search workload.
+opensearchJavaOpts: >-
+  -Xms2g -Xmx2g
+  -XX:+UseG1GC
+  -XX:MaxGCPauseMillis=200
+  -XX:InitiatingHeapOccupancyPercent=35
+  -XX:+ExplicitGCInvokesConcurrent
+  -XX:+ParallelRefProcEnabled
+  -Djava.awt.headless=true
