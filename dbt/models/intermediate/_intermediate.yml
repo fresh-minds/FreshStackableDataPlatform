@@ -5,6 +5,11 @@ models:
     description: "Inkomen-per-maand-aggregaat per BSN (UC-04 helper)."
     config:
       tags: ["intermediate"]
+    meta:
+      domain: intermediate
+      eigenaar: divisie_ww
+      cgm_entiteiten: [Inkomen, Huishouden]
+      pii_kolommen: [bsn]
     columns:
       - name: bsn
         tests: [not_null, unique, bsn_valid]
@@ -21,6 +26,15 @@ models:
       View; UNION ALL over zeven staging-views — geen nieuwe brondata.
     config:
       tags: ["intermediate", "uc11"]
+    meta:
+      # `intermediate` mapt naar OM-domain Cross (zie dbt-meta-mapping.yaml).
+      # Domain MOET gezet zijn vóór de enricher de dataProduct (uc11_klantreis,
+      # zelf in domain Cross) probeert te koppelen — anders trigger OM's
+      # "Data Product Domain Validation" rule een 400 op de dataProduct-op.
+      domain: intermediate
+      eigenaar: divisie_klantcontact
+      cgm_entiteiten: [Klantreis, EventStream]
+      pii_kolommen: [bsn, event_label, source_ref_id]
     columns:
       - name: bsn
         tests:

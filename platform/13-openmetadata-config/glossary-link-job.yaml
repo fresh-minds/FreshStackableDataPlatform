@@ -1,0 +1,237 @@
+# OpenMetadata glossary-link Job — koppelt CGM-glossary-termen aan de tables
+# waar ze logisch bij horen.
+#
+# Achtergrond:
+#   De init-Job seedt de CGM-glossary (termen + reviewers/owners). De
+#   enrich_from_dbt_meta.py-script PATCHt elke dbt-mart met de
+#   `cgm_entiteiten[]` uit dbt meta — maar dat dekt alleen mart-niveau.
+#   Bronze stg_*-tabellen krijgen geen glossary-koppeling want hun meta
+#   wordt direct uit de Trino-catalog gehaald (geen dbt-meta).
+#
+#   Daarnaast missen sommige termen iedere koppeling (Klantreis,
+#   EventStream, Fase, Persona, Werknemer, Werkgever, Dienstverband,
+#   Ontslag, Diagnose, Inkomen, Huishouden, Aggregaat, Uitkomst).
+#
+#   Deze Job vult die gaten met een handgemaakte logische mapping
+#   (term → (schema, table)-paren). Voor elk paar koppelt het de
+#   bronze/silver/gold versies via PATCH /tables met UNION op tags
+#   (idempotent — bestaande tags blijven staan).
+#
+# Trigger:
+#   make om-glossary-link
+#   OF: kubectl apply -f platform/13-openmetadata-config/glossary-link-job.yaml
+#
+# Pre-conditions:
+#   - openmetadata-init heeft glossary CGM geseed.
+#   - Tabellen waarop gekoppeld wordt bestaan al in OM (via Trino-catalog-
+#     ingest of via 'make om-demo-seed').
+#
+# SYNTHETIC DATA — UWV REFERENCE PLATFORM — NOT FOR REAL USE.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: om-glossary-link-script
+  namespace: uwv-meta
+  labels:
+    uwv.nl/component: openmetadata-glossary-link
+    uwv.nl/dev-only: "true"
+data:
+  link.py: |
+    """Koppel CGM-glossary-termen aan logisch passende tables in OM."""
+    import json, os, requests
+    from urllib.parse import quote
+
+    OM = os.environ["OM_URL"].rstrip("/")
+    H = {"Authorization": f"Bearer {os.environ['OM_JWT_TOKEN']}", "Accept": "application/json"}
+    PH = {"Authorization": f"Bearer {os.environ['OM_JWT_TOKEN']}", "Content-Type": "application/json-patch+json"}
+    SERVICE = os.environ.get("OM_TRINO_SERVICE", "uwv-trino")
+    ZONES = ("bronze", "silver", "gold")
+
+    # CGM-term → lijst (schema, table)-paren. Script propageert elke koppel
+    # over alle drie de medallion-zones (bronze/silver/gold); ontbrekende
+    # zones worden overgeslagen. Termen waarvoor geen dbt-model bestaat
+    # (Beoordelaar/Capaciteit/Doelgroepregister) zijn niet in deze map.
+    LINKS = {
+        # Klantreis-cluster — UC-11 + intermediate
+        "Klantreis": [
+            ("uc11_klantreis", "mart_uc11_klantreis_events"),
+            ("uc11_klantreis", "mart_uc11_klantreis_phases"),
+            ("intermediate", "int_klantreis_events"),
+        ],
+        "EventStream": [
+            ("uc11_klantreis", "mart_uc11_klantreis_events"),
+            ("intermediate", "int_klantreis_events"),
+        ],
+        "Fase": [
+            ("uc11_klantreis", "mart_uc11_klantreis_phases"),
+        ],
+
+        # Cliënt-domein
+        "Client": [
+            ("persoon", "stg_persona"),
+        ],
+        "Persona": [
+            ("persoon", "stg_persona"),
+        ],
+
+        # Polisadm / IKV (één bron-tabel dekt werknemer × werkgever × dienstverband)
+        "IKV": [
+            ("polisadm", "stg_polisadm_ikv"),
+        ],
+        "Werknemer": [
+            ("polisadm", "stg_polisadm_ikv"),
+        ],
+        "Werkgever": [
+            ("polisadm", "stg_polisadm_ikv"),
+        ],
+        "Dienstverband": [
+            ("polisadm", "stg_polisadm_ikv"),
+        ],
+
+        # Aanvraag / Beoordeling — over wet-domeinen heen
+        "Aanvraag": [
+            ("ww", "stg_ww_aanvraag"),
+            ("wia", "stg_wia_aanvraag"),
+            ("wajong", "stg_wajong_dossier"),
+        ],
+        "Beoordeling": [
+            ("wia", "stg_wia_aanvraag"),
+            ("wajong", "stg_wajong_dossier"),
+        ],
+        "Ontslag": [
+            ("ww", "stg_ww_aanvraag"),
+        ],
+
+        # Sociaal-medisch (sensitive — alleen op bron, niet op marts)
+        "Diagnose": [
+            ("zw", "stg_zw_melding"),
+            ("wajong", "stg_wajong_dossier"),
+        ],
+
+        # CRM
+        "Contact": [
+            ("crm", "stg_crm_contact"),
+        ],
+        "Kanaal": [
+            ("crm", "stg_crm_contact"),
+        ],
+
+        # FEZ / Uitkering
+        "Uitkering": [
+            ("fez", "stg_fez_uitkeringslast"),
+        ],
+        "Aggregaat": [
+            ("fez", "stg_fez_uitkeringslast"),
+            ("uc06_lastprognose", "mart_uc06_uitkeringslast_5y"),
+            ("uc06_lastprognose", "mart_uc06_scenario_results"),
+        ],
+        "Inkomen": [
+            ("intermediate", "int_huishouden_inkomen"),
+            ("uc04_tw_eligibility", "mart_uc04_tw_eligibility"),
+        ],
+        "Huishouden": [
+            ("intermediate", "int_huishouden_inkomen"),
+            ("uc04_tw_eligibility", "mart_uc04_tw_eligibility"),
+        ],
+
+        # Re-integratie — UC-09
+        "Traject": [
+            ("uc09_reint_effect", "mart_uc09_effect_panel"),
+        ],
+        "Werkhervatting": [
+            ("uc09_reint_effect", "mart_uc09_effect_panel"),
+        ],
+        "Uitkomst": [
+            ("uc09_reint_effect", "mart_uc09_effect_panel"),
+        ],
+    }
+
+    def tag(fqn):
+        return {"tagFQN": fqn, "source": "Glossary", "labelType": "Manual", "state": "Confirmed"}
+
+    def get_table(fqn):
+        r = requests.get(
+            f"{OM}/api/v1/tables/name/{quote(fqn, safe='.')}?fields=tags",
+            headers=H, timeout=15)
+        return r.json() if r.status_code == 200 else None
+
+    def patch_add_tag(table, term_fqn):
+        existing = table.get("tags") or []
+        if any(t.get("tagFQN") == term_fqn for t in existing):
+            return "exists"
+        merged = existing + [tag(term_fqn)]
+        ops = [{
+            "op": "add" if not existing else "replace",
+            "path": "/tags",
+            "value": merged,
+        }]
+        r = requests.patch(f"{OM}/api/v1/tables/{table['id']}",
+                           headers=PH, data=json.dumps(ops), timeout=20)
+        if r.status_code in (200, 201): return "linked"
+        return f"err status={r.status_code} body={r.text[:150]}"
+
+    linked = exists = missing = errs = 0
+    for term, targets in LINKS.items():
+        term_fqn = f"CGM.{term}"
+        for schema, table in targets:
+            for zone in ZONES:
+                fqn = f"{SERVICE}.{zone}.{schema}.{table}"
+                t = get_table(fqn)
+                if not t:
+                    missing += 1
+                    continue
+                result = patch_add_tag(t, term_fqn)
+                if result == "linked":
+                    linked += 1
+                    print(f"  + {term_fqn} → {zone}.{schema}.{table}")
+                elif result == "exists":
+                    exists += 1
+                else:
+                    errs += 1
+                    print(f"  ! {term_fqn} → {fqn}  {result}")
+    print(f"Klaar. linked={linked} already_present={exists} table_missing={missing} errors={errs}")
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: om-glossary-link
+  namespace: uwv-meta
+  labels:
+    uwv.nl/component: openmetadata-glossary-link
+    uwv.nl/dev-only: "true"
+spec:
+  ttlSecondsAfterFinished: 1800
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        uwv.nl/component: openmetadata-glossary-link
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: link
+          image: python:3.11-slim
+          command: ["bash", "-euo", "pipefail", "-c"]
+          args:
+            - |
+              pip install --quiet --disable-pip-version-check requests
+              python /scripts/link.py
+          env:
+            - name: OM_URL
+              value: "http://openmetadata.uwv-meta.svc.cluster.local:8585"
+            - name: OM_JWT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openmetadata-admin
+                  key: jwtToken
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits:   {cpu: 500m, memory: 256Mi}
+      volumes:
+        - name: scripts
+          configMap:
+            name: om-glossary-link-script

@@ -188,6 +188,10 @@ seed: ## Genereer en laad synthetische data (10k cliënten)
 om-demo-seed: ## Vul OpenMetadata met UC-mart tabel-entities + governance-meta voor demo (idempotent).
 	bash scripts/om-demo-seed.sh
 
+.PHONY: om-glossary-link
+om-glossary-link: ## Koppel CGM-glossary-termen aan logisch passende tables (idempotent).
+	bash scripts/om-glossary-link.sh
+
 .PHONY: test
 test: smoke ## Alias voor smoke tests
 
