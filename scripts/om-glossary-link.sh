@@ -42,6 +42,14 @@ if ! kubectl -n "$NAMESPACE" get secret openmetadata-admin >/dev/null 2>&1; then
   fail "secret openmetadata-admin ontbreekt in namespace $NAMESPACE — eerst 'make deploy' draaien."
 fi
 
+# Wacht op openmetadata-init (seedt de CGM-glossary). Init-Job heeft TTL
+# 3600s; als die al opgeruimd is, gewoon doorgaan.
+if kubectl -n "$NAMESPACE" get job openmetadata-init >/dev/null 2>&1; then
+  log "Wachten tot openmetadata-init Job Complete is"
+  kubectl -n "$NAMESPACE" wait --for=condition=Complete --timeout=300s job/openmetadata-init 2>/dev/null \
+    || warn "openmetadata-init niet binnen 5 min klaar — koppeling kan falen op missende CGM-termen"
+fi
+
 log "Cleanup eventuele eerdere Job-run"
 kubectl -n "$NAMESPACE" delete job "$JOB_NAME" --ignore-not-found >/dev/null
 
