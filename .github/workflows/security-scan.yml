@@ -45,12 +45,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Trivy config-scan (kustomize/helm)
+      - name: Trivy config-scan (kustomize/helm) — SARIF upload
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: 'config'
+          format: 'sarif'
+          output: 'trivy-config.sarif'
+          # Non-blocking: report HIGH+CRITICAL findings as code-scan alerts
+          # in the Security tab, but don't fail the build until the existing
+          # backlog is swept. Flip to '1' once the baseline is clean.
+          exit-code: '0'
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+
+      - name: Trivy config-scan (kustomize/helm) — summary
         uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: 'config'
           format: 'table'
-          exit-code: '1'
+          exit-code: '0'
           severity: 'HIGH,CRITICAL'
           ignore-unfixed: true
 

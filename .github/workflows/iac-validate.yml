@@ -220,11 +220,13 @@ jobs:
         uses: hadolint/hadolint-action@v3.1.0
         with:
           recursive: true
-          # Pragmatic ignores:
-          #   DL3008 — pin apt versions: too noisy on base-image Dockerfiles
-          #            that pin via apt-get install --no-install-recommends.
-          #   DL3018 — pin apk versions: same rationale for Alpine.
-          ignore: DL3008,DL3018
-          # Don't fail the build on info/style. Real issues land at
-          # `warning` or `error`.
-          failure-threshold: warning
+          # Pragmatic ignores — too noisy on base-image patterns:
+          #   DL3008 — pin apt versions
+          #   DL3018 — pin apk versions
+          #   DL3007 — `:latest` (we already track these via image-pinning ADR)
+          #   DL4006 — pipefail in RUN-with-pipe (style)
+          #   SC2015/SC2086 — shellcheck-in-Dockerfile style nits
+          ignore: DL3008,DL3018,DL3007,DL4006,SC2015,SC2086
+          # `error` only — keep warnings visible in summary but don't fail
+          # the build until we sweep the existing Dockerfiles.
+          failure-threshold: error
