@@ -13,9 +13,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NS="${NS:-uwv-platform}"
 COUNT="${COUNT:-10000}"
 
-log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m!!\033[0m %s\n' "$*"; }
-fail() { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
+# shellcheck source=lib/log.sh
+source "${ROOT}/scripts/lib/log.sh"
 
 if [[ ! -d "$ROOT/data-generation/generators" ]]; then
   fail "data-generation/generators/ niet gevonden"
@@ -26,7 +25,7 @@ command -v kubectl >/dev/null || fail "kubectl niet gevonden"
 # MinIO moet bereikbaar zijn voor de seed-Job. minio-s3-credentials secret
 # is door 01-secrets aangemaakt; de Job mount die rechtstreeks.
 log "Wacht tot MinIO bereikbaar is (max 5 min)"
-for i in {1..30}; do
+for _ in {1..30}; do
   eps=$(kubectl -n "$NS" get endpoints minio \
           -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
   [[ -n "$eps" ]] && break

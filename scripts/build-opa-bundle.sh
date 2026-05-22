@@ -18,9 +18,8 @@ SRC_REGO="$ROOT/opa-policies-src/trino"
 SRC_DATA="$ROOT/opa-policies-src/data"
 DST_POLICIES="$ROOT/platform/10-opa/policies"
 
-log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m!!\033[0m %s\n' "$*"; }
-fail() { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
+# shellcheck source=lib/log.sh
+source "${ROOT}/scripts/lib/log.sh"
 
 # --- 1. opa fmt --diff ------------------------------------------------
 if command -v opa >/dev/null 2>&1; then

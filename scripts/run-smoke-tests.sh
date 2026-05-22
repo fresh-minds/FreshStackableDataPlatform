@@ -5,9 +5,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-pass() { printf '\033[1;32mPASS\033[0m %s\n' "$*"; }
-fail() { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; }
+# shellcheck source=lib/log.sh
+source "${ROOT}/scripts/lib/log.sh"
 
 shopt -s nullglob
 tests=(tests/smoke/*.sh)
