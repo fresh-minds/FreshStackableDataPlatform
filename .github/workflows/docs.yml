@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # Fetch full history zodat mkdocs-material 'git-revision-date' kan
           # werken als we dat later willen aanzetten.

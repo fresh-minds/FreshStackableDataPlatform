@@ -43,7 +43,7 @@ jobs:
   trivy-config:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Trivy config-scan (kustomize/helm) — SARIF upload
         uses: aquasecurity/trivy-action@0.35.0
@@ -76,7 +76,7 @@ jobs:
   trivy-fs:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Trivy filesystem-scan (Python deps)
         uses: aquasecurity/trivy-action@0.35.0
@@ -95,7 +95,7 @@ jobs:
   cosign-verify:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
       - name: Verify Stackable images (sample)
