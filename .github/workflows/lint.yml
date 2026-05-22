@@ -64,6 +64,16 @@ jobs:
       - name: Install portal deps
         working-directory: portal
         run: npm ci --no-audit --no-fund
+      - name: Sync generated inputs (role-mappings.generated.json + dbt-docs)
+        # portal/src/data/role-mappings.generated.json is gitignored; it's
+        # produced by scripts/sync-data.mjs from opa-policies-src/. Without
+        # it, src/data/roles.ts has an unresolvable import → astro check fails.
+        # scripts/sync-dbt-docs.mjs writes a placeholder dbt-docs.html when
+        # the real bundle is absent (so the build doesn't break in CI).
+        working-directory: portal
+        run: |
+          node scripts/sync-data.mjs
+          node scripts/sync-dbt-docs.mjs
       - name: Generate Astro types
         working-directory: portal
         # `astro check` needs `.astro/types.d.ts` to be generated first; the

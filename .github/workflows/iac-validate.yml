@@ -105,10 +105,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Install kubectl (carries kustomize 5.x)
         uses: azure/setup-kubectl@v4
         with:
           version: "v1.32.2"
+
+      - name: Prepare generated kustomize inputs
+        # Two overlays consume files produced by deploy-platform.sh that are
+        # gitignored: trino catalogs (rendered by render-trino-catalogs.py)
+        # and spark-jobs (copied from spark-jobs/ into platform/08-spark/).
+        # Mirror that prep here so kustomize build sees the same tree
+        # the cluster sees.
+        run: |
+          pip install --quiet pyyaml
+          python3 scripts/render-trino-catalogs.py
+          mkdir -p platform/08-spark/scripts
+          cp spark-jobs/streaming_files_to_lakehouse.py platform/08-spark/scripts/
+          cp spark-jobs/lib/lakehouse_io.py             platform/08-spark/scripts/
 
       - name: kustomize build (every overlay)
         run: |
@@ -136,14 +153,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Prepare generated kustomize inputs
+        run: |
+          pip install --quiet pyyaml
+          python3 scripts/render-trino-catalogs.py
+          mkdir -p platform/08-spark/scripts
+          cp spark-jobs/streaming_files_to_lakehouse.py platform/08-spark/scripts/
+          cp spark-jobs/lib/lakehouse_io.py             platform/08-spark/scripts/
+
       - name: Install kubectl + kubeconform
         run: |
-          curl -fsSL -o /usr/local/bin/kubectl \
+          sudo curl -fsSL -o /usr/local/bin/kubectl \
             "https://dl.k8s.io/release/v1.32.2/bin/linux/amd64/kubectl"
-          chmod +x /usr/local/bin/kubectl
+          sudo chmod +x /usr/local/bin/kubectl
           curl -fsSL -o /tmp/kubeconform.tar.gz \
             https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
-          tar -xzf /tmp/kubeconform.tar.gz -C /usr/local/bin/
+          sudo tar -xzf /tmp/kubeconform.tar.gz -C /usr/local/bin/
 
       - name: kubeconform (skip CRDs we can't fetch)
         # Stackable, OpenSearch, Prometheus-Operator etc. ship custom CRDs.

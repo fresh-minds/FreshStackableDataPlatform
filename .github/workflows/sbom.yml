@@ -17,6 +17,10 @@ permissions:
   contents: read
 
 jobs:
+  # anchore/sbom-action uploads its own artifact when `artifact-name` is set,
+  # so we don't add a second actions/upload-artifact step (that triggered a
+  # 409 Conflict — "an artifact with this name already exists"). Default
+  # retention follows the repo Actions setting.
   sbom-data-generation:
     runs-on: ubuntu-24.04
     steps:
@@ -28,11 +32,6 @@ jobs:
           format: cyclonedx-json
           output-file: sbom-data-generation.cdx.json
           artifact-name: sbom-data-generation
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sbom-data-generation
-          path: sbom-data-generation.cdx.json
-          retention-days: 90
 
   sbom-spark-jobs:
     runs-on: ubuntu-24.04
@@ -45,11 +44,6 @@ jobs:
           format: cyclonedx-json
           output-file: sbom-spark-jobs.cdx.json
           artifact-name: sbom-spark-jobs
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sbom-spark-jobs
-          path: sbom-spark-jobs.cdx.json
-          retention-days: 90
 
   sbom-dbt:
     runs-on: ubuntu-24.04
@@ -62,11 +56,6 @@ jobs:
           format: cyclonedx-json
           output-file: sbom-dbt.cdx.json
           artifact-name: sbom-dbt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sbom-dbt
-          path: sbom-dbt.cdx.json
-          retention-days: 90
 
   sbom-portal:
     runs-on: ubuntu-24.04
@@ -79,8 +68,3 @@ jobs:
           format: cyclonedx-json
           output-file: sbom-portal.cdx.json
           artifact-name: sbom-portal
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sbom-portal
-          path: sbom-portal.cdx.json
-          retention-days: 90
