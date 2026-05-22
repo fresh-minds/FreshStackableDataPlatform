@@ -67,9 +67,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install StackIT CLI
+        env:
+          # See stackit-cd.yml: assets are named with embedded version.
+          STACKIT_CLI_VERSION: "0.63.0"
         run: |
           curl -fsSL -o /tmp/stackit.tar.gz \
-            https://github.com/stackitcloud/stackit-cli/releases/latest/download/stackit-cli_linux_amd64.tar.gz
+            "https://github.com/stackitcloud/stackit-cli/releases/download/v${STACKIT_CLI_VERSION}/stackit-cli_${STACKIT_CLI_VERSION}_linux_amd64.tar.gz"
           sudo tar -xzf /tmp/stackit.tar.gz -C /usr/local/bin stackit
           stackit --version
 

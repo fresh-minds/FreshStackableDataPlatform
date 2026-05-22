@@ -104,6 +104,14 @@ jobs:
 
       - name: Build + publish portal (make aks-portal-publish)
         if: env.SKIP_DEPLOY != 'true'
+        # KNOWN-BROKEN: portal-publish.sh ships portal/dist via a Kubernetes
+        # ConfigMap (binaryData, max 1 MiB). Astro's static bundle grew past
+        # that ceiling (~7.8 MB uncompressed, ~2-3 MB gzipped). Fix requires
+        # switching to a registry push (ACR or ghcr.io) + image pull in the
+        # platform-landing Deployment — tracked as a follow-up.
+        # Continue-on-error so the rest of the deploy still goes through:
+        # the previously-published portal-bundle in the cluster stays live.
+        continue-on-error: true
         run: make aks-portal-publish
 
       - name: Dump pod-status bij failure
