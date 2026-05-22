@@ -36,6 +36,13 @@ production: true
 tls:
   enabled: false
 
+# Proxy-headers — sluit aan op KC_PROXY_HEADERS=xforwarded in
+# values-*.yaml extraEnvVars. Zonder deze chart-level setting faalt
+# `helm template` / `helm lint` met "production mode requires HTTPS/TLS
+# or proxy headers"; bij `helm install` werkt het toch omdat de env-var
+# Keycloak's runtime config aanstuurt. We zetten beide voor consistentie.
+proxyHeaders: "xforwarded"
+
 # Resources
 replicaCount: 1
 resources:

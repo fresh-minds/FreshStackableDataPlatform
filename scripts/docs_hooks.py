@@ -25,12 +25,14 @@ INTERNAL_REWRITE: dict[str, str] = {
 # Top-level repo directories die NIET in de docs-tree zitten. Links naar
 # deze paden — relatief of via ../../ — worden gerewrite naar GitHub-URLs.
 EXTERNAL_REPO_ROOTS: tuple[str, ...] = (
+    ".github",
     "data-generation",
     "dbt",
     "infrastructure",
     "nifi-flows",
     "opa-policies-src",
     "platform",
+    "platform-overlays",
     "portal",
     "scripts",
     "spark-jobs",

@@ -8,7 +8,7 @@
 set -euo pipefail
 
 PIDFILE=/tmp/uwv-pf.pids
-> "$PIDFILE"
+: > "$PIDFILE"  # truncate via no-op (shellcheck SC2188: `>` alone is ambiguous)
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 

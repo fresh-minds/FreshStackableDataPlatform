@@ -15,7 +15,10 @@ repos:
         exclude: '^(infrastructure/helm/keycloak/realm-uwv\.json)$'
       - id: end-of-file-fixer
       - id: check-yaml
-        args: [--allow-multiple-documents]
+        args: [--allow-multiple-documents, --unsafe]
+        # --unsafe staat Python-tags toe (mkdocs.yml gebruikt
+        # !!python/name:material.extensions.emoji.twemoji); zonder die
+        # vlag faalt check-yaml op de root config.
         exclude: '^(platform/09-trino/catalogs/.*\.yaml\.tmpl)$'
       - id: check-json
       - id: check-added-large-files
@@ -42,7 +45,21 @@ repos:
     rev: v0.10.0.1
     hooks:
       - id: shellcheck
-        args: [-e, "SC1091,SC2086"]
+        # --severity=warning skips style/info hints (e.g. SC2016 "single-quote
+        # $"; SC2002 "useless cat"; SC2295 "quote inside ${...}"). Real bugs
+        # (error+warning) still block the commit.
+        #
+        # Exclude-codes — pragmatic for this repo:
+        #   SC1091 — source: file follows; we have many runtime-sourced libs
+        #   SC2086 — quote vars; mostly intentional flag-expansion
+        #   SC2034 — unused var; loop counters `for i in ...` are fine
+        #   SC2046 — quote $(...); intentional: $(chart_value_args …)
+        #            returns multiple `--values` flags that need word-splitting
+        #   SC2155 — declare+assign; common pattern in our scripts
+        #   SC2015 — A && B || C; intentional in many one-liners
+        args:
+          - --severity=warning
+          - --exclude=SC1091,SC2086,SC2034,SC2046,SC2155,SC2015
 
   # Lokaal: opa fmt — vereist `opa` in PATH.
   - repo: local
