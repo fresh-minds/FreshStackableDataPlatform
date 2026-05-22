@@ -6,10 +6,15 @@ on:
     branches: [main]
     paths:
       - 'dbt/**'
+      - 'ci/scripts/check-dbt-*.py'
+      - '.github/workflows/dbt-parse.yml'
   pull_request:
     branches: [main]
     paths:
       - 'dbt/**'
+      - 'ci/scripts/check-dbt-*.py'
+      - '.github/workflows/dbt-parse.yml'
+  workflow_dispatch:
 
 jobs:
   dbt-parse:

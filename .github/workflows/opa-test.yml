@@ -7,10 +7,13 @@ on:
     branches: [main]
     paths:
       - 'opa-policies-src/**'
+      - '.github/workflows/opa-test.yml'
   pull_request:
     branches: [main]
     paths:
       - 'opa-policies-src/**'
+      - '.github/workflows/opa-test.yml'
+  workflow_dispatch:
 
 jobs:
   opa-test:
