@@ -1,0 +1,86 @@
+# CI: SBOM generation for first-party artifacts (R-NIS2-03 supply-chain).
+#
+# Emits a CycloneDX SBOM per first-party component and uploads it as a
+# workflow artifact. On release tags the SBOMs can be attached to the
+# GitHub Release via a follow-up step (TODO).
+name: sbom
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sbom-data-generation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate SBOM (data-generation)
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./data-generation
+          format: cyclonedx-json
+          output-file: sbom-data-generation.cdx.json
+          artifact-name: sbom-data-generation
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-data-generation
+          path: sbom-data-generation.cdx.json
+          retention-days: 90
+
+  sbom-spark-jobs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate SBOM (spark-jobs)
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./spark-jobs
+          format: cyclonedx-json
+          output-file: sbom-spark-jobs.cdx.json
+          artifact-name: sbom-spark-jobs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-spark-jobs
+          path: sbom-spark-jobs.cdx.json
+          retention-days: 90
+
+  sbom-dbt:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate SBOM (dbt project)
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./dbt
+          format: cyclonedx-json
+          output-file: sbom-dbt.cdx.json
+          artifact-name: sbom-dbt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-dbt
+          path: sbom-dbt.cdx.json
+          retention-days: 90
+
+  sbom-portal:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate SBOM (portal)
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./portal
+          format: cyclonedx-json
+          output-file: sbom-portal.cdx.json
+          artifact-name: sbom-portal
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-portal
+          path: sbom-portal.cdx.json
+          retention-days: 90

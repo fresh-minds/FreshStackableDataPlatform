@@ -14,6 +14,7 @@ interface Props {
   size?: 'sm' | 'md';
   disabled?: boolean;
   class?: string;
+  id?: string;
 }
 
 const {
@@ -26,6 +27,7 @@ const {
   size = 'md',
   disabled = false,
   class: className = '',
+  id,
 } = Astro.props;
 
 const isExternal = href ? href.startsWith('http') : false;
@@ -43,6 +45,7 @@ const klass = [
 ---
 {href ? (
   <a class={klass}
+     id={id}
      href={href}
      target={target ?? (isExternal ? '_blank' : undefined)}
      rel={rel ?? (isExternal ? 'noopener noreferrer' : undefined)}
@@ -51,7 +54,7 @@ const klass = [
     {arrowGlyph && <span class="btn-arrow" aria-hidden="true">{arrowGlyph}</span>}
   </a>
 ) : (
-  <button class={klass} type={type ?? 'button'} disabled={disabled}>
+  <button class={klass} id={id} type={type ?? 'button'} disabled={disabled}>
     <span class="btn-label"><slot /></span>
     {arrowGlyph && <span class="btn-arrow" aria-hidden="true">{arrowGlyph}</span>}
   </button>

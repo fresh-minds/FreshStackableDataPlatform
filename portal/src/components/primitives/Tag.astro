@@ -7,9 +7,10 @@ interface Props {
   variant?: 'default' | 'mono';
   tone?: 'neutral' | 'ok' | 'warn' | 'down' | 'accent';
   class?: string;
+  id?: string;
 }
 
-const { variant = 'default', tone = 'neutral', class: className = '' } = Astro.props;
+const { variant = 'default', tone = 'neutral', class: className = '', id } = Astro.props;
 const klass = [
   'tag',
   variant === 'mono' ? 'tag--mono' : '',
@@ -17,7 +18,7 @@ const klass = [
   className,
 ].filter(Boolean).join(' ');
 ---
-<span class={klass}><slot /></span>
+<span class={klass} id={id}><slot /></span>
 
 <style is:global>
   .tag {

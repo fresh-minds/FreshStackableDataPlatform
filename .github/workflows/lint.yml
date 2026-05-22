@@ -48,3 +48,28 @@ jobs:
           shellcheck --version
           find scripts/ tests/smoke/ tests/e2e/ -name '*.sh' \
             -exec shellcheck -e SC1091,SC2086 -S error {} +
+
+  portal-typecheck:
+    # Astro + TypeScript: `astro check` valideert .astro componenten en .ts
+    # bestanden tegen het project tsconfig + content-collections schema.
+    # Catched type-fouten zonder dat we de portal hoeven te builden.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "portal/package-lock.json"
+      - name: Install portal deps
+        working-directory: portal
+        run: npm ci --no-audit --no-fund
+      - name: Generate Astro types
+        working-directory: portal
+        # `astro check` needs `.astro/types.d.ts` to be generated first; the
+        # `astro sync` command does exactly that (creates the env shim + the
+        # types for content collections + integrations).
+        run: npx astro sync
+      - name: astro check (type + a11y diagnostics)
+        working-directory: portal
+        run: npm run typecheck

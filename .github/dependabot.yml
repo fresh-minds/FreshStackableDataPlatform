@@ -1,0 +1,111 @@
+# Dependabot config — automated dependency updates.
+#
+# Why each ecosystem:
+#   pip (3 directories)    : data-generation, docs-build, scripts venv
+#   npm                    : portal (Astro/React) + portal/scripts (Node sync)
+#   github-actions         : keep CI actions up-to-date
+#   terraform              : Azure + StackIT providers + module versions
+#   docker                 : Dockerfiles in infrastructure/ (cosmos-init, etc.)
+#
+# Schedule:
+#   Weekly for code dependencies — fresh enough that diffs stay readable,
+#   slow enough that reviewers aren't drowned in PRs.
+#   Monthly for infra/IaC — those upgrades touch state, slower is safer.
+#
+# Grouping:
+#   Minor + patch updates roll up into a single PR per ecosystem to reduce
+#   PR-noise; majors stay individual so they get explicit review.
+version: 2
+updates:
+  # ---------- Python ----------
+  - package-ecosystem: pip
+    directory: /data-generation
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Amsterdam
+    open-pull-requests-limit: 5
+    labels: [dependencies, python]
+    groups:
+      python-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: / # requirements-docs.txt at repo root
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Amsterdam
+    open-pull-requests-limit: 3
+    labels: [dependencies, python, docs]
+    groups:
+      docs-minor-patch:
+        update-types: [minor, patch]
+
+  # ---------- Node / portal ----------
+  - package-ecosystem: npm
+    directory: /portal
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Amsterdam
+    open-pull-requests-limit: 5
+    labels: [dependencies, javascript, portal]
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+    # Block major Astro upgrades from auto-PR — they tend to break the
+    # content-collections schema; handle by hand.
+    ignore:
+      - dependency-name: "astro"
+        update-types: [version-update:semver-major]
+
+  # ---------- GitHub Actions ----------
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Amsterdam
+    open-pull-requests-limit: 5
+    labels: [dependencies, github-actions]
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+
+  # ---------- Terraform ----------
+  - package-ecosystem: terraform
+    directory: /infrastructure/azure/terraform
+    schedule:
+      interval: monthly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Amsterdam
+    open-pull-requests-limit: 3
+    labels: [dependencies, terraform, azure]
+
+  - package-ecosystem: terraform
+    directory: /infrastructure/stackit/terraform
+    schedule:
+      interval: monthly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Amsterdam
+    open-pull-requests-limit: 3
+    labels: [dependencies, terraform, stackit]
+
+  # ---------- Docker ----------
+  # Picks up Dockerfiles in infrastructure/airflow/, etc.
+  - package-ecosystem: docker
+    directory: /infrastructure/airflow
+    schedule:
+      interval: monthly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Amsterdam
+    open-pull-requests-limit: 3
+    labels: [dependencies, docker]

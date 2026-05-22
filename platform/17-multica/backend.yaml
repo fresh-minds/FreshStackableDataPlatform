@@ -1,5 +1,12 @@
 # Multica backend — Go REST API + WebSocket server.
-# Image: ghcr.io/multica-ai/multica-backend:latest (official prebuilt).
+#
+# Image-pinning policy: this manifest declares `:latest` only as a starting
+# point; the canonical pin lives in platform/17-multica/kustomization.yaml
+# under the `images:` block, where we set an explicit tag (and ideally a
+# SHA256 digest). That way `kubectl kustomize` always renders a pinned
+# reference even if someone forgets to update this file. Override via
+# kustomize patches for AKS/StackIT if you need a different version per
+# environment.
 
 apiVersion: v1
 kind: Service
@@ -66,7 +73,11 @@ spec:
       containers:
         - name: backend
           image: ghcr.io/multica-ai/multica-backend:latest
-          imagePullPolicy: IfNotPresent
+          # `Always` (not `IfNotPresent`) because the tag in this Deployment
+          # is overridden by the kustomization.yaml `images:` pin — we want
+          # the kubelet to pull the pinned digest on every restart so a
+          # stale cached layer can't silently linger past a tag-bump.
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8080

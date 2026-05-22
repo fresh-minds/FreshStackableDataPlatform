@@ -1,11 +1,43 @@
 # CI: Trivy vulnerability + SBOM scan (R-BIO-15, R-NIS2-03).
 # Scant manifests + container-images die in release.yaml + helm-values staan.
 #
-# Alleen via manual dispatch (Actions-tab → "security-scan" → Run workflow).
+# Triggers:
+#   - on push to main / pull_request → continuous baseline scan (HIGH+CRITICAL)
+#   - nightly schedule → catches newly-disclosed CVEs in dependencies we
+#     haven't touched
+#   - workflow_dispatch → ad-hoc reruns
 name: security-scan
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'platform/**'
+      - 'platform-overlays/**'
+      - 'infrastructure/**'
+      - 'data-generation/**'
+      - 'spark-jobs/**'
+      - 'portal/package*.json'
+      - 'dbt/packages.yml'
+      - '.github/workflows/security-scan.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'platform/**'
+      - 'platform-overlays/**'
+      - 'infrastructure/**'
+      - 'data-generation/**'
+      - 'spark-jobs/**'
+      - 'portal/package*.json'
+      - 'dbt/packages.yml'
+  schedule:
+    # 04:17 UTC daily — outside of business hours, off-peak Actions queue.
+    - cron: '17 4 * * *'
   workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write # for codeql sarif upload
 
 jobs:
   trivy-config:

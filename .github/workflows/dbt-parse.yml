@@ -37,7 +37,16 @@ jobs:
           TRINO_PASSWORD=ci-dummy \
           dbt parse
 
-      - name: dbt meta-block-completeness check (improvements #11)
-        run: |
-          pip install --quiet pyyaml
-          python ci/scripts/check-dbt-meta.py
+      - name: Install yaml dep for ci-checks
+        run: pip install --quiet pyyaml
+
+      - name: "dbt meta-block-completeness check (improvements #11)"
+        run: python ci/scripts/check-dbt-meta.py
+
+      - name: dbt mart-tests presence check
+        run: python ci/scripts/check-dbt-tests.py
+
+      - name: platform-config drift check
+        # Per ADR-0010: the YAML at repo-root and the ConfigMap mirror in
+        # platform/00-namespaces/ must agree on every documented key.
+        run: python ci/scripts/check-platform-config-sync.py

@@ -18,18 +18,19 @@ Een Kubernetes-native lakehouse + analytics-stack:
 - **Storage**: MinIO (S3-compatible).
 - **Tabelformaat**: Delta Lake (default voor deze implementatie — zie [ADR-0006](docs/adr/0006-delta-chosen-for-this-implementation.md)). Iceberg-pad blijft afgedekt via abstractie.
 - **Catalog backend**: Apache Hive Metastore (Postgres-backed).
-- **Ingestion**: NiFi → Kafka → Spark Structured Streaming → Delta op MinIO.
+- **Ingestion**: file-source → Spark Structured Streaming → Delta op MinIO. NiFi/Kafka-flows zijn als template aanwezig ([`nifi-flows/templates/`](nifi-flows/templates/)) maar de bijbehorende Stackable-operators staan in deze release **uit** — UC-11 leest direct uit de S3 raw-zone.
 - **Query engine**: Trino, met OPA-authorisatie (Rego: doelbinding, row filters, column masking).
 - **Transformatie**: dbt-trino, format-agnostisch via macro `table_format()`.
-- **Orchestratie**: Apache Airflow.
+- **Orchestratie**: Apache Airflow 3 + astronomer-cosmos voor dbt-DAGs.
 - **BI**: Apache Superset.
 - **Notebooks**: JupyterHub + KubeSpawner (UWV Lab) — Python/SQL op alle data-lagen, Git-integratie. Zie [`platform/16-jupyter/`](platform/16-jupyter/).
-- **Catalog/governance/lineage/DQ**: OpenMetadata.
+- **Catalog/governance/lineage/DQ**: OpenMetadata, met een self-service [om-access-bridge](platform/18-om-access-bridge/) (OM task-approval → Keycloak realm-role → OPA grant).
 - **AuthN**: Keycloak (OIDC).
-- **Logs/metrics/tracing**: Vector + Prometheus + OpenTelemetry; OpenSearch single-node gedeeld voor logs en OM-search.
+- **Portal**: Astro/React workspace-shell die alle service-UIs embed onder één URL ([`portal/`](portal/), [`platform/15-portal/`](platform/15-portal/)).
+- **Agent-tooling**: Multica server + Nanitics observatory (zie [`platform/17-multica/`](platform/17-multica/), [`platform/19-nanitics-observatory/`](platform/19-nanitics-observatory/), [`platform/20-multica-daemon/`](platform/20-multica-daemon/)). Exploratory, niet aangesloten op de governance-flow.
+- **Logs/metrics/tracing**: Vector + Prometheus; OpenSearch single-node gedeeld voor logs en OM-search. OpenTelemetry-tracing is bekabeld voor support op Trino/Airflow maar nog niet aangesloten op een backend.
 
-Alle componenten via **Stackable Data Platform 26.3** operators (NiFi, Kafka,
-Spark, Hive, Trino, Airflow, Superset, OPA, ZooKeeper, secret-/listener-operator).
+Stackable Data Platform-operators in deze release (zie [`infrastructure/stackablectl/release.yaml`](infrastructure/stackablectl/release.yaml)): **airflow, commons, hive, listener, opa, secret, spark-k8s, superset, trino**. NiFi/Kafka/ZooKeeper zijn in [`release.yaml`](infrastructure/stackablectl/release.yaml) **uitgecommentarieerd** — UC-11 vraagt ze niet en ze besparen ~2 vCPU + 4 GiB op k3d.
 
 ---
 

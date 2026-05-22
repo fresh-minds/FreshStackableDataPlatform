@@ -64,6 +64,16 @@ spec:
         #    Nginx proxyt /api/airflow/* hierheen; deze service vertaalt
         #    naar Airflow REST met airflow-api-bot creds en validatie van
         #    de caller's email tegen het object_key-prefix.
+        #
+        # SECURITY TODO (fase 4 — service account hardening):
+        # De huidige bridge gebruikt een admin-scope user (airflow-api-bot).
+        # Vervang door een scoped service-account in Airflow met enkel
+        # `dag:read` + `dag_run:create` op specifieke DAGs. Daarna ook de
+        # secret als file mounten ipv env-var (zie comment in airflow-bridge
+        # repo voor de juiste file-mode). Tot dan zijn env-vars-pattern en
+        # file-mount feitelijk gelijkwaardig — beide leven in tmpfs, beide
+        # zijn via /proc zichtbaar voor processen met dezelfde UID — dus
+        # geen quick-win.
         - name: airflow-bridge
           image: uwv-platform/portal-airflow-bridge:dev
           imagePullPolicy: IfNotPresent
@@ -87,7 +97,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 30
           resources:
-            requests: { cpu: 10m,  memory: 64Mi  }
+            requests: { cpu: 10m, memory: 64Mi }
             limits:   { cpu: 200m, memory: 192Mi }
           securityContext:
             allowPrivilegeEscalation: false

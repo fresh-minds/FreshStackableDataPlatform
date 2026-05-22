@@ -31,6 +31,25 @@ resources:
   - oauth2-proxy.yaml
   - ingress.yaml
 
+# ---- Image pinning ----
+#
+# `:latest` on the upstream Multica images is silently mutable. We pin to a
+# concrete tag here so:
+#   - kubectl kustomize emits a deterministic image reference
+#   - SBOM/SAST scans (Trivy, Grype, Syft) get a stable target
+#   - rollbacks are reproducible
+#
+# Bumping policy: change to the next upstream release after verifying
+# compatibility in k3d first. Ideally pin to a SHA256 digest (e.g.
+# `newTag: '@sha256:abc123...'`) — kustomize 5+ supports this via
+# `digest:` in the same block. Get a digest with:
+#   docker buildx imagetools inspect ghcr.io/multica-ai/multica-backend:v0.6.0
+images:
+  - name: ghcr.io/multica-ai/multica-backend
+    newTag: "v0.6.0" # TODO: replace with `digest: sha256:<...>` once Multica publishes signed images
+  - name: ghcr.io/multica-ai/multica-web
+    newTag: "v0.6.0" # TODO: same
+
 commonLabels:
   app.kubernetes.io/part-of: uwv-platform
   app.kubernetes.io/component: multica
