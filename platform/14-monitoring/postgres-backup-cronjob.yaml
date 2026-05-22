@@ -1,0 +1,158 @@
+# Postgres backup — daily pg_dumpall of the shared Postgres pod in uwv-data,
+# uploaded to MinIO under s3://uwv-meta/backups/postgres/YYYY-MM-DD/.
+#
+# Scope: the single shared Postgres pod hosts 6 databases:
+#   platform, hivemetastore, airflow, superset, openmetadata, keycloak
+# pg_dumpall captures all of them in one consistent globals-included dump.
+#
+# Retention: 30 days, enforced by the cleanup step at the start of each run.
+# (We could push retention into MinIO bucket lifecycle for 7-year audit
+# compliance, but for operational restore-recoverability 30 days is enough.)
+#
+# Manual restore:
+#   kubectl -n uwv-data exec -it postgres-postgresql-0 -- bash
+#   # download from MinIO: mc cp myminio/uwv-meta/backups/postgres/2026-05-21/dump.sql.gz /tmp/
+#   gunzip -c /tmp/dump.sql.gz | psql -U postgres
+#
+# Why MinIO and not a separate cloud bucket?
+#   - For k3d / StackIT / AKS-sandbox modes, MinIO IS the only object store.
+#   - Production should mirror this CronJob to an *off-cluster* bucket
+#     (Azure Blob with Object Lock, S3 Glacier) for the 3-2-1 rule.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: postgres-backup
+  namespace: uwv-data
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: uwv-data
+  labels:
+    app.kubernetes.io/part-of: uwv-platform
+    app.kubernetes.io/component: backup
+spec:
+  # 03:17 UTC daily — outside business hours and after most overnight DAG
+  # runs complete. Random minute reduces thundering-herd on MinIO.
+  schedule: "17 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 7
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          serviceAccountName: postgres-backup
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            fsGroup: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup
+              image: docker.io/bitnamilegacy/postgresql:17
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: PGHOST
+                  value: postgres-postgresql.uwv-data.svc.cluster.local
+                - name: PGPORT
+                  value: "5432"
+                - name: PGUSER
+                  value: postgres
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-postgresql
+                      key: postgres-password
+                - name: S3_ENDPOINT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: platform-config
+                      key: S3_ENDPOINT
+                - name: S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-s3-credentials
+                      key: accessKey
+                - name: S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-s3-credentials
+                      key: secretKey
+                - name: BUCKET
+                  valueFrom:
+                    configMapKeyRef:
+                      name: platform-config
+                      key: BUCKET_META
+              command: ["/bin/bash", "-euo", "pipefail", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  DATE=$(date -u +%Y-%m-%d)
+                  TIMESTAMP=$(date -u +%H%M%S)
+                  DUMP_FILE="/tmp/dump.sql.gz"
+                  S3_KEY="backups/postgres/${DATE}/dump-${TIMESTAMP}.sql.gz"
+
+                  echo "[$(date -u +%FT%TZ)] starting pg_dumpall against ${PGHOST}"
+                  pg_dumpall --clean --if-exists \
+                    --no-role-passwords \
+                    | gzip -9 > "${DUMP_FILE}"
+                  SIZE=$(stat -c '%s' "${DUMP_FILE}")
+                  echo "[$(date -u +%FT%TZ)] dump complete (${SIZE} bytes)"
+
+                  # Install mc (MinIO client) — small static binary.
+                  if ! command -v mc >/dev/null; then
+                    curl -fsSL -o /tmp/mc \
+                      https://dl.min.io/client/mc/release/linux-amd64/mc
+                    chmod +x /tmp/mc
+                    export PATH="/tmp:${PATH}"
+                  fi
+                  mc alias set --quiet uwv \
+                    "${S3_ENDPOINT}" "${S3_ACCESS_KEY}" "${S3_SECRET_KEY}"
+                  mc cp --quiet "${DUMP_FILE}" "uwv/${BUCKET}/${S3_KEY}"
+                  echo "[$(date -u +%FT%TZ)] uploaded to ${BUCKET}/${S3_KEY}"
+
+                  # Retention: drop dumps older than 30 days.
+                  CUTOFF=$(date -u -d '30 days ago' +%Y-%m-%d)
+                  mc ls "uwv/${BUCKET}/backups/postgres/" 2>/dev/null \
+                    | awk -v cutoff="${CUTOFF}" '{
+                        # Object name is the 6th column (mc default output).
+                        name=$NF
+                        gsub(/\/$/, "", name)
+                        if (name < cutoff) print name
+                      }' \
+                    | while read -r OLD; do
+                        [ -z "${OLD}" ] && continue
+                        echo "[$(date -u +%FT%TZ)] expiring ${OLD}"
+                        mc rm --quiet --recursive --force "uwv/${BUCKET}/backups/postgres/${OLD}" || true
+                      done
+
+                  echo "[$(date -u +%FT%TZ)] backup OK"
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                  ephemeral-storage: 2Gi
+                limits:
+                  cpu: 1000m
+                  memory: 1Gi
+                  ephemeral-storage: 4Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false  # writes dump to /tmp
+                capabilities: { drop: ["ALL"] }
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 4Gi

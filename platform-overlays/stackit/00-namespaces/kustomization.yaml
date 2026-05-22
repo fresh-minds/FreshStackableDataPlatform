@@ -1,0 +1,16 @@
+# StackIT overlay for platform/00-namespaces.
+#
+# Adds production-grade NetworkPolicies on top of the base namespaces and
+# the shared platform-config ConfigMap. NetworkPolicies are deliberately
+# OFF on k3d (hostNetwork ingress + `make seed` cross-namespace shortcuts
+# would break) and only land in the cloud overlays.
+#
+# Verifying flows after first deploy:
+#   kubectl get networkpolicy -A
+#   # tail blocked-flow events:
+#   kubectl logs -n kube-system -l k8s-app=cilium  # or your CNI's equivalent
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/00-namespaces
+  - networkpolicies.yaml

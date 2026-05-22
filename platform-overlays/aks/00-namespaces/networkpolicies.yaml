@@ -1,0 +1,373 @@
+# NetworkPolicy baseline for the production overlay.
+# Addresses enterprise-readiness-audit.md §3.1.
+#
+# Strategy:
+#   1. Default-deny ingress + egress in every UWV namespace.
+#   2. Always allow egress to kube-dns (CoreDNS).
+#   3. Per-namespace allow rules that mirror the architecture: which other
+#      namespace is expected to call this namespace, and which egresses go out.
+#
+# This file lives in the *prod overlay only*. Dev (k3d/kind) intentionally
+# does NOT have NetworkPolicies because k3d's hostNetwork ingress and the
+# `make seed` cross-namespace shortcuts would break.
+#
+# When this file goes live: tail any blocked-flow events with
+#   kubectl logs -n kube-system -l app.kubernetes.io/name=cilium
+# (or the equivalent for your CNI) and add explicit allow-rules.
+
+---
+# ===================================================================
+# uwv-platform — Stackable data-plane (Kafka, Hive, Trino, NiFi, Spark)
+# ===================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: uwv-platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: uwv-platform
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: uwv-platform
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-monitoring
+  namespace: uwv-platform
+spec:
+  # Prometheus + Vector live in uwv-monitoring and scrape every Stackable pod.
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: uwv-monitoring
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-data-and-meta
+  namespace: uwv-platform
+spec:
+  # Hive Metastore + Airflow + Superset all talk to Postgres in uwv-data.
+  # Trino + Airflow talk to OpenMetadata + OpenSearch in uwv-meta.
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: uwv-data
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: uwv-meta
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: uwv-auth
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8443
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-internet-https
+  namespace: uwv-platform
+spec:
+  # NiFi/Spark may pull external reference data over HTTPS. Restrict to 443.
+  # Tighten further with FQDN-egress (Cilium) once available.
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16  # AKS metadata endpoint
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# ===================================================================
+# uwv-data — Postgres (shared metastore for Hive/Airflow/Superset/OM/KC)
+# ===================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: uwv-data
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: uwv-data
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-from-clients
+  namespace: uwv-data
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgresql
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: uwv-platform
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: uwv-meta
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: uwv-auth
+      ports:
+        - {protocol: TCP, port: 5432}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-monitoring
+  namespace: uwv-data
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: uwv-monitoring
+
+---
+# ===================================================================
+# uwv-meta — OpenMetadata + OpenSearch
+# ===================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: uwv-meta
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: uwv-meta
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: uwv-meta
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{podSelector: {}}]
+  egress:
+    - to: [{podSelector: {}}]
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-platform-and-monitoring
+  namespace: uwv-meta
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: uwv-platform
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: uwv-monitoring
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-data-and-auth
+  namespace: uwv-meta
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: uwv-data
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: uwv-auth
+      ports:
+        - {protocol: TCP, port: 8443}
+
+---
+# ===================================================================
+# uwv-auth — Keycloak
+# ===================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: uwv-auth
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: uwv-auth
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-keycloak-from-everywhere-in-cluster
+  namespace: uwv-auth
+spec:
+  # OIDC discovery + token endpoints are called by every service that uses
+  # Keycloak. Allow all in-cluster namespaces (still blocks raw internet).
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - {protocol: TCP, port: 8080}
+        - {protocol: TCP, port: 8443}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-data
+  namespace: uwv-auth
+spec:
+  # Keycloak uses Postgres in uwv-data.
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: uwv-data
+      ports:
+        - {protocol: TCP, port: 5432}

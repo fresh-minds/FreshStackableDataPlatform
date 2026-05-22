@@ -7,7 +7,9 @@ resources:
   - mailhog.yaml
   - pdb-uwv.yaml
   - hpa-trino.yaml
+  - hpa-stateless.yaml
   - opensearch-ilm-job.yaml
+  - postgres-backup-cronjob.yaml
   - ingress-prometheus.yaml
   - ingress-grafana.yaml
   - servicemonitor-platform.yaml

@@ -122,3 +122,149 @@ spec:
             severity: warning
           annotations:
             summary: "Namespace {{ $labels.namespace }} CPU-quota > 85%"
+
+    # ---- Hive Metastore ----
+    # HMS is the single source of truth for Iceberg/Delta table metadata.
+    # If it's down, Trino + Spark + dbt all stop being able to read tables.
+    - name: uwv-hive
+      interval: 1m
+      rules:
+        - alert: HiveMetastoreDown
+          expr: up{job=~".*hive.*metastore.*|.*hive-metastore.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: hive-metastore
+          annotations:
+            summary: "Hive Metastore is down — Trino + Spark + dbt cannot resolve tables"
+            description: >-
+              No Prometheus scrape target for uwv-hive-metastore is responding.
+              Check pod status and the shared Postgres `hivemetastore` database.
+            runbook_url: "/docs/runbook.md#44-hive-metastore-postgres-corruption-of-readiness-fail"
+
+    # ---- Airflow ----
+    # Stackable's AirflowCluster runs scheduler + webserver as separate
+    # StatefulSets. The scheduler is the heartbeat — without it, DAGs stop
+    # being parsed and tasks stop being scheduled.
+    - name: uwv-airflow
+      interval: 1m
+      rules:
+        - alert: AirflowSchedulerHeartbeatLost
+          expr: time() - max(airflow_scheduler_heartbeat) > 60
+          for: 5m
+          labels:
+            severity: critical
+            component: airflow-scheduler
+          annotations:
+            summary: "Airflow scheduler heartbeat lost for > 60s"
+            description: >-
+              The scheduler hasn't emitted a heartbeat in over a minute.
+              DAGs are not being scheduled. Check pod, executor, and
+              metadata-DB (Postgres `airflow` schema) health.
+            runbook_url: "/docs/runbook.md#45-airflow-scheduler-stuck"
+
+        - alert: AirflowDagRunFailureRateHigh
+          expr: |
+            (
+              sum(rate(airflow_dagrun_failed_total[15m]))
+              /
+              clamp_min(sum(rate(airflow_dagrun_total[15m])), 1)
+            ) > 0.10
+          for: 15m
+          labels:
+            severity: warning
+            component: airflow
+          annotations:
+            summary: "Airflow DAG-run failure-rate > 10% (15m window)"
+            description: >-
+              More than 1-in-10 DAG-runs failed in the last 15 minutes.
+              Check `airflow_dag_run_state` per DAG to identify the culprit.
+
+    # ---- MinIO ----
+    # MinIO holds the lakehouse storage. Disk-pressure means streaming
+    # bronze pipelines and dbt-target writes start failing.
+    - name: uwv-minio
+      interval: 1m
+      rules:
+        - alert: MinioDiskUsageHigh
+          expr: minio_cluster_capacity_usable_free_bytes / minio_cluster_capacity_usable_total_bytes < 0.15
+          for: 10m
+          labels:
+            severity: warning
+            component: minio
+          annotations:
+            summary: "MinIO free capacity < 15%"
+            description: >-
+              Free usable capacity is {{ $value | humanizePercentage }}.
+              Expand the PVC or expire old objects in uwv-checkpoints +
+              uwv-staging buckets.
+
+        - alert: MinioDown
+          expr: minio_cluster_nodes_online_total < 1
+          for: 2m
+          labels:
+            severity: critical
+            component: minio
+          annotations:
+            summary: "MinIO down — lakehouse storage unavailable"
+
+    # ---- Cert-manager (TLS expiry) ----
+    # Certificates issued by cert-manager are auto-renewed at 2/3 of the
+    # validity period; if a renewal fails, we want a warning before the
+    # cert actually expires. cert-manager exposes `certmanager_certificate_*`
+    # via its metrics port (scraped by the kube-prometheus-stack default).
+    - name: uwv-cert-manager
+      interval: 5m
+      rules:
+        - alert: CertManagerCertExpiringSoon
+          expr: |
+            (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 14
+            and
+            (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 > 0
+          for: 1h
+          labels:
+            severity: warning
+            component: cert-manager
+          annotations:
+            summary: "Certificate {{ $labels.name }} expires in < 14 days"
+            description: >-
+              cert-manager hasn't successfully renewed `{{ $labels.name }}` in
+              namespace `{{ $labels.namespace }}`. Check the Issuer and the
+              CertificateRequest. Auto-renewal normally kicks in at 2/3 of
+              validity — if we're inside 14 days, renewal has been failing.
+            runbook_url: "/docs/runbook.md#46-tls-cert-rollover-failed"
+
+        - alert: CertManagerCertExpired
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 0
+          for: 5m
+          labels:
+            severity: critical
+            component: cert-manager
+          annotations:
+            summary: "Certificate {{ $labels.name }} HAS EXPIRED"
+            description: >-
+              `{{ $labels.name }}` in ns `{{ $labels.namespace }}` is past its
+              expiration time. Clients will fail TLS handshakes. Recreate the
+              Certificate resource immediately.
+
+    # ---- OPA decision latency ----
+    # OPA in front of Trino sits in the hot path of every query. Latency
+    # spikes here translate directly into user-visible Trino latency.
+    - name: uwv-opa-latency
+      interval: 30s
+      rules:
+        - alert: OpaDecisionLatencyP99High
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le) (rate(opa_http_request_duration_seconds_bucket{path=~"/v1/data/trino/.*"}[5m]))
+            ) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            component: opa
+          annotations:
+            summary: "OPA decision p99 > 50ms — Trino queries will feel slow"
+            description: >-
+              p99 OPA decision latency is {{ $value | printf "%.3f" }}s.
+              Typical target is <10ms. Check OPA bundle-size (data.json) and
+              policy-complexity in `opa-policies-src/trino/`.
