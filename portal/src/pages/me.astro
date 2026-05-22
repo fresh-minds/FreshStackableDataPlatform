@@ -1,6 +1,5 @@
 ---
 import ShellLayout from '../layouts/ShellLayout.astro';
-import ReferenceArchitecture from '../components/ReferenceArchitecture.astro';
 import Eyebrow from '../components/primitives/Eyebrow.astro';
 import Button from '../components/primitives/Button.astro';
 import Tag from '../components/primitives/Tag.astro';
@@ -79,55 +78,6 @@ const payload = {
     <div class="shortcut-grid" id="shortcut-grid"></div>
   </section>
 
-  <section class="me-section" id="role-upload" hidden>
-    <header class="me-section-head">
-      <Eyebrow>Data aanleveren</Eyebrow>
-      <h2>Upload &amp; convert</h2>
-      <p>Upload elk bestandstype naar MinIO en zet tabulaire data (CSV, TSV, JSON, NDJSON, Parquet) met één klik om naar een Delta-tabel in bronze.</p>
-    </header>
-    <a href="/csv-upload/" class="upload-cta-card">
-      <span class="upload-cta-icon" aria-hidden="true">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="17 8 12 3 7 8"/>
-          <line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
-      </span>
-      <span class="upload-cta-body">
-        <strong class="upload-cta-title">Upload &amp; convert</strong>
-        <span class="upload-cta-hint">MinIO upload · optioneel convert_to_delta → bronze</span>
-      </span>
-      <span class="upload-cta-arrow" aria-hidden="true">→</span>
-    </a>
-  </section>
-
-  <section class="me-section" id="role-arch" hidden>
-    <header class="me-section-head">
-      <Eyebrow>Diagram</Eyebrow>
-      <h2>Jouw plek in het platform</h2>
-      <p>De componenten waar jij toegang toe hebt zijn opgelicht. De rest doet zijn werk op de achtergrond.</p>
-    </header>
-    <div data-arch-host>
-      <ReferenceArchitecture />
-    </div>
-  </section>
-
-  <section class="me-section" id="role-access-request" hidden>
-    <header class="me-section-head">
-      <Eyebrow>Toegang</Eyebrow>
-      <h2>Andere data nodig?</h2>
-      <p>
-        Vul één formulier in. Wij maken de Task in OpenMetadata aan en
-        sturen 'm naar de owner van de dataset. Na approval krijg je
-        automatisch de rol <code>data_access:&lt;catalog&gt;.&lt;schema&gt;</code>
-        toegekend.
-      </p>
-    </header>
-    <div class="help-cta">
-      <Button href="/access-request">Vraag toegang aan</Button>
-    </div>
-  </section>
-
   <section class="me-section" id="role-help" hidden>
     <header class="me-section-head">
       <Eyebrow>Hulp</Eyebrow>
@@ -202,7 +152,7 @@ const payload = {
       const grid = document.getElementById('picker-grid')!;
       grid.innerHTML = pickerHtml();
       document.getElementById('role-picker')!.hidden = false;
-      ['role-view','role-caps','role-shortcuts-section','role-upload','role-arch','role-access-request','role-help'].forEach((id) => {
+      ['role-view','role-caps','role-shortcuts-section','role-help'].forEach((id) => {
         document.getElementById(id)!.hidden = true;
       });
     }
@@ -215,7 +165,7 @@ const payload = {
         return;
       }
 
-      ['role-view','role-caps','role-shortcuts-section','role-upload','role-arch','role-access-request','role-help'].forEach((id) => {
+      ['role-view','role-caps','role-shortcuts-section','role-help'].forEach((id) => {
         document.getElementById(id)!.hidden = false;
       });
       document.getElementById('role-picker')!.hidden = true;
@@ -263,22 +213,6 @@ const payload = {
                 </span>
               </a>`;
           }).join('');
-
-      // ─── Per-rol highlight in het reference-architecture diagram ───
-      const myIds = new Set(
-        data.components
-          .filter((c) => c.rolesUsing.includes('*') || c.rolesUsing.includes(roleId))
-          .map((c) => c.id),
-      );
-
-      const arch = document.querySelector<HTMLElement>('[data-arch-host] .ref-arch');
-      if (arch) {
-        arch.dataset.activeRole = roleId;
-        arch.querySelectorAll<HTMLElement>('[data-component]').forEach((el) => {
-          const id = el.dataset.component!;
-          el.classList.toggle('is-mine', myIds.has(id));
-        });
-      }
 
       void refreshStatus();
     }
@@ -372,41 +306,48 @@ const payload = {
       margin: 0;
     }
 
-    /* ─── Capabilities table ─── */
+    /* ─── Capabilities card-grid ───
+       Auto-fit grid van card-vormige <li>'s. Elke card heeft een
+       eyebrow-label bovenaan en de waarde(n) eronder. Codes (catalogs /
+       schemas / purposes) renderen als compacte chips zodat lange lijsten
+       de card niet uit balans trekken. */
     .caps {
       list-style: none;
       padding: 0;
       margin: 0;
       display: grid;
-      grid-template-columns: 1fr;
-      gap: 0;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--space-3);
+    }
+    .caps li {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      padding: var(--space-4) var(--space-5);
       background: var(--bg-elev);
       border: 1px solid var(--line);
       border-radius: var(--radius-md);
-      overflow: hidden;
-    }
-    .caps li {
-      display: grid;
-      grid-template-columns: 14ch 1fr;
-      gap: var(--space-4);
-      padding: var(--space-3) var(--space-4);
-      border-bottom: 1px solid var(--line-soft);
       font-size: var(--text-meta);
-      align-items: center;
     }
-    .caps li:last-child { border-bottom: 0; }
     .cap-key {
       color: var(--ink-3);
       font-size: var(--text-eyebrow);
       letter-spacing: var(--tracking-eyebrow);
+      text-transform: uppercase;
     }
-    .cap-val { color: var(--ink-1); }
+    .cap-val {
+      color: var(--ink-1);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      align-items: center;
+    }
     .cap-val code {
       background: var(--bg-sunken);
       padding: 1px 6px;
       border-radius: 4px;
       border: 1px solid var(--line);
-      margin-right: 4px;
+      font-size: 12px;
     }
     .cap-yes  { color: var(--status-ok); font-weight: var(--weight-semibold); }
     .cap-no   { color: var(--ink-3); }
@@ -490,7 +431,11 @@ const payload = {
     .help-cta { margin-top: var(--space-4); }
 
     /* ─── Upload CTA card ─── */
-    .upload-cta-card {
+    /* Upload + arch + access-request sections zijn uit het template
+       gehaald (Optie A — strak). De CSS hieronder blijft staan als
+       documentatie van wat ze deden; verwijder gerust bij volgende
+       cleanup. */
+    .upload-cta-card-legacy-unused {
       display: flex;
       align-items: center;
       gap: var(--space-4);

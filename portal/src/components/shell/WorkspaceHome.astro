@@ -12,8 +12,6 @@
 */
 import ItemTile from './ItemTile.astro';
 import { RECENTS, EXPLORE, HERO_STATS } from '../../data/v2-homepage';
-import type { ItemType, ServiceSlug } from '../../data/v2-homepage';
-import { shortcuts as ROLE_SHORTCUTS, toEmbedHref } from '../../data/role-shortcuts';
 
 interface Props {
   /** Greeting display name. Defaults to "Karel" for the mockup. */
@@ -25,34 +23,6 @@ const {
   userName = 'Karel',
   personaLabel = 'Data Engineer',
 } = Astro.props;
-
-// Map a service-component id onto a tile-type for icon-tint colouring.
-// Default fallback = 'dashboard' since most rol-shortcuts are dashboards.
-function typeForComponent(id: string): ItemType {
-  switch (id) {
-    case 'superset':
-    case 'grafana':       return 'dashboard';
-    case 'openmetadata':
-    case 'hive':
-    case 'minio':         return 'table';
-    case 'airflow':       return 'dag';
-    case 'jupyter':       return 'notebook';
-    case 'trino':
-    case 'prometheus':
-    case 'opa':           return 'query';
-    case 'spark':
-    case 'kafka':
-    case 'nifi':
-    case 'dbt':
-    case 'dbt-docs':
-    case 'multica':       return 'pipeline';
-    default:              return 'dashboard';
-  }
-}
-
-// SSR-default persona — the page paints data_engineer's shortcuts; client-
-// side script swaps to the real persona from sessionStorage right after.
-const DEFAULT_ROLE = 'data_engineer';
 ---
 
 <section class="v2-page">
@@ -84,7 +54,6 @@ const DEFAULT_ROLE = 'data_engineer';
   <section class="v2-section">
     <header class="v2-section-head">
       <h2>Recent geopend</h2>
-      <a class="v2-section-more" href="#recents">Alles bekijken →</a>
     </header>
     <div class="v2-grid" data-recents-grid>
       {RECENTS.map((r) => (
@@ -104,44 +73,11 @@ const DEFAULT_ROLE = 'data_engineer';
     </div>
   </section>
 
-  <!-- ─── Persona shortcuts ─── -->
-  <!-- All 11 roles render server-side; only the active role's grid is
-       visible (hidden attribute toggled client-side via sessionStorage).
-       Empty role-set falls back to a friendly placeholder. -->
-  <section class="v2-section" id="shortcuts-section">
-    <header class="v2-section-head">
-      <h2>
-        Jouw werkplek
-        <span class="v2-section-sub">— <span data-persona-label>{personaLabel}</span></span>
-      </h2>
-      <a class="v2-section-more" href="/me/">Volledig overzicht →</a>
-    </header>
-    {Object.entries(ROLE_SHORTCUTS).map(([role, items]) => (
-      <div class="v2-grid v2-shortcuts" data-role={role} hidden={role !== DEFAULT_ROLE}>
-        {items.length > 0 ? items.map((s) => (
-          <ItemTile
-            type={typeForComponent(s.component)}
-            service={s.component as ServiceSlug}
-            title={s.title}
-            subtitle={s.hint}
-            href={toEmbedHref(s)}
-            badge="Persona"
-          />
-        )) : (
-          <p class="v2-shortcuts-empty">
-            Nog geen shortcuts voor deze rol — zie <a href="/me/">Mijn werkplek</a>
-            voor capabilities en handleidingen.
-          </p>
-        )}
-      </div>
-    ))}
-  </section>
-
   <!-- ─── Verkennen ─── -->
   <section class="v2-section">
     <header class="v2-section-head">
       <h2>Verkennen</h2>
-      <a class="v2-section-more" href="#all-services">Architectuur-overzicht →</a>
+      <a class="v2-section-more" href="/embed/dbt-docs/">Lineage-diagram →</a>
     </header>
     <div class="v2-explore">
       {EXPLORE.map((cat) => (
@@ -179,13 +115,11 @@ const DEFAULT_ROLE = 'data_engineer';
 
 <script>
   // Client-side persona binding for the homepage.
-  //   1. SSR painted with DEFAULT_ROLE (data_engineer) so first-paint
-  //      is fast and stable.
+  //   1. SSR paints the default persona label in the hero subtitle.
   //   2. After load: read uwv-portal-role from sessionStorage (set by
-  //      ShellLayout's loadIdentity() from /oauth2/userinfo).
-  //   3. Toggle .v2-shortcuts[hidden] so only the active role's grid
-  //      is visible. Update hero subtitle + section-header label.
-  //   4. ?persona=<role> in URL overrides for local-dev previews.
+  //      ShellLayout's loadIdentity() from /oauth2/userinfo) and
+  //      rewrite the hero subtitle to the real persona.
+  //   3. ?persona=<role> in URL overrides for local-dev previews.
 
   const PERSONA_LABELS: Record<string, string> = {
     // Technical personas (in workspace switcher)
@@ -206,23 +140,11 @@ const DEFAULT_ROLE = 'data_engineer';
 
   function applyPersona(role: string): void {
     const label = PERSONA_LABELS[role] ?? role;
-
-    // Toggle the right shortcuts grid.
-    document.querySelectorAll<HTMLElement>('.v2-shortcuts').forEach((el) => {
-      el.hidden = el.dataset.role !== role;
-    });
-
-    // Update hero subtitle.
     const sub = document.querySelector<HTMLElement>('[data-persona-sub]');
     if (sub) {
       sub.innerHTML =
         `Persona: <b>${label}</b> · 3 nieuwe meldingen · 1 DAG vraagt aandacht`;
     }
-
-    // Update section-header label.
-    document.querySelectorAll<HTMLElement>('[data-persona-label]').forEach((el) => {
-      el.textContent = label;
-    });
   }
 
   // Resolve: URL query (?persona=…) > sessionStorage > default.
@@ -471,19 +393,6 @@ const DEFAULT_ROLE = 'data_engineer';
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: var(--space-3);
   }
-
-  /* Empty-state for roles without configured shortcuts. */
-  .v2-shortcuts-empty {
-    grid-column: 1 / -1;
-    margin: 0;
-    padding: var(--space-5);
-    background: var(--bg-elev);
-    border: 1px dashed var(--line);
-    border-radius: var(--tile-radius);
-    color: var(--ink-3);
-    font-size: var(--text-meta);
-  }
-  .v2-shortcuts-empty a { color: var(--accent-info); }
 
   /* ─── Verkennen (category sub-grids) ─── */
   .v2-explore {

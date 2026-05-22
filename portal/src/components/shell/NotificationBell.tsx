@@ -214,7 +214,9 @@ export default function NotificationBell() {
           ))
         )}
         <div className="topbarv2-panel-foot">
-          <a href="#all-events">Alle meldingen →</a>
+          <a href="/embed/airflow/?path=%2Fdags%3Fstatus_filter%3Dfailed">
+            Bekijk gefaalde DAGs →
+          </a>
         </div>
       </div>
     </div>

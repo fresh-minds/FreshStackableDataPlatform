@@ -72,8 +72,9 @@ grafana:
   #
   # role_attribute_path: realm-roles uit `roles`-claim mappen op Grafana-rollen.
   # platform_admin → Admin, data_engineer → Editor, rest → Viewer.
-  # auto_login: false zodat de built-in /login (admin-account) bereikbaar blijft
-  # via "Sign in with Keycloak"-knop; admin/CHANGE-ME blijft de break-glass-route.
+  # oauth_auto_login: true → portal embed-shell (/embed/grafana/) stuurt direct
+  # door naar Keycloak; bestaande SSO-sessie = geen handmatige klik nodig.
+  # Break-glass admin login blijft bereikbaar via /grafana/login?disableAutoLogin=true.
   #
   # tls_skip_verify_insecure=true is dev-only nodig omdat de pod het self-signed
   # uwv-platform-issuer-cert van keycloak.uwv-platform.local niet kan verifiëren
@@ -102,7 +103,7 @@ grafana:
       allow_embedding: true
     auth:
       disable_login_form: false
-      oauth_auto_login: false
+      oauth_auto_login: true
     auth.generic_oauth:
       enabled: true
       name: "Keycloak"
