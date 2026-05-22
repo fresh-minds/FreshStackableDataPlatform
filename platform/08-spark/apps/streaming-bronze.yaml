@@ -46,13 +46,15 @@ spec:
       spec:
         containers:
           - name: spark
+            # TABLE_FORMAT, HIVE_METASTORE_URI, RAW_PATH, BUCKET_* all come
+            # from the platform-config ConfigMap (platform/00-namespaces/
+            # platform-config-cm.yaml). Adding individual env-overrides
+            # below is allowed for per-app tweaks; envFrom is processed
+            # before env so explicit env wins.
+            envFrom:
+              - configMapRef:
+                  name: platform-config
             env:
-              - name: TABLE_FORMAT
-                value: "delta"
-              - name: HIVE_METASTORE_URI
-                value: "thrift://uwv-hive-metastore:9083"
-              - name: RAW_PATH
-                value: "s3a://uwv-raw/"
               - name: S3_ACCESS_KEY
                 valueFrom:
                   secretKeyRef:
@@ -85,11 +87,10 @@ spec:
       spec:
         containers:
           - name: spark
+            envFrom:
+              - configMapRef:
+                  name: platform-config
             env:
-              - name: TABLE_FORMAT
-                value: "delta"
-              - name: HIVE_METASTORE_URI
-                value: "thrift://uwv-hive-metastore:9083"
               - name: S3_ACCESS_KEY
                 valueFrom:
                   secretKeyRef:

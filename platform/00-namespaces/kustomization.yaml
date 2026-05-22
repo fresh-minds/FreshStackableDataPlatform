@@ -2,6 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - namespaces.yaml
+  - platform-config-cm.yaml
   # resourcequota-limitrange.yaml uitgeschakeld voor lokale k3d/MacBook:
   # de hard caps + ontbrekende LimitRanges voor uwv-monitoring/uwv-auth
   # blokkeerden helm-charts (Prometheus admission jobs zonder requests/limits).
