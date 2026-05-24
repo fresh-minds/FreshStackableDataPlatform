@@ -1,0 +1,158 @@
+---
+// /handleidingen/<role-id>/ — rendert de rol-handleiding uit
+// portal/src/content/handleidingen/<role-id>.md (auto-gesynct uit
+// docs/handleidingen/ door scripts/sync-handleidingen.mjs).
+//
+// Linkt vanuit /me/ → "Lees jouw rol-handleiding". Bevat workflows,
+// foutmeldingen en escalatie-procedures per rol. Source-of-truth blijft
+// in docs/handleidingen/ — wijzig daar, niet hier; sync-script kopieert
+// bij elke build.
+
+import ShellLayout from '../../layouts/ShellLayout.astro';
+import { getCollection } from 'astro:content';
+import { roles, roleById, type RoleId } from '../../data/roles';
+
+export async function getStaticPaths() {
+  return roles.map((r) => ({ params: { role: r.id } }));
+}
+
+const { role } = Astro.params as { role: RoleId };
+const meta = roleById(role);
+
+const entries = await getCollection('handleidingen', ({ data }) => data.role === role);
+const entry = entries[0];
+
+if (!meta || !entry) {
+  return Astro.redirect('/me/');
+}
+
+const { Content } = await entry.render();
+---
+<ShellLayout
+  title={`${entry.data.title} · Handleiding`}
+  activeSection="workspace"
+>
+  <article class="handleiding-prose">
+    <p class="handleiding-crumbs">
+      <a href="/me/">Mijn werkplek</a>
+      <span class="sep">·</span>
+      <span>Handleiding</span>
+    </p>
+
+    <header class="handleiding-head">
+      <p class="handleiding-eyebrow">{meta.displayName} · {meta.domain}</p>
+      <h1>{entry.data.title}</h1>
+    </header>
+
+    <Content />
+  </article>
+</ShellLayout>
+
+<style>
+  .handleiding-prose {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: var(--space-7) var(--space-5) var(--space-11);
+    color: var(--ink-2);
+    line-height: 1.65;
+    font-size: 0.98rem;
+  }
+
+  .handleiding-crumbs {
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+    margin: 0 0 var(--space-4);
+  }
+  .handleiding-crumbs a { color: var(--ink-3); }
+  .handleiding-crumbs a:hover { color: var(--ink-1); }
+  .handleiding-crumbs .sep { margin: 0 var(--space-2); color: var(--ink-4); }
+
+  .handleiding-head { margin-bottom: var(--space-7); }
+  .handleiding-eyebrow {
+    color: var(--ink-3);
+    font-size: var(--text-eyebrow);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    margin: 0 0 var(--space-2);
+  }
+  .handleiding-head h1 {
+    font-size: 2rem;
+    line-height: 1.2;
+    margin: 0;
+    color: var(--ink-1);
+    border: 0;
+    padding: 0;
+  }
+
+  /* Markdown chrome — een paar UWV-tweaks bovenop Astro defaults. */
+  .handleiding-prose :global(h2) {
+    font-size: 1.45rem;
+    margin: var(--space-8) 0 var(--space-3);
+    color: var(--ink-1);
+    border-bottom: 1px solid var(--line);
+    padding-bottom: var(--space-2);
+  }
+  .handleiding-prose :global(h3) {
+    font-size: 1.15rem;
+    margin: var(--space-6) 0 var(--space-2);
+    color: var(--ink-1);
+  }
+  .handleiding-prose :global(p) { margin: 0 0 var(--space-3); }
+  .handleiding-prose :global(ul),
+  .handleiding-prose :global(ol) { margin: 0 0 var(--space-4) var(--space-5); }
+  .handleiding-prose :global(li) { margin: var(--space-1) 0; }
+  .handleiding-prose :global(blockquote) {
+    border-left: 3px solid var(--accent);
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-elev);
+    color: var(--ink-2);
+    margin: var(--space-4) 0;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+  .handleiding-prose :global(blockquote p) { margin: 0; }
+  .handleiding-prose :global(code) {
+    font-family: var(--font-mono);
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0.05rem 0.35em;
+    font-size: 0.88em;
+  }
+  .handleiding-prose :global(pre) {
+    background: var(--bg-sunken);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: var(--space-4);
+    overflow-x: auto;
+    margin: var(--space-4) 0;
+  }
+  .handleiding-prose :global(pre code) {
+    background: none;
+    border: 0;
+    padding: 0;
+    font-size: 0.85em;
+  }
+  .handleiding-prose :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin: var(--space-4) 0;
+    font-size: var(--text-meta);
+  }
+  .handleiding-prose :global(th),
+  .handleiding-prose :global(td) {
+    border: 1px solid var(--line);
+    padding: var(--space-2) var(--space-3);
+    text-align: left;
+  }
+  .handleiding-prose :global(th) {
+    background: var(--bg-elev);
+    color: var(--ink-1);
+    font-weight: var(--weight-semibold);
+  }
+  .handleiding-prose :global(a) { color: var(--c-link, var(--accent)); }
+  .handleiding-prose :global(hr) {
+    border: 0;
+    border-top: 1px solid var(--line);
+    margin: var(--space-7) 0;
+  }
+</style>

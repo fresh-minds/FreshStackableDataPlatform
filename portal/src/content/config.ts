@@ -68,6 +68,19 @@ const learn = defineCollection({
   }),
 });
 
-export const collections = { learn };
+// Rol-handleidingen — uitgebreide referentiedocumenten ("Wat doet jouw rol?",
+// workflows, foutmeldingen, escalatie). Source-of-truth is docs/handleidingen/
+// in de repo-root; portal/scripts/sync-handleidingen.mjs kopieert ze bij elke
+// build naar portal/src/content/handleidingen/<role-id>.md met frontmatter.
+// Gerenderd door pages/handleidingen/[role].astro.
+const handleidingen = defineCollection({
+  type: 'content',
+  schema: z.object({
+    title: z.string(),
+    role: z.enum(roleIds),
+  }),
+});
+
+export const collections = { learn, handleidingen };
 export type RoleId = (typeof roleIds)[number];
 export type Level = (typeof levels)[number];
