@@ -6,6 +6,8 @@ Spark on Kubernetes via Stackable's `SparkApplication` CRD.
 |---|---|
 | `SparkApplication streaming-bronze` | Structured Streaming: leest JSONL uit `s3a://uwv-raw/`, schrijft naar Delta bronze (foreachBatch dispatcher per stream). |
 | `ConfigMap spark-streaming-jobs` (gegenereerd) | Mount van `streaming_files_to_lakehouse.py` + `lakehouse_io.py`. |
+| `SparkHistoryServer history` | Permanente Spark-UI op port 18080. Leest event-logs van alle voltooide jobs uit `s3a://uwv-checkpoints/spark-events/`. Bereikbaar via `https://spark.<domain>/`. |
+| `Job spark-events-prefix-init` | One-shot bij deploy: maakt `spark-events/.keep` placeholder in MinIO zodat history-server kan starten (S3 heeft geen leeg-directory concept). |
 
 ## Architectuur
 
