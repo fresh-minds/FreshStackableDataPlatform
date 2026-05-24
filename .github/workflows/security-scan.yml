@@ -9,30 +9,6 @@
 name: security-scan
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'platform/**'
-      - 'platform-overlays/**'
-      - 'infrastructure/**'
-      - 'data-generation/**'
-      - 'spark-jobs/**'
-      - 'portal/package*.json'
-      - 'dbt/packages.yml'
-      - '.github/workflows/security-scan.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'platform/**'
-      - 'platform-overlays/**'
-      - 'infrastructure/**'
-      - 'data-generation/**'
-      - 'spark-jobs/**'
-      - 'portal/package*.json'
-      - 'dbt/packages.yml'
-  schedule:
-    # 04:17 UTC daily — outside of business hours, off-peak Actions queue.
-    - cron: '17 4 * * *'
   workflow_dispatch:
 
 permissions:

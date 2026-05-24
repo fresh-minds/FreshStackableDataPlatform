@@ -13,19 +13,7 @@
 name: aks-cd
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'platform/**'
-      - 'platform-overlays/**'
-      - 'infrastructure/**'
-      - 'portal/**'
-      - 'scripts/**'
-      - 'opa-policies-src/**'
-      - 'dbt/**'
-      - 'nifi-flows/**'
-      - 'Makefile'
-      - '.github/workflows/aks-cd.yml'
+  workflow_dispatch:
 
 # Eén AKS-deploy tegelijk. Niet cancellen — een half afgebroken apply
 # kan het cluster in een rare staat achterlaten. Queue liever (zelfde

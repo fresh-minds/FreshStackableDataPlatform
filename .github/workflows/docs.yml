@@ -13,27 +13,6 @@
 name: docs
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - docs/**
-      - portal/src/data/components.ts
-      - mkdocs.yml
-      - requirements-docs.txt
-      - scripts/docs_gen.py
-      - .github/workflows/docs.yml
-      - README.md
-      - SECURITY.md
-      - referentiearchitectuur-uwv-data-analytics.md
-      - requirements-compliant-data-analyseplatform.md
-  pull_request:
-    paths:
-      - docs/**
-      - portal/src/data/components.ts
-      - mkdocs.yml
-      - requirements-docs.txt
-      - scripts/docs_gen.py
-      - .github/workflows/docs.yml
   workflow_dispatch:
 
 # Eén concurrent run per branch — een nieuwe push annuleert een lopende.

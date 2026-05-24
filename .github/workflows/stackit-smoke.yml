@@ -12,10 +12,6 @@
 name: stackit-smoke
 
 on:
-  workflow_run:
-    workflows: [stackit-cd]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
 
 # Nieuwe smoke-run cancelt oude — relevantste smoke is altijd de laatste.

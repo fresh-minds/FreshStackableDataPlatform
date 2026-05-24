@@ -15,19 +15,7 @@
 name: stackit-cd
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'platform/**'
-      - 'platform-overlays/**'
-      - 'infrastructure/**'
-      - 'portal/**'
-      - 'scripts/**'
-      - 'opa-policies-src/**'
-      - 'dbt/**'
-      - 'nifi-flows/**'
-      - 'Makefile'
-      - '.github/workflows/stackit-cd.yml'
+  workflow_dispatch:
 
 # Eén SKE-deploy tegelijk. Niet cancellen — een half afgebroken apply kan
 # het cluster in een rare staat achterlaten.
