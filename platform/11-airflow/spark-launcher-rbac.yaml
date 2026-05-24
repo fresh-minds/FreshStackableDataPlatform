@@ -1,0 +1,54 @@
+# RBAC voor DAGs die SparkApplications launchen via een kubectl-pod
+# (KubernetesPodOperator + bitnami/kubectl image).
+#
+# Eerste gebruiker: transform_wia_spark.py (silver_wia + gold_wia tasks).
+#
+# We binden de KPO-pod aan een dedicated `spark-launcher` SA i.p.v. de
+# namespace-default — die laatste heeft geen K8s-API-rechten. De alternative
+# is `uwv-airflow-serviceaccount` (default voor Airflow workers), maar dat
+# SA wordt gedeeld met DAG-scheduler + andere KPO-pods, dus minimale
+# permissies-per-SA is cleaner.
+#
+# Verbs: get/list voor status-polling, create voor apply, delete voor cleanup
+# na succes. Pods/log voor driver-log-fetch op failure.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spark-launcher
+  namespace: uwv-platform
+  labels:
+    uwv.nl/component: airflow
+    uwv.nl/purpose: spark-application-launcher
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spark-launcher
+  namespace: uwv-platform
+rules:
+  # SparkApplication CRD — full lifecycle.
+  - apiGroups: ["spark.stackable.tech"]
+    resources: ["sparkapplications"]
+    verbs: ["get", "list", "create", "delete", "patch", "watch"]
+  # Pods — driver-log-fetch op failure.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spark-launcher
+  namespace: uwv-platform
+subjects:
+  - kind: ServiceAccount
+    name: spark-launcher
+    namespace: uwv-platform
+roleRef:
+  kind: Role
+  name: spark-launcher
+  apiGroup: rbac.authorization.k8s.io

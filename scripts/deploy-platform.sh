@@ -27,6 +27,10 @@ log "Syncing spark-jobs/ -> platform/08-spark/scripts/"
 mkdir -p "$ROOT/platform/08-spark/scripts"
 cp "$ROOT/spark-jobs/streaming_files_to_lakehouse.py" "$ROOT/platform/08-spark/scripts/"
 cp "$ROOT/spark-jobs/lib/lakehouse_io.py"             "$ROOT/platform/08-spark/scripts/"
+# WIA bronze→silver→gold demo (parallel-Spark-pad naast dbt).
+cp "$ROOT/spark-jobs/seed_bronze_wia.py"              "$ROOT/platform/08-spark/scripts/"
+cp "$ROOT/spark-jobs/batch_silver_wia.py"             "$ROOT/platform/08-spark/scripts/"
+cp "$ROOT/spark-jobs/batch_gold_wia.py"               "$ROOT/platform/08-spark/scripts/"
 
 # Bootstrap dev-placeholder secrets for layers that need them. Same pattern
 # as the om-bridge target in the Makefile: only generate if missing, so a
@@ -216,6 +220,10 @@ if [[ "${IS_LOCAL}" == "yes" ]]; then
     # k3d: rewrite *.${PLATFORM_DOMAIN} naar de keycloak-external ClusterIP
     # zodat in-cluster OIDC-discovery van MinIO/Trino/Superset/Airflow/NiFi/
     # OpenMetadata werkt zonder /etc/hosts loopback.
+    # IN AAAA-template levert NOERROR (lege answer-set) zodat Go's parallel
+    # A+AAAA resolver geen SERVFAIL ziet — anders crasht de Grafana OIDC
+    # token-exchange met "lookup keycloak.<domain>: Try again" (en NSS/getent
+    # verbergt het probleem). Zie ook scripts/bootstrap.sh CoreDNS-block.
     coredns_zone=$(printf '%s' "$PLATFORM_DOMAIN" | sed 's/\./\\./g')
     kubectl -n kube-system create configmap coredns-custom --from-literal="${PLATFORM_DOMAIN}.server=${PLATFORM_DOMAIN}:53 {
     errors
@@ -223,6 +231,11 @@ if [[ "${IS_LOCAL}" == "yes" ]]; then
     template IN A ${PLATFORM_DOMAIN} {
         match .*\\.${coredns_zone}
         answer \"{{ .Name }} 60 IN A ${KC_SVC_IP}\"
+        fallthrough
+    }
+    template IN AAAA ${PLATFORM_DOMAIN} {
+        match .*\\.${coredns_zone}
+        rcode NOERROR
         fallthrough
     }
 }

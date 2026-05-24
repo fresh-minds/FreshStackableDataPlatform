@@ -18,6 +18,7 @@ resources:
   - webserver-config.yaml
   - jobs/dbt-manifest-job.yaml
   - uc11-rbac.yaml
+  - spark-launcher-rbac.yaml
 
 configMapGenerator:
   # 1. DAG-aanroeperfiles. Houd dit minimaal — geen logica, alleen factory-calls.
@@ -37,6 +38,9 @@ configMapGenerator:
       - dags/uc11_databricks.py
       - dags/uc11_fabric.py
       - dags/convert_to_delta.py
+      # Spark-pad voor WIA bronze→silver→gold (parallel aan dbt).
+      # Zie platform/08-spark/README.md voor de seed-stap.
+      - dags/transform_wia_spark.py
       # synthetic_data_load.py uitgesloten — gebruikt verouderde
       # KubernetesJobOperator signature (job_template is geen geldige arg meer).
       # Voor seed: gebruik `make seed` of `kubectl apply -f data-generation/k8s/`.
@@ -79,6 +83,11 @@ configMapGenerator:
     files:
       - jobs/csv_to_bronze.py
       - jobs/convert_to_delta.py
+      # SparkApplication-templates voor DAG transform_wia_spark.
+      # De DAG mountert deze ConfigMap en doet `sed | kubectl apply -f -`
+      # met een unieke ${RUN_ID} per run.
+      - jobs/spark-silver-wia.yaml
+      - jobs/spark-gold-wia.yaml
 
 generatorOptions:
   disableNameSuffixHash: true

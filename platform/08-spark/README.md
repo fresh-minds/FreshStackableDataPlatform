@@ -76,3 +76,105 @@ executor).
 - Aparte SparkApplication per stream-domein (i.p.v. één foreachBatch dispatcher).
 - Fault-tolerant execution + retry-policy.
 - Delta Lake `OPTIMIZE` schedule + `VACUUM RETAIN 168 HOURS` via maintenance-DAG.
+
+---
+
+## WIA bronze→silver→gold demo (parallel-Spark-pad, naast dbt)
+
+Een volledig pure-Spark + Delta Lake pad voor één vertical slice
+(WIA-aanvragen), bedoeld om het Spark-verhaal van bronze tot goud
+te demonstreren **naast** het bestaande dbt-+-Trino-pad voor silver/gold.
+Beide paden schrijven naar dezelfde MinIO-buckets maar gebruiken aparte
+HMS-schemas, dus ze raken elkaar niet.
+
+### Naamgeving
+
+| Laag    | dbt-pad (bestaand)                          | Spark-pad (demo)                          |
+|---------|---------------------------------------------|-------------------------------------------|
+| bronze  | `bronze.uwv.wia_aanvraag`                   | `bronze.uwv.wia_aanvraag` (gedeeld)       |
+| silver  | `silver.wia.stg_wia_aanvraag`               | `silver.wia_spark.aanvraag`               |
+| gold    | `gold.uc01_wia_funnel.mart_uc01_wia_funnel_daily` | `gold.uc01_wia_spark.funnel_daily` |
+| S3-pad  | `s3a://uwv-silver/wia/...`                  | `s3a://uwv-silver/wia_spark/...`          |
+
+### Componenten
+
+| Bestand | Doel |
+|---|---|
+| [`spark-jobs/seed_bronze_wia.py`](../../spark-jobs/seed_bronze_wia.py) | Schrijft 200 synthetische WIA-rijen direct in bronze-Delta (omdat `streaming-bronze` uit staat). |
+| [`apps/seed-bronze-wia.yaml`](apps/seed-bronze-wia.yaml) | One-shot SparkApplication; bewust NIET in `kustomization.yaml`. |
+| [`spark-jobs/batch_silver_wia.py`](../../spark-jobs/batch_silver_wia.py) | Parse JSON-payload → typed Delta. Idempotent via Delta MERGE op `aanvraag_id`. |
+| [`spark-jobs/batch_gold_wia.py`](../../spark-jobs/batch_gold_wia.py) | Aggregeert silver tot daily funnel (count, avg %, distinct regios) per (datum, onderdeel, status). |
+| [`platform/11-airflow/jobs/spark-silver-wia.yaml`](../11-airflow/jobs/spark-silver-wia.yaml) | SparkApplication-template, gemount in `airflow-jobs` CM. `${RUN_ID}` placeholder. |
+| [`platform/11-airflow/jobs/spark-gold-wia.yaml`](../11-airflow/jobs/spark-gold-wia.yaml) | Idem voor gold. |
+| [`platform/11-airflow/dags/transform_wia_spark.py`](../11-airflow/dags/transform_wia_spark.py) | DAG met 2 KPO-tasks die `sed | kubectl apply` doen + `.status.phase` pollen. |
+| [`platform/11-airflow/spark-launcher-rbac.yaml`](../11-airflow/spark-launcher-rbac.yaml) | SA `spark-launcher` + Role: sparkapplications CRUD + pods get/log. |
+
+### Stappen om te draaien
+
+```bash
+# 1. Deploy het platform (sync van spark-jobs/, regenereer ConfigMaps, RBAC).
+make deploy-platform
+
+# 2. End-to-end Spark pipeline: seed → silver → gold (één commando).
+make wia-spark-demo
+# Of bestaande bronze hergebruiken:
+# SKIP_SEED=1 make wia-spark-demo
+
+# 3. Verifieer eindresultaat via Trino (zie laatste regels van make-output).
+```
+
+### Waarom geen Airflow DAG voor de orchestratie?
+
+De DAG `transform_wia_spark` BESTAAT in de repo
+([dags/transform_wia_spark.py](../11-airflow/dags/transform_wia_spark.py))
+en is structureel correct, maar **werkt niet op SDP-26.3 / Airflow 3.0.6**:
+de Stackable Airflow-image mist het `/execution/` API-endpoint dat task-pods
+nodig hebben om hun TaskInstance te registreren. Geen enkele DAG runt sinds
+2026-05-18. Zie `memory/feedback_stackable_airflow3_execution_api_missing.md`.
+
+`scripts/wia-spark-demo.sh` (achter `make wia-spark-demo`) doet exact wat de
+DAG zou doen — applies SparkApplications, polled `.status.phase`, ketens
+silver→gold — maar zonder Airflow. Zodra de Stackable-bug gefixt is werkt
+de DAG zonder code-wijziging.
+
+### Waarom seed i.p.v. streaming-bronze?
+
+`streaming-bronze` staat uit sinds [incident 2026-05-15](kustomization.yaml#L14-L18).
+Voor deze demo prefereren we deterministische input boven het oplossen van
+het streaming-resource-probleem — dat is een aparte opdracht. Zodra
+streaming-bronze terug aan staat, kan de seed-stap overgeslagen worden;
+de silver+gold DAG werkt onveranderd op de daadwerkelijke bronze-tabel.
+
+### Resource-eisen (lessons learned op k3d, 2026-05-24)
+
+| Setting | Waarde | Reden |
+|---|---|---|
+| `driver.memory.limit` | `1500Mi` | Onder ~1.2Gi crasht Spark met `INVALID_DRIVER_MEMORY` — System memory < 472MB minimum. |
+| `executor.memory.limit` | `1500Mi` | Idem voor executor (`INVALID_EXECUTOR_MEMORY`). |
+| `enableVectorAgent` | `false` | Vector aggregator ConfigMap bestaat niet op deze cluster; `true` blokkeert SparkApplication-reconcile met `VectorAggregatorConfigMapMissing`. |
+| `seed`-write | géén `partitionBy` | Bestaande `s3a://uwv-bronze/uwv/wia_aanvraag/` Delta-tabel is niet-gepartitioneerd (streaming-bronze conventie); append met partitionering geeft `_LEGACY_ERROR_TEMP_DELTA_0007`. |
+
+Failure-debugging tip: Stackable-operator delete'd driver-pod direct bij
+`Failed` ongeacht `spark.kubernetes.driver.deleteOnTermination`. Voor logs:
+tail `kubectl logs <driver-pod>` *terwijl* de pod nog Running is (snapshot
+polling, niet `-f` — die mist de laatste seconden bij delete).
+
+### Waarom MERGE in silver maar OVERWRITE in gold?
+
+- **Silver** is een 1:1-projectie van bronze; `MERGE` op `aanvraag_id` toont
+  een Delta-superpower (upsert op object-id, niet beschikbaar in raw
+  Parquet) en is correct voor incrementele runs.
+- **Gold** is een deterministische aggregatie; volledige overwrite is
+  transparanter en de tabel is klein. In productie zou je
+  `dynamicPartitionOverwrite` per `aanvraag_datum` willen.
+
+### Vergelijking met dbt-pad
+
+| Aspect | dbt | Spark |
+|---|---|---|
+| Taal | SQL (Trino dialect) | PySpark (DataFrame API) |
+| Idempotentie | `materialized=view` (re-query) | Delta MERGE / overwrite |
+| Orchestratie | Cosmos-tasks per model | Airflow KPO + kubectl-apply per SparkApplication |
+| Trigger | Dataset-outlet van bronze-watch | Handmatig (demo) of Dataset (productie) |
+| Compute | Trino-cluster (lange leven) | Spark driver+executor per run (kort leven) |
+| Beste use case | SQL-transformaties, BI | Complex Python, ML-feature-engineering, MERGE |

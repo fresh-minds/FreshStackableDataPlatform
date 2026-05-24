@@ -184,6 +184,10 @@ deploy-om-bridge: om-bridge-image ## Deploy de OM→Keycloak access-bridge (ADR-
 seed: ## Genereer en laad synthetische data (10k cliënten)
 	bash scripts/seed.sh
 
+.PHONY: wia-spark-demo
+wia-spark-demo: ## Run Spark bronze→silver→gold WIA demo end-to-end (workaround voor Stackable Airflow 3 execution-API bug)
+	bash scripts/wia-spark-demo.sh
+
 .PHONY: om-demo-seed
 om-demo-seed: ## Vul OpenMetadata met UC-mart tabel-entities + governance-meta voor demo (idempotent).
 	bash scripts/om-demo-seed.sh
