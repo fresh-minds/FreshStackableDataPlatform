@@ -31,7 +31,8 @@ interface Props {
   /** Which left-rail item is highlighted. */
   activeSection?:
     | 'home' | 'workspace' | 'storage' | 'catalog' | 'lineage'
-    | 'workflows' | 'compute' | 'observability' | 'academy' | 'settings';
+    | 'workflows' | 'compute' | 'observability' | 'dashboarding' | 'ai'
+    | 'academy' | 'settings';
   /**
    * Optional sub-rail highlight (e.g. 'grafana', 'prometheus', 'opensearch'
    * inside the 'observability' group). Matches a child entry's `id`.
@@ -86,6 +87,13 @@ const RAIL_ICONS: Record<string, string> = {
   workflows:     '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M6.5 10v4a2 2 0 0 0 2 2H14"/>',
   compute:       '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/>',
   observability: '<path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/>',
+  // Dashboarding = 4-quadrant LayoutDashboard (Lucide). Visueel onderscheidend
+  // van Observability's lijn-chart — communiceert "tegel-dashboard" zoals
+  // Power BI / Superset / Looker dat tonen.
+  dashboarding:  '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="3" height="5" x="3" y="16" rx="1"/>',
+  // AI = sparkles (Lucide-style). Visueel onmiskenbaar de "AI-icon"
+  // die o.a. Copilot, Notion AI en Linear gebruiken voor agents.
+  ai:            '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/><path d="M5 3v4"/><path d="M3 5h4"/><path d="M19 17v4"/><path d="M17 19h4"/>',
   academy:       '<path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 3 3 6 3s6-1 6-3v-5"/>',
   settings:      '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
 };
@@ -121,6 +129,27 @@ const RAIL_MAIN = [
       { id: 'grafana',    label: 'Grafana',    href: '/embed/grafana/' },
       { id: 'prometheus', label: 'Prometheus', href: '/embed/prometheus/' },
       { id: 'opensearch', label: 'OpenSearch', href: '/embed/opensearch/' },
+    ],
+  },
+  // Dashboarding block — consumption-laag voor business-rollen. Power BI is
+  // de primary landing (Microsoft Fabric tenant SSO via gebruikers' eigen
+  // Azure-tenant); Superset blijft toegankelijk als legacy/open-source
+  // alternatief tot de migratie compleet is. Zie
+  // FreshLakehouse/docs/research/powerbi-as-bi-and-self-service-layer.md
+  // voor de migratie-roadmap.
+  { id: 'dashboarding', label: 'Dashboarding',             href: '/embed/powerbi/',
+    children: [
+      { id: 'powerbi',  label: 'Power BI',           href: '/embed/powerbi/' },
+      { id: 'superset', label: 'Superset (legacy)',  href: '/embed/superset/' },
+    ],
+  },
+  // AI block — coding-agents en watcher-runtime. Beide hebben een werkende
+  // iframe-veilige UI in dit cluster. Multica is de primary landing
+  // (coding-agent coordinator); Nanitics is de Observatory voor agent-runs.
+  { id: 'ai', label: 'AI', href: '/embed/multica/',
+    children: [
+      { id: 'multica',  label: 'Multica',  href: '/embed/multica/' },
+      { id: 'nanitics', label: 'Nanitics', href: '/embed/nanitics/' },
     ],
   },
 ] as const;
@@ -171,6 +200,7 @@ const userInitial = (userName.trim().charAt(0) || '?').toUpperCase();
         var EMBED_MAP = {
           'airflow': 'airflow',
           'superset': 'superset',
+          'powerbi': 'powerbi',
           'grafana': 'grafana',
           'prometheus': 'prometheus',
           'openmetadata': 'openmetadata',

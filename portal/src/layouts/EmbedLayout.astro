@@ -38,7 +38,7 @@ const canEmbed = embedSrc !== null;
 // Map service-id to rail section so the right rail-icon lights up.
 const SECTION_BY_ID: Record<string,
   'home' | 'workspace' | 'storage' | 'catalog' | 'lineage'
-  | 'workflows' | 'compute' | 'observability'
+  | 'workflows' | 'compute' | 'observability' | 'dashboarding' | 'ai'
 > = {
   // Storage
   minio:        'storage',
@@ -60,8 +60,13 @@ const SECTION_BY_ID: Record<string,
   grafana:      'observability',
   prometheus:   'observability',
   opensearch:   'observability',
-  // superset / keycloak / multica / nanitics / opa
-  // → default 'workspace'
+  // Dashboarding (BI / consumption-laag)
+  powerbi:      'dashboarding',
+  superset:     'dashboarding',
+  // AI (coding-agents + watcher-runtime)
+  multica:      'ai',
+  nanitics:     'ai',
+  // keycloak / opa → default 'workspace'
 };
 const activeSection = SECTION_BY_ID[component.id] ?? 'workspace';
 
@@ -71,6 +76,7 @@ const activeSection = SECTION_BY_ID[component.id] ?? 'workspace';
 function trackTypeFor(id: string): string {
   switch (id) {
     case 'superset':
+    case 'powerbi':
     case 'grafana':       return 'dashboard';
     case 'openmetadata':
     case 'hive':

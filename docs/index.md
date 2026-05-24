@@ -27,7 +27,7 @@ met NORA, AVG, BIO/BIO2, NIS2 en de AI Act.
 
     ---
 
-    16 componenten over 9 lagen — van ingestie
+    19 componenten over 9 lagen — van ingestie
     tot consumptie, met identity, observability en governance als
     cross-cutting lanen.
 
@@ -37,7 +37,7 @@ met NORA, AVG, BIO/BIO2, NIS2 en de AI Act.
 
     ---
 
-    11 rollen met elk eigen handleiding: WIA-beoordelaar,
+    12 rollen met elk eigen handleiding: WIA-beoordelaar,
     WW-handhaver, data-engineer, platform-admin, … Toegang en data-zichtbaarheid
     komen uit OPA-policies en Keycloak-rollen.
 

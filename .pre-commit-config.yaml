@@ -77,3 +77,14 @@ repos:
         language: system
         files: '^dbt/models/.*_.*\.yml$'
         pass_filenames: false
+
+      # Regenereer MkDocs-pagina's uit de portal-registry zodra de bron óf de
+      # generator zelf wijzigt. Pure stdlib, geen externe deps. Spiegelt de
+      # `docs_gen.py --check` stap in .github/workflows/docs.yml — die blijft
+      # als safety net staan voor het geval pre-commit geskipt wordt.
+      - id: docs-gen
+        name: regenerate component pages
+        entry: python3 scripts/docs_gen.py
+        language: system
+        files: '^(portal/src/data/components\.ts|scripts/docs_gen\.py|SECURITY\.md)$'
+        pass_filenames: false

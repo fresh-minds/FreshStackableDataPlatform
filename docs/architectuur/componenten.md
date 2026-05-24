@@ -152,6 +152,18 @@ Notebook-werkomgeving — Python/SQL op bronze/silver/gold/sensitive, met Git-in
 - **URL:** [Live UI ↗](https://jupyter.uwv-platform.local:8443)
 - **Gebruikt door:** `researcher`, `data_engineer`, `data_steward`, `wajong_arbeidsdeskundige`, `fez_analist`, `platform_admin`
 
+### Power BI { #powerbi }
+
+!!! abstract "Wat doet Power BI?"
+    Curated dashboards bovenop het lakehouse + composite-model self-service voor analisten met DAX/Excel-skills.
+
+**Laag:** `bi` · **Stage:** `consumption` · **Prometheus job:** _niet gemonitord_
+
+Dashboards en self-service exploration via Microsoft Fabric / Power BI (eigen Azure-tenant SSO).
+
+- **URL:** [Live UI ↗](https://app.fabric.microsoft.com)
+- **Gebruikt door:** `wia_beoordelaar`, `ww_handhaver`, `wajong_arbeidsdeskundige`, `crm_medewerker`, `fez_analist`, `smz_planner`, `proactief_dienstverlener`, `researcher`, `data_analyst`, `data_steward`, `platform_admin`
+
 ## Data Discovery
 
 _Catalog, lineage en data-kwaliteit — wat hebben we eigenlijk?_
@@ -212,6 +224,18 @@ Metrics + alerts; voedt de status-badges in deze portal.
 - **URL:** [Live UI ↗](https://prometheus.uwv-platform.local:8443)
 - **Gebruikt door:** `platform_admin`
 
+### Grafana { #grafana }
+
+!!! abstract "Wat doet Grafana?"
+    Visualisatie van Prometheus-metrics in dashboards; gateway voor SRE-werk.
+
+**Laag:** `observability` · **Stage:** `observability` · **Prometheus job:** `prometheus-grafana`
+
+Dashboards over Prometheus-metrics — cluster-health en service-latency.
+
+- **URL:** [Live UI ↗](https://grafana.uwv-platform.local:8443)
+- **Gebruikt door:** `platform_admin`, `data_engineer`
+
 ### OpenSearch { #opensearch }
 
 !!! abstract "Wat doet OpenSearch?"
@@ -240,6 +264,18 @@ Coördinatie van coding agents (Claude Code, Codex, Copilot CLI, …) — taken,
 - **URL:** [Live UI ↗](https://multica.uwv-platform.local:8443)
 - **Gebruikt door:** `platform_admin`, `data_engineer`
 
+### Nanitics Observatory { #nanitics }
+
+!!! abstract "Wat doet Nanitics Observatory?"
+    Bekijk watcher-runs (span tree, LLM-calls, tool-calls) en triggert handmatige investigations.
+
+**Laag:** `ai-agents` · **Stage:** `agents` · **Prometheus job:** _niet gemonitord_
+
+In-cluster agent-runtime + trace-viewer. Watcher monitort het platform en filed issues naar Multica.
+
+- **URL:** [Live UI ↗](https://nanitics.uwv-platform.local:8443/api/observatory/)
+- **Gebruikt door:** `platform_admin`, `data_engineer`
+
 
 ## Rol-matrix { #rol-matrix }
 
@@ -248,16 +284,17 @@ referentie-implementatie via de portal-shortcuts naar de UI van het
 component wordt gestuurd. Een lege cel betekent dat de rol normaliter geen
 directe toegang nodig heeft (toegang kan alsnog via JIT/break-glass).
 
-| Rol | keycloak | nifi | kafka | minio | hive | spark | trino | opa | superset | openmetadata | dbt-docs | jupyter | airflow | prometheus | opensearch | multica |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `wia_beoordelaar` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |
-| `ww_handhaver` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |
-| `wajong_arbeidsdeskundige` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |
-| `crm_medewerker` | ✓ |  |  |  |  |  |  |  | ✓ | ✓ |  |  |  |  |  |  |
-| `fez_analist` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |
-| `smz_planner` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |
-| `proactief_dienstverlener` | ✓ |  |  |  |  |  | ✓ |  | ✓ |  |  |  |  |  |  |  |
-| `researcher` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |
-| `data_steward` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |  |
-| `data_engineer` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  |  | ✓ | ✓ | ✓ | ✓ |  |  | ✓ |
-| `platform_admin` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Rol | keycloak | nifi | kafka | minio | hive | spark | trino | opa | superset | openmetadata | dbt-docs | jupyter | airflow | prometheus | grafana | opensearch | multica | powerbi | nanitics |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `wia_beoordelaar` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  |
+| `ww_handhaver` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  |
+| `wajong_arbeidsdeskundige` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |  | ✓ |  |
+| `crm_medewerker` | ✓ |  |  |  |  |  |  |  | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  |
+| `fez_analist` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |  | ✓ |  |
+| `smz_planner` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  |
+| `proactief_dienstverlener` | ✓ |  |  |  |  |  | ✓ |  | ✓ |  |  |  |  |  |  |  |  | ✓ |  |
+| `researcher` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |  | ✓ |  |
+| `data_steward` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ | ✓ | ✓ |  |  |  | ✓ |  | ✓ |  |
+| `data_engineer` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  |  | ✓ | ✓ | ✓ | ✓ |  | ✓ |  | ✓ |  | ✓ |
+| `platform_admin` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `data_analyst` | ✓ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |

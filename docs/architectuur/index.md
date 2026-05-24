@@ -21,7 +21,7 @@ flowchart LR
     ingestion["**Ingestie**<br/>Apache NiFi + Kafka"]
     storage["**Opslag & Verwerking**<br/>MinIO + Hive Metastore"]
     transformation["**Transformatie & Modellen**<br/>Apache Spark + Trino + OPA"]
-    consumption["**BI / Analytics**<br/>Apache Superset + UWV Lab (Jupyter)"]
+    consumption["**BI / Analytics**<br/>Apache Superset + UWV Lab (Jupyter) + Power BI"]
     ingestion --> storage
     storage --> transformation
     transformation --> consumption
@@ -84,6 +84,7 @@ Eindgebruikers consumeren via dashboards en SQL.
 |---|---|---|
 | [Apache Superset](componenten.md#superset) | Dashboards en SQL Lab — primaire UI voor de meeste eindgebruikers. | Dashboards en ad-hoc analyse voor business-rollen — zonder SQL hoeven kennen. |
 | [UWV Lab (Jupyter)](componenten.md#jupyter) | Notebook-werkomgeving — Python/SQL op bronze/silver/gold/sensitive, met Git-integratie. | Interactief data verkennen en analyseren — Trino, Delta, MinIO, OpenMetadata vanuit één Python-kernel; werk versioneren met Git. |
+| [Power BI](componenten.md#powerbi) | Dashboards en self-service exploration via Microsoft Fabric / Power BI (eigen Azure-tenant SSO). | Curated dashboards bovenop het lakehouse + composite-model self-service voor analisten met DAX/Excel-skills. |
 
 ### Data Discovery { #discovery }
 
@@ -109,6 +110,7 @@ Metrics, logs en alerts om de gezondheid van het platform te zien.
 | Component | Verantwoordelijkheid | Doel |
 |---|---|---|
 | [Prometheus](componenten.md#prometheus) | Metrics + alerts; voedt de status-badges in deze portal. | Metrics verzamelen en alerteren als iets stuk dreigt te gaan. |
+| [Grafana](componenten.md#grafana) | Dashboards over Prometheus-metrics — cluster-health en service-latency. | Visualisatie van Prometheus-metrics in dashboards; gateway voor SRE-werk. |
 | [OpenSearch](componenten.md#opensearch) | Logs (Vector) + search-backend voor OpenMetadata. | Logs centraal doorzoekbaar maken — debugging en audit-trail. |
 
 ### Identiteit & Toegang { #identity }
@@ -126,6 +128,7 @@ Coördinatie van coding agents (Multica) en gerelateerde dev-loop tooling.
 | Component | Verantwoordelijkheid | Doel |
 |---|---|---|
 | [Multica](componenten.md#multica) | Coördinatie van coding agents (Claude Code, Codex, Copilot CLI, …) — taken, voortgang, skills. | Taken toewijzen aan coding agents; voortgang volgen. Agents draaien op je laptop. |
+| [Nanitics Observatory](componenten.md#nanitics) | In-cluster agent-runtime + trace-viewer. Watcher monitort het platform en filed issues naar Multica. | Bekijk watcher-runs (span tree, LLM-calls, tool-calls) en triggert handmatige investigations. |
 
 
 ## Verder lezen

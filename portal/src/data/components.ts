@@ -14,6 +14,7 @@ export type ComponentId =
   | 'opa'
   | 'airflow'
   | 'superset'
+  | 'powerbi'
   | 'openmetadata'
   | 'dbt-docs'
   | 'jupyter'
@@ -411,6 +412,45 @@ export const components: PlatformComponent[] = [
     embed: { mode: 'subdomain' },
     prometheusJob: 'multica-backend',
     rolesUsing: ['platform_admin', 'data_engineer'],
+  },
+  {
+    id: 'powerbi',
+    name: 'Power BI',
+    layer: 'bi',
+    stage: 'consumption',
+    // Microsoft Power BI / Fabric als dashboarding-laag. Eindgebruikers
+    // loggen in met hun eigen Azure-tenant (Entra ID SSO) op
+    // app.fabric.microsoft.com — geen aparte account in dit cluster.
+    //
+    // Iframe-embedding: Microsoft stuurt voor app.fabric.microsoft.com een
+    // restrictieve `Content-Security-Policy: frame-ancestors`-header, dus
+    // de iframe wordt geblokt. EmbedLayout heeft een 8s-timeout die
+    // automatisch de "Open in nieuw tabblad"-fallback toont — de gebruiker
+    // landt dan direct op de Fabric-portal met SSO via z'n eigen tenant.
+    //
+    // Voor een echt-ingesloten ervaring (Power BI Embedded SDK +
+    // App-Owns-Data + GenerateToken-backend) zie
+    // FreshLakehouse/docs/research/powerbi-as-bi-and-self-service-layer.md
+    // (Fase 4). Tot dat geïmplementeerd is, blijft 'subdomain' + fallback
+    // de pragmatische default — sluit aan op bestaande embed-patronen.
+    short: 'Dashboards en self-service exploration via Microsoft Fabric / Power BI (eigen Azure-tenant SSO).',
+    purpose: 'Curated dashboards bovenop het lakehouse + composite-model self-service voor analisten met DAX/Excel-skills.',
+    icon: '/icons/brand/powerbi.svg',
+    url: 'https://app.fabric.microsoft.com',
+    embed: { mode: 'subdomain', iframeBase: 'https://app.fabric.microsoft.com' },
+    rolesUsing: [
+      'wia_beoordelaar',
+      'ww_handhaver',
+      'wajong_arbeidsdeskundige',
+      'crm_medewerker',
+      'fez_analist',
+      'smz_planner',
+      'proactief_dienstverlener',
+      'researcher',
+      'data_analyst',
+      'data_steward',
+      'platform_admin',
+    ],
   },
   {
     id: 'nanitics',
