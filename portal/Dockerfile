@@ -26,7 +26,12 @@ RUN if [ -f package-lock.json ]; then npm ci --legacy-peer-deps; else npm instal
 #    (../opa-policies-src/data, gerekend vanaf /app).
 COPY opa-policies-src/data /opa-policies-src/data
 
-# 3. Portal-bestanden.
+# 3. Canonical docs/ — portal-pages kunnen markdown importeren via
+#    Vite-alias `@docs/foo.md` (zie portal/astro.config.mjs). Alias
+#    resolved naar `/docs/` in deze container; lokaal naar `<repo>/docs/`.
+COPY docs /docs
+
+# 4. Portal-bestanden.
 COPY portal/ ./
 
 RUN npm run build
