@@ -11,19 +11,7 @@
 name: iac-validate
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'infrastructure/**'
-      - 'platform/**'
-      - 'platform-overlays/**'
-      - '.github/workflows/iac-validate.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'infrastructure/**'
-      - 'platform/**'
-      - 'platform-overlays/**'
+  workflow_dispatch:
 
 permissions:
   contents: read

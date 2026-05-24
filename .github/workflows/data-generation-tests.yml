@@ -2,16 +2,6 @@
 name: data-generation-tests
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'data-generation/**'
-      - '.github/workflows/data-generation-tests.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'data-generation/**'
-      - '.github/workflows/data-generation-tests.yml'
   workflow_dispatch:
 
 jobs:
