@@ -73,8 +73,8 @@ het bestand of de setting".
 | R-BIO-20 | Centrale logging onveranderbaar (≥6 mnd) | 1, 8, 11 | [Vector](../infrastructure/helm/vector/values.yaml) audit-route → `uwv-logs-audit-*` met **[ILM 7-jaar](../platform/14-monitoring/opensearch-ilm-job.yaml)**; OPA decision-logs via `decision_logs.console: true` configOverride |
 | R-BIO-21 | SIEM/SOC-integratie | n/a | OpenSearch index → externe SIEM-connector (out-of-cluster, productie) |
 | R-BIO-22 | Incident response plan | 10 | [`docs/runbook.md` § 4](runbook.md#4-veelvoorkomende-incidenten) — 5 scenario-runbooks |
-| R-BIO-23 | Backup 3-2-1 + immutable | 10 | [`docs/runbook.md` § 5](runbook.md#5-backup--restore) — MinIO mirror, Postgres dumps, Keycloak realm-export. Productie: MinIO Object Lock + replicatie. |
-| R-BIO-24 | RTO/RPO + DR-tests | 10 | [`docs/runbook.md` § 5 + § 6](runbook.md#5-backup--restore) — dev RTO ≈ 30 min (re-deploy from scratch), RPO ≈ laatste seed |
+| R-BIO-23 | Backup 3-2-1 + immutable | 10 | [`docs/runbook.md` § 5](runbook.md#5-backup-restore) — MinIO mirror, Postgres dumps, Keycloak realm-export. Productie: MinIO Object Lock + replicatie. |
+| R-BIO-24 | RTO/RPO + DR-tests | 10 | [`docs/runbook.md` § 5 + § 6](runbook.md#5-backup-restore) — dev RTO ≈ 30 min (re-deploy from scratch), RPO ≈ laatste seed |
 
 ## NIS2 — Cyberweerbaarheid
 

@@ -115,4 +115,4 @@ meta:
 ## DoD-koppeling
 
 UC-07 is onderdeel van de DoD: "dbt-test `bsn_valid` faalt op een ingespoten
-ongeldige BSN-record" (zie [architecture.md § 8](../architecture.md#8-definition-of-done)).
+ongeldige BSN-record" (zie [Originele referentie § Definition of Done](../architectuur/referentie.md#definition-of-done)).

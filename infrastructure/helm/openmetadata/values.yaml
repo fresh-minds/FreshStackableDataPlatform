@@ -4,7 +4,7 @@
 # Hergebruikt de gedeelde Postgres (uwv-data) en deelt het OpenSearch-
 # cluster met Vector (uwv-meta).
 #
-# Chart: open-metadata/openmetadata (chart 1.5+)
+# Chart: open-metadata/openmetadata (huidig geïnstalleerd: 1.12.8)
 #
 # OIDC / SSO koppeling
 # --------------------

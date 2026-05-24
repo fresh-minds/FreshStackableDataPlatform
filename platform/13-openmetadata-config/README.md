@@ -59,9 +59,10 @@ die de OM-container via `JAVA_TOOL_OPTIONS` activeert. Op AKS is dit niet nodig
 
 ### Chart-quirks die we werken om
 
-Drie issues in de upstream `open-metadata/openmetadata` 1.5.0 chart die
-[`scripts/bootstrap.sh`](../../scripts/bootstrap.sh) na de install moet
-opvangen:
+Drie issues in de upstream `open-metadata/openmetadata` chart (huidig
+geïnstalleerd: **1.12.8**; oorspronkelijk gevonden op 1.5.0 en op 1.12.8
+nog steeds aanwezig) die [`scripts/bootstrap.sh`](../../scripts/bootstrap.sh)
+na de install moet opvangen:
 
 1. **`mysql-secrets` hardcoded.** Chart verwacht een Secret met key
    `openmetadata-mysql-password`, ook als de database `postgres` is. Wordt

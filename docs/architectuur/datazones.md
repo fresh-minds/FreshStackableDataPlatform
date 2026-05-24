@@ -51,7 +51,7 @@ Dit volgt 1-op-1 de rol-handleidingen:
 - **Data-steward** → read-only over alle zones (governance).
 - **Researcher** → uitsluitend `sandbox`.
 - **Platform-admin** → alles, maar elke query wordt audit-logged (zie
-  [Runbook](../runbook.md#audit-trail)).
+  [Runbook § 10.3](../runbook.md#103-per-release-audit-trail)).
 
 Welke kolommen je in een gold-mart precies ziet hangt af van de OPA-policies
 in [`opa-policies-src/`](https://github.com/fresh-minds/FreshStackableDataPlatform/tree/main/opa-policies-src).

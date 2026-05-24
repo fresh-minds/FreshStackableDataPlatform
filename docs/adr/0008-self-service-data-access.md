@@ -3,8 +3,17 @@
 | Status | **Geaccepteerd** |
 |---|---|
 | Datum | 2026-05-11 |
+| Bijgewerkt | 2026-05-24 (versie-update) |
 | Beslissers | Platform Architect, Data Office, CISO |
 | Gerelateerd | ADR-0003 (OPA), ADR-0004 (OpenMetadata) |
+
+> **Versie-update 2026-05-24** — OpenMetadata draait inmiddels op chart/app
+> **1.12.8** (was 1.5.7 toen deze ADR werd geschreven). De convention guard
+> hieronder blijft van toepassing zolang de bridge op de string
+> `"Request Access"` matcht in de task-description. Onderzoek of OM 1.12 een
+> native access-request-task-type biedt dat de bridge i.p.v. de string kan
+> consumeren, staat als follow-up — zie
+> [docs/access-request-guide.md](../access-request-guide.md) §Voor ontwikkelaars.
 
 ---
 

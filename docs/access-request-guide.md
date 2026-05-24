@@ -174,8 +174,13 @@ voeg motivatie toe.
 
 ## Voor ontwikkelaars — pad voor uitbreiding
 
-- **Custom Task-type "Request Access"**: vereist OM 1.6+ of een
-  community-plugin. Out of scope voor MVP.
+- **Native access-request-task-type benutten**: OM draait inmiddels op
+  **1.12.8** (zie [platform/13-openmetadata-config/](../platform/13-openmetadata-config/)).
+  Het 1.6+ gat dat in ADR-0008 als "out of scope" stond is dus open — te
+  onderzoeken of OM 1.12 een native task-type/API biedt dat de bridge
+  kan consumeren in plaats van de string-match op `Request Access` in
+  de description. Tot dat onderzoek af is, blijft de huidige convention
+  guard leidend.
 - **Portal-formulier** dat de Task automatisch aanmaakt (optie B uit
   ADR-0008 follow-up): heeft een ADR-0009 nodig.
 - **TTL op grants**: dagelijkse CronJob die `data_access:*` rollen ouder
