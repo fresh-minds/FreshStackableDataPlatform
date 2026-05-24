@@ -182,10 +182,22 @@ fi
 # /etc/coredns/custom/ en het Corefile importeert *.server-files als
 # extra server-blocks. ClusterIP wordt dynamisch ingelezen (kan per
 # bootstrap variëren, k3d alloceert uit 10.43.0.0/16).
+#
+# Twee template-blocks:
+#   - IN A: levert ClusterIP-record voor *.${PLATFORM_DOMAIN}
+#   - IN AAAA: rcode NOERROR (lege answer-set). Zonder dit krijgt een AAAA-
+#     query SERVFAIL — template matched alleen IN A en de fallthrough vindt
+#     geen volgende plugin in dit server-block. Go's net.Resolver doet
+#     parallel A+AAAA en faalt op SERVFAIL met "lookup ... Try again";
+#     dat brak de Grafana OIDC token-exchange naar
+#     keycloak.${PLATFORM_DOMAIN}. NSS/getent is tolerant en geeft de A
+#     terug, dus handmatige tests met `getent hosts` lieten dit niet zien.
+#     NOERROR is de juiste DNS-respons voor "host bestaat, geen AAAA".
 if [[ "${IS_LOCAL:-yes}" == "yes" ]]; then
   log "Apply CoreDNS-override voor *.${PLATFORM_DOMAIN} → ingress-nginx ClusterIP"
   INGRESS_CLUSTERIP="$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
     -o jsonpath='{.spec.clusterIP}')"
+  DOMAIN_ESCAPED="$(echo "${PLATFORM_DOMAIN}" | sed 's/\./\\\\./g')"
   kubectl apply -f - <<EOF >/dev/null
 apiVersion: v1
 kind: ConfigMap
@@ -198,8 +210,13 @@ data:
         errors
         cache 30
         template IN A ${PLATFORM_DOMAIN} {
-            match ^([a-zA-Z0-9-]+\.)?$(echo "${PLATFORM_DOMAIN}" | sed 's/\./\\\\./g')\.\$
+            match ^([a-zA-Z0-9-]+\.)?${DOMAIN_ESCAPED}\.\$
             answer "{{ .Name }} 60 IN A ${INGRESS_CLUSTERIP}"
+            fallthrough
+        }
+        template IN AAAA ${PLATFORM_DOMAIN} {
+            match ^([a-zA-Z0-9-]+\.)?${DOMAIN_ESCAPED}\.\$
+            rcode NOERROR
             fallthrough
         }
     }
