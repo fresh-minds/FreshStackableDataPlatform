@@ -1,0 +1,47 @@
+# One-shot Job: maak s3a://uwv-checkpoints/spark-events/.keep aan zodat
+# SparkHistoryServer kan starten (anders FsHistoryProvider crasht met
+# "Log directory specified does not exist").
+#
+# S3 heeft geen echt directory-concept; Hadoop S3A interpreteert een
+# leeg prefix als "bestaat niet". Eén placeholder-object volstaat.
+#
+# Idempotent: mc cp overschrijft .keep zonder error.
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spark-events-prefix-init
+  namespace: uwv-platform
+  labels:
+    uwv.nl/component: spark-history
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: minio/mc:RELEASE.2025-04-08T15-39-49Z
+          env:
+            - name: ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-s3-credentials
+                  key: accessKey
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-s3-credentials
+                  key: secretKey
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              mc alias set local https://minio:9000 "$ACCESS_KEY" "$SECRET_KEY" --insecure
+              # Maak het prefix aan via een placeholder. mc cp van /dev/null
+              # werkt niet — kleine echo-pipe in tmpfile.
+              echo "spark-events directory marker (created by spark-events-prefix-init Job)" > /tmp/.keep
+              mc cp --insecure /tmp/.keep local/uwv-checkpoints/spark-events/.keep
+              echo "OK: spark-events/.keep aanwezig"

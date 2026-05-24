@@ -17,6 +17,8 @@ resources:
   # in repo; her-enable nadat resource-ceilings of executor-count zijn
   # heroverwogen voor de doel-cluster.
   # - apps/streaming-bronze.yaml
+  - spark-events-prefix-init.yaml
+  - history-server.yaml
   - ingress.yaml
 
 configMapGenerator:

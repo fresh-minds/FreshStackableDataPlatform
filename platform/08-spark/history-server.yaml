@@ -1,0 +1,43 @@
+# SparkHistoryServer — leest event-logs van alle voltooide SparkApplications
+# uit s3a://uwv-checkpoints/spark-events/ en serveert de UI op poort 18080.
+#
+# Waarom dit bestaat: zonder history-server is de Spark-UI alleen bereikbaar
+# zolang een driver-pod draait. Batch-jobs (silver/gold) leven seconden tot
+# minuten — daartussen geeft de ingress 503. De history-server leeft permanent
+# en toont historische jobs (completed + actief, via event-log polling).
+#
+# Vereist: alle SparkApplications moeten spark.eventLog.enabled=true zetten
+# en spark.eventLog.dir naar deze locatie. Zie apps/*.yaml en
+# platform/11-airflow/jobs/spark-*.yaml.
+---
+apiVersion: spark.stackable.tech/v1alpha1
+kind: SparkHistoryServer
+metadata:
+  name: history
+  namespace: uwv-platform
+  labels:
+    uwv.nl/component: spark-history
+spec:
+  image:
+    productVersion: "3.5.8"
+  logFileDirectory:
+    s3:
+      prefix: spark-events/
+      bucket:
+        inline:
+          bucketName: uwv-checkpoints
+          connection:
+            reference: s3-minio
+  nodes:
+    roleGroups:
+      default:
+        replicas: 1
+        config:
+          logging:
+            enableVectorAgent: false  # vector aggregator CM bestaat niet
+          resources:
+            cpu:
+              min: "100m"
+              max: "500m"
+            memory:
+              limit: "1Gi"

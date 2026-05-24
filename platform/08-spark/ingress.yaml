@@ -1,23 +1,17 @@
-# Service + Ingress voor de Spark driver UI.
+# Service + Ingress voor Spark UI via SparkHistoryServer.
 #
-# Stackable maakt automatisch een driver-headless service per SparkApplication-
-# submission, maar de naam bevat een random suffix (bv.
-# `streaming-bronze-e119f09e260c7271-driver-svc`) die bij elke redeploy
-# verandert. We kunnen dus geen Ingress hardcoden op die naam.
+# Vóór: eigen Service selecteerde `spark-app-name=streaming-bronze,
+# spark-role=driver` → bereik baar zolang die driver draait. Batch-jobs leven
+# seconden tot minuten dus geeft de ingress meestal 503.
 #
-# Oplossing: een eigen ClusterIP Service die de driver-pod via labels selecteert
-# (`spark-app-name=streaming-bronze` + `spark-role=driver`). Dat blijft stabiel
-# zolang de SparkApplication zo heet.
+# Nu: route naar de SparkHistoryServer (zie history-server.yaml). Die leest
+# event-logs uit s3a://uwv-checkpoints/spark-events/ en serveert UI op 18080.
+# Permanent beschikbaar, toont alle historische én actieve runs.
 #
 # Wat krijg je op https://spark.uwv-platform.local:8443/ ?
-#   - Streaming queries tab — actieve queries + offset/rate-metrics
-#   - Jobs/Stages/Tasks — recent & actief
-#   - Executors tab — per executor links naar stderr/stdout (de echte logs)
-#   - SQL/DataFrame, Environment
-#
-# Caveat: alleen bereikbaar zolang de `streaming-bronze` driver draait. Geen
-# SSO — Spark UI heeft geen native auth. Acceptabel voor het lokale dev-
-# platform op 127.0.0.1; voor cloud-deploys overweeg oauth2-proxy ervoor.
+#   - Lijst van completed applications (silver-wia-*, gold-wia-*, seed-bronze-wia)
+#   - Per app: Jobs/Stages/Tasks/SQL/Environment tabs zoals een live UI
+#   - Geen SSO — Spark UI heeft geen native auth. Acceptabel voor dev/k3d.
 ---
 apiVersion: v1
 kind: Service
@@ -27,12 +21,16 @@ metadata:
 spec:
   type: ClusterIP
   selector:
-    spark-app-name: streaming-bronze
-    spark-role: driver
+    # Stackable SparkHistoryServer pod-labels (rolegroup `default` zoals
+    # gedefinieerd in history-server.yaml). app.kubernetes.io/name is
+    # `spark-history` (NIET `spark-k8s` zoals bij SparkApplication driver pods).
+    app.kubernetes.io/name: spark-history
+    app.kubernetes.io/instance: history
+    app.kubernetes.io/component: node
   ports:
-    - name: spark-ui
-      port: 4040
-      targetPort: 4040
+    - name: http
+      port: 18080
+      targetPort: 18080
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -60,4 +58,4 @@ spec:
               service:
                 name: spark
                 port:
-                  number: 4040
+                  number: 18080

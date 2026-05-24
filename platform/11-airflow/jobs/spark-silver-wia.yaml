@@ -34,6 +34,9 @@ spec:
     spark.kubernetes.executor.deleteOnTermination: "true"
     # MERGE-target read-optimisatie.
     spark.databricks.delta.merge.repartitionBeforeWrite.enabled: "true"
+    # Event-logs → SparkHistoryServer (zie platform/08-spark/history-server.yaml).
+    spark.eventLog.enabled: "true"
+    spark.eventLog.dir: "s3a://uwv-checkpoints/spark-events/"
   driver:
     config:
       logging:

@@ -43,6 +43,9 @@ spec:
     # readable zijn na failure. Terug naar true zodra het script werkt.
     spark.kubernetes.driver.deleteOnTermination: "false"
     spark.kubernetes.executor.deleteOnTermination: "false"
+    # Event-logs → SparkHistoryServer (zie platform/08-spark/history-server.yaml).
+    spark.eventLog.enabled: "true"
+    spark.eventLog.dir: "s3a://uwv-checkpoints/spark-events/"
   driver:
     config:
       logging:
