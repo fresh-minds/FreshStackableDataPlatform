@@ -72,8 +72,10 @@ De Power BI-laag leeft in dezelfde Fabric workspace als UC-11 (`uc11_lakehouse`)
 |---|---|
 | [scripts/fabric-generate-powerbi-uc12.py](../../scripts/fabric-generate-powerbi-uc12.py) | Genereert SemanticModel (`model.bim`) en PBIR-Report voor UC-12 |
 | [scripts/fabric-upload-powerbi.py](../../scripts/fabric-upload-powerbi.py) | Generieke uploader — neemt `--project uc12_focus_finops` |
+| [scripts/fabric-seed-uc12.py](../../scripts/fabric-seed-uc12.py) | One-shot synthetic-seed orkestrator (CSV → notebook → reframe) |
 | [platform/12-powerbi/uc12_focus_finops/SemanticModel/](../../platform/12-powerbi/uc12_focus_finops/SemanticModel/) | `definition.pbism` + `model.bim` met 5 tabellen, 11 DAX measures |
 | [platform/12-powerbi/uc12_focus_finops/Report/](../../platform/12-powerbi/uc12_focus_finops/Report/) | PBIR-tree, 12 visuals × 5 rijen (= 19 files) |
+| [platform/11-airflow/fabric-notebooks/uc12_focus_seed.ipynb](../../platform/11-airflow/fabric-notebooks/uc12_focus_seed.ipynb) | Spark-notebook dat de 5 marts uit de CSV bouwt |
 | [platform/11-airflow/include/fabric_helpers.py](../../platform/11-airflow/include/fabric_helpers.py) | OAuth2 client-credentials + Fabric REST helpers (gedeeld met UC-11) |
 
 **Items in de Fabric workspace** na een succesvolle upload:
@@ -174,6 +176,37 @@ De Power BI semantic model leest via Direct Lake uit
 `dbo.mart_uc12_focus_*` in `uc11_lakehouse`. Tot die tabellen er staan, blijven
 de visuals leeg. Drie opties om ze te seeden — kies de simpelste die jou past:
 
+### Optie 0 — One-shot synthetic seed (snelste demo-pad)
+
+Eén commando laadt `data-generation/focus-test.csv` (553 rijen FOCUS-spec) als
+de 5 marts in `uc11_lakehouse` en triggert direct een Direct Lake reframe:
+
+```bash
+set -a; source secrets/local/uc11-multiplatform.env; set +a
+python3 scripts/fabric-seed-uc12.py
+```
+
+Wat er gebeurt onder de motorkap (zie `scripts/fabric-seed-uc12.py`):
+
+1. CSV upload naar `Files/uc12_seed/focus-test.csv` via OneLake DFS (3-step
+   append-flow met `storage.azure.com` scope).
+2. Upload van [`platform/11-airflow/fabric-notebooks/uc12_focus_seed.ipynb`](../../platform/11-airflow/fabric-notebooks/uc12_focus_seed.ipynb)
+   naar de workspace (idempotent — bestaande notebook krijgt
+   `updateDefinition`).
+3. Trigger het notebook via `fabric_helpers.trigger_notebook` met
+   `workspace_id` + `lakehouse_id` + `csv_relative_path` parameters.
+4. Wacht tot Spark klaar is (~30-60s voor 553 rijen).
+5. Trigger Direct Lake reframe via de Power BI Datasets API.
+6. Verifieer dat alle 5 mart-tabellen in `list_lakehouse_tables` staan.
+
+Het notebook is een 1:1 Spark-SQL spiegel van de dbt staging + 5 mart SQL —
+zelfde kolomnamen, zelfde aggregaties, zelfde `rank_in_month` window-functie.
+Idempotent: `mode("overwrite")` op elke target, dus opnieuw runnen vervangt de
+data zonder dat oude rijen blijven hangen.
+
+**Wanneer je dit niet wilt**: real data uit OCI/AWS — gebruik dan Optie A
+(productie-pijplijn) of Optie C (shortcut).
+
 ### Optie A — dbt-fabricspark target (analoog aan UC-11)
 
 UC-11 draait z'n marts al via een `fabric_dev` dbt-target op Fabric Spark (zie
@@ -268,7 +301,7 @@ Fase 4 voor de wiring.
 
 | Beperking | Status | Notitie |
 |---|---|---|
-| Data nog niet automatisch in `uc11_lakehouse` | TODO | Optie A/B/C uit §7 |
+| Data nog niet automatisch in `uc11_lakehouse` | DONE (synthetic) | `scripts/fabric-seed-uc12.py` seedt vanuit `data-generation/focus-test.csv` (553 rijen). Real-data flow via Optie A/C nog open. |
 | Geen RLS in de semantic model | TODO | TMDL `role` rules later toevoegen — Finance-RBAC pas relevant bij prod |
 | `Effective Cost Total` rolt op over alle `charge_category` (incl. Credits/Tax) | Bewust | Mirror van Superset; aparte measure voor "Usage-only" volgt bij behoefte |
 | `definition.pbism` is minimaal (geen "settings.usePowerBIServiceColumns") | OK | Direct Lake auto-detecteert het lakehouse-schema bij de eerste query |
