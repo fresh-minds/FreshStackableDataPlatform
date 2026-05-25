@@ -9,6 +9,7 @@
 
 import { components, type ComponentId } from '../../data/components';
 import EmbedLayout from '../../layouts/EmbedLayout.astro';
+import PowerBIEmbedLayout from '../../layouts/PowerBIEmbedLayout.astro';
 
 export function getStaticPaths() {
   return components.map((c) => ({
@@ -34,9 +35,18 @@ if (!component) {
 // Voor SSR-loze static builds: we lezen de query in een inline script en
 // patchen de iframe-src dáár. EmbedLayout heeft daarvoor een placeholder.
 const deepLink = Astro.url.searchParams.get('path');
+
+// Power BI gebruikt een aparte SDK-shell ipv een iframe — app.fabric.microsoft.com
+// stuurt `frame-ancestors`-CSP die iframen blokt; powerbi-client-react omzeilt dat
+// door direct met api.powerbi.com te praten via een server-mint embed-token.
+const isPowerBI = id === 'powerbi';
 ---
-<EmbedLayout component={component} deepLink={deepLink}>
-</EmbedLayout>
+{isPowerBI ? (
+  <PowerBIEmbedLayout component={component} />
+) : (
+  <EmbedLayout component={component} deepLink={deepLink}>
+  </EmbedLayout>
+)}
 
 <script>
   // ─── Client-side deep-link override.
