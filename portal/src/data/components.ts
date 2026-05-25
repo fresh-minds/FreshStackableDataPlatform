@@ -146,21 +146,21 @@ export const components: PlatformComponent[] = [
     short: 'S3-compatible object store met buckets bronze/silver/gold/sensitive.',
     purpose: 'Het lakehouse waar alle data fysiek staat — gelaagd in zones met aparte toegangsregels.',
     icon: '/icons/brand/minio.svg',
-    // /go/minio/ is een portal-redirect die de Keycloak SSO-flow start;
-    // zie portal/nginx.conf + portal/src/pages/go/minio.astro voor de
-    // workaround voor de embedded MinIO Console-quirk via de externe ingress.
-    // (Nieuwe MinIO Console-builds returnen wel SSO-redirect via externe
-    // /api/v1/login dus /go/minio/ is niet meer strikt noodzakelijk, maar
-    // blijft staan als directe-link entry voor de /me shortcut-lijst.)
+    // /go/minio/ — minimale iframe-bootstrap die de Keycloak SSO-flow
+    // start (via portal-nginx in-cluster proxy naar de MinIO Console
+    // /api/v1/login). MinIO Console's externe /api/v1/login retourneert
+    // `redirectRules: null` (Console-quirk), maar de in-cluster Service
+    // wél — dus we proxyen die ene endpoint via portal/nginx.conf
+    // (/api/minio-sso/login). Zonder dit zou de embed-iframe alleen
+    // het form-login scherm tonen i.p.v. direct in te loggen via SSO.
     url: '/go/minio/',
-    // S3-API moet root-pad zijn (geen subpath mogelijk). De Console heeft
-    // OIDC-callback hard-coded op /oauth_callback en is daarom cross-origin
-    // op zijn eigen subdomein. iframeBase override: iframe direct naar de
-    // Console — Layout-chrome via /go/minio/ in een iframe was verwarrend
-    // (geneste topbars), en de Console doet zelf de SSO-redirect.
+    // iframeBase = /go/minio/: de iframe laadt onze bootstrap-page die
+    // synchroon door-302't naar Keycloak SSO. Geen flashing portal-chrome
+    // — bootstrap-page heeft alleen een spinner. Eindresultaat: user
+    // landt direct op de MinIO Console UI ingelogd, zonder klik.
     embed: {
       mode: 'subdomain',
-      iframeBase: 'https://minio-console.uwv-platform.local:8443',
+      iframeBase: '/go/minio/',
     },
     prometheusJob: 'minio',
     rolesUsing: ['platform_admin', 'data_engineer'],
@@ -203,10 +203,12 @@ export const components: PlatformComponent[] = [
     short: 'SQL query-engine over Delta-lakehouse, met OPA-authorisatie.',
     purpose: 'Snel SQL draaien over de hele lakehouse — voor dbt-modellen én eindgebruikers.',
     icon: '/icons/brand/trino.svg',
-    // Eindgebruikers raken Trino via Superset, Jupyter, dbt of Airflow — niet
-    // via de Trino-UI zelf. Geen klikbare link op /me.
-    url: null,
-    embed: { mode: 'none' },
+    // Trino-UI is bereikbaar onder de portal Compute-tab (embed iframe,
+    // zelfde patroon als Spark). Eindgebruikers blijven Trino vooral via
+    // Superset, Jupyter, dbt en Airflow gebruiken; de UI is handig voor
+    // query-history, EXPLAIN-plans en het killen van runaway queries.
+    url: 'https://trino.uwv-platform.local:8443',
+    embed: { mode: 'subdomain' },
     prometheusJob: 'trino',
     rolesUsing: [
       'wia_beoordelaar',
