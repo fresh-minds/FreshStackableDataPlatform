@@ -9,6 +9,8 @@ deze rol configureren en bewaken.
 
 ---
 
+--8<-- "_snippets/url-modes.md"
+
 ## 1. Waar wordt deze rol gebruikt?
 
 - **CI-pipeline** (`ci/github-actions/`) — bij elke PR run je `dbt parse`, `opa test`, smoke tests.

@@ -161,10 +161,10 @@ Lees in deze volgorde:
 
 | Component | Doel | URL (k3d) |
 |---|---|---|
-| **Airflow** | Orchestratie van dbt-runs en pipelines | `https://airflow.uwv-platform.local` |
+| **Airflow** | Orchestratie van dbt-runs en pipelines | `https://airflow.uwv-platform.local:8443` |
 | **dbt-docs** | Model-lineage en docs | via portal `Mijn werkplek` |
-| **OpenMetadata** | Catalog, lineage, ownership, data-quality, sensitive-review | `https://openmetadata.uwv-platform.local` |
-| **MinIO** | Object-storage (S3-compatible) | `https://minio.uwv-platform.local` |
+| **OpenMetadata** | Catalog, lineage, ownership, data-quality, sensitive-review | `https://openmetadata.uwv-platform.local:8443` |
+| **MinIO** | Object-storage (S3-compatible) | `https://minio.uwv-platform.local:8443` |
 
 - NiFi-flows worden as-code beheerd in `nifi-flows/templates/` (REST-import via `kubectl port-forward`); geen UI.
 - Trino is in-cluster; queries gaan via Superset, Jupyter, dbt of Airflow. Ad-hoc debug: `kubectl -n uwv-platform port-forward svc/uwv-trino-coordinator 8443:8443`.
@@ -177,7 +177,7 @@ Lees in deze volgorde:
 ### Stap 5 · Eerste hands-on
 
 Een researcher-style sandbox + Delta-regressie-notebook zit klaar in
-JupyterHub (`https://jupyter.uwv-platform.local`). Verken een synthetische
+JupyterHub (`https://jupyter.uwv-platform.local:8443`). Verken een synthetische
 dataset, draai een dbt-model, kijk hoe lineage in OpenMetadata bijwerkt.
 
 ---
@@ -188,8 +188,10 @@ Voor: DevOps/SRE die het cluster installeert en draaiend houdt.
 
 ### Stap 1 · Begrijp de deployment-modes
 
-Het platform draait in twee modes — `--mode={k3d|aks}` — die hostnames,
-storage classes, ingress-shape en kustomize-overlays end-to-end aansturen.
+Het platform draait in drie modes — `--mode={k3d|aks|stackit}` — die
+hostnames, storage classes, ingress-shape en kustomize-overlays end-to-end
+aansturen. `k3d` is voor laptop-ontwikkeling; `aks` en `stackit` zijn de
+twee cloud-doelen (Azure resp. StackIT SKE).
 
 Lees: [Deployment modes](../deployment-modes.md).
 

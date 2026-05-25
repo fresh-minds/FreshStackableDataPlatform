@@ -1,11 +1,11 @@
 # Runbook
 
 Operationele handleiding voor het draaien, monitoren, herstellen en uitbreiden
-van het UWV Reference Data Platform.
-
-> **Status:** skeleton (fase 0). Definitieve runbook-content wordt in fase 10
-> ingevuld zodra alle componenten daadwerkelijk draaien en gedrag is
-> geobserveerd. Deze versie schetst alleen de structuur en TODO-items.
+van het UWV Reference Data Platform. Dekt cluster-lifecycle, component-
+healthchecks, 6 incident-scenario's, backup & restore (Postgres + MinIO +
+Keycloak), upgrade-procedures (operators, Helm-charts, dbt-packages,
+Kubernetes), synthetische data-reseed, OPA-policy-deploy, observability +
+alert-tuning en compliance-evidence-collectie.
 
 ---
 
@@ -18,14 +18,30 @@ Zie [`README.md`](../README.md) voor de happy-path commands.
 ## 2. Cluster lifecycle
 
 ### 2.1 Cluster opzetten
+
 ```bash
-make cluster        # k3d cluster create
-make bootstrap      # cert-manager, MinIO, Postgres, Keycloak, Stackable operators
-make deploy-platform
+# Lokaal (k3d):
+make cluster MODE=k3d       # k3d cluster create + kubeconfig
+make bootstrap MODE=k3d     # cert-manager, MinIO, Postgres, Keycloak, Stackable operators
+make deploy-platform MODE=k3d
+
+# Azure (aks):
+make aks-all                 # = aks-up + aks-context + aks-bootstrap + aks-deploy + aks-smoke
+
+# StackIT (SKE):
+make stackit-all             # = stackit-up + stackit-bootstrap + stackit-deploy + portal + smoke
 ```
 
+`make cluster` zelf is k3d-only (zie `Makefile` § cluster); voor cloud
+gebruik je de `<mode>-up`-targets die Terraform draaien.
+
 ### 2.2 Cluster pauzeren / hervatten
-TODO (fase 1): documenteer `k3d cluster stop/start` en welke services een warmstart nodig hebben.
+
+| Mode | Hoe |
+|---|---|
+| `k3d` | `k3d cluster stop uwv-platform` / `… start`; `scripts/cluster.sh` regelt de kubelet-TLS-swap automatisch op stopped→start. |
+| `aks` | Stop-deallocate van VMSS via Azure CLI; goedkoper is een nightly `terraform destroy` + ochtend `make aks-up`. |
+| `stackit` | `make stackit-hibernate` zet workers naar 0 (control plane slaapt; PVCs + Floating IP blijven); `make stackit-wake` brengt 'm in ~3-5 min terug. `make stackit-status` toont `HIBERNATED`/`HEALTHY`/`RECONCILING`. |
 
 ### 2.3 Cluster volledig opruimen
 ```bash
@@ -524,13 +540,16 @@ landt.
 
 ### 10.2 Evidence-pakket genereren
 
-```bash
-# Eén commando dat alle bovenstaande commands draait en de output bundelt
-# in een tarball, klaar voor audit:
-bash scripts/compliance-evidence.sh > evidence-$(date -u +%Y-%m-%d).tar.gz
-```
-
-(Script live nog in TODO — voor nu draai de tabel-commands handmatig.)
+!!! todo "Audit-bundle-script nog niet aanwezig"
+    Een wrapper-script `scripts/compliance-evidence.sh` dat alle commando's
+    uit §10.1 draait en de output in een ge-timestampte tarball bundelt staat
+    op de roadmap. Voor nu: draai de tabel-commands handmatig en bundel zelf,
+    bijvoorbeeld:
+    ```bash
+    mkdir -p evidence-$(date -u +%Y-%m-%d) && cd $_
+    # …per regel uit §10.1 één output-file…
+    cd .. && tar czf evidence-$(date -u +%Y-%m-%d).tar.gz evidence-*
+    ```
 
 ### 10.3 Per-release audit-trail
 

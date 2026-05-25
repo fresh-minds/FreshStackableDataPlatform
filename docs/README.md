@@ -8,7 +8,7 @@ deze map dieper.
 
 ### Architectuur en context
 
-- [architecture.md](architecture.md) — High-level architectuur, lagen, Definition of Done.
+- [architectuur/index.md](architectuur/index.md) — High-level architectuur, lagen, datazones, identiteit, naming. Definition of Done staat in de [originele referentie](architectuur/referentie.md#definition-of-done).
 - [context-summary.md](context-summary.md) — Achtergrondsamenvatting van de vier referentiedocumenten (NORA, AVG, BIO, AI Act).
 - [compliance-mapping.md](compliance-mapping.md) — Per requirement (R-NORA-/R-AVG-/R-BIO-/R-NIS2-/R-AIACT-) waar het in de repo wordt geadresseerd.
 
@@ -20,10 +20,14 @@ deze map dieper.
 - [0004 — OpenMetadata als catalog](adr/0004-openmetadata-as-catalog.md)
 - [0005 — dbt-trino als transformatielaag](adr/0005-dbt-trino-as-transform.md)
 - [0006 — Delta gekozen voor deze implementatie](adr/0006-delta-chosen-for-this-implementation.md)
+- [0007 — Airflow pipeline-architectuur](adr/0007-airflow-pipeline-architecture.md)
+- [0008 — Self-service data-access](adr/0008-self-service-data-access.md)
+- [0009 — NetworkPolicies-strategie](adr/0009-networkpolicies-strategy.md)
+- [0010 — platform-config als single source](adr/0010-platform-config-single-source.md)
 
 ### Use cases
 
-Elf use-case-specs onder [`use-cases/`](use-cases/), elk met scope, CGM-
+Twaalf use-case-specs onder [`use-cases/`](use-cases/), elk met scope, CGM-
 entiteiten, doelbinding, AI-Act-classificatie en Definition-of-Done-anchors.
 
 | ID | Titel | Status |
@@ -39,6 +43,7 @@ entiteiten, doelbinding, AI-Act-classificatie en Definition-of-Done-anchors.
 | [UC-09](use-cases/uc09-reint-effect.md) | Re-integratie-effectmeting | Mart aanwezig |
 | [UC-10](use-cases/uc10-gegevensdiensten.md) | Gegevensdiensten-API | Placeholder |
 | [UC-11](use-cases/uc11-klantreis.md) | Integrale Klantreis (event-stream + fasen) | Mart aanwezig · [walkthrough](use-cases/uc11-klantreis-walkthrough.md) |
+| [UC-12](use-cases/uc12-focus-finops.md) | FOCUS FinOps — kostenrapportage | Mart aanwezig |
 
 UC-11 heeft een aparte **demo-walkthrough** in
 [uc11-klantreis-walkthrough.md](use-cases/uc11-klantreis-walkthrough.md) —
@@ -62,7 +67,7 @@ Beide hebben geen externe service nodig.
 
 ### Operationeel
 
-- [runbook.md](runbook.md) — Cluster-lifecycle, healthchecks, troubleshooting (skeleton, fase 0).
+- [runbook.md](runbook.md) — Cluster-lifecycle, healthchecks, incidenten, backup & restore, upgrades, observability, compliance-evidence.
 - [improvements.md](improvements.md) — Roadmap met bekende gaps, prio + effort.
 - [documentation-gap-report.md](documentation-gap-report.md) — Aparte audit van doc-coverage.
 

@@ -9,6 +9,8 @@ een **vier-ogen-principe**.
 
 ---
 
+--8<-- "_snippets/url-modes.md"
+
 ## 1. Wat doet jouw rol?
 
 Je beoordeelt re-integratiekansen voor Wajongers en stelt trajecten op
@@ -38,8 +40,8 @@ gelogd en periodiek gereviewd."
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Superset** | Dashboards: caseload, trajecten | https://superset.uwv-platform.local |
-| **OpenMetadata** | Begrippen, glossary, lineage | https://openmetadata.uwv-platform.local |
+| **Apache Superset** | Dashboards: caseload, trajecten | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Begrippen, glossary, lineage | https://openmetadata.uwv-platform.local:8443 |
 
 ### 2.3 Vier-ogen-principe
 

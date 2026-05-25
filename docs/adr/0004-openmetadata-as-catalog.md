@@ -77,8 +77,9 @@ Drie open source kandidaten: **DataHub**, **Apache Atlas**, **OpenMetadata**.
 - `infrastructure/helm/openmetadata/values.yaml` — chart-config (scaled-down,
   shared OpenSearch + Postgres).
 - `platform/13-openmetadata-config/` — declaratieve service- en
-  ingestion-pipeline-definities (gepusht via OM REST API door
-  `scripts/om-bootstrap.sh`).
+  ingestion-pipeline-definities (gepusht via OM REST API door de in-cluster
+  Job in [`init-job.yaml`](../../platform/13-openmetadata-config/init-job.yaml);
+  glossary-link + dbt-meta enrichment-jobs draaien als CronJob).
 - `dbt/dbt_project.yml` — exporteer `manifest.json` etc. naar
   `s3://uwv-meta/dbt/<run_id>/`.
 - Trino — event-listener config naar Kafka topic `uwv.trino.queries` voor

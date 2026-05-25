@@ -9,6 +9,8 @@ beide bewust beperkt om dataminimalisatie te respecteren.
 
 ---
 
+--8<-- "_snippets/url-modes.md"
+
 ## 1. Wat doet jouw rol?
 
 Je beantwoordt vragen van cliënten en routeert hen naar de juiste afdeling.
@@ -32,8 +34,8 @@ wachtwoord wijzigen.
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Superset** | Cliënt-360-dashboard, contact-trends | https://superset.uwv-platform.local |
-| **OpenMetadata** | Begrippen opzoeken | https://openmetadata.uwv-platform.local |
+| **Apache Superset** | Cliënt-360-dashboard, contact-trends | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Begrippen opzoeken | https://openmetadata.uwv-platform.local:8443 |
 
 Voor productie: meestal werk je vanuit een **Werkmap-frontend** die UC-05
 via Trino REST API consumeert. Het platform is dan onzichtbaar; deze

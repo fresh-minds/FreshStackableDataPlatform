@@ -9,6 +9,8 @@ en case-counts, maar geen individuele dossiers.
 
 ---
 
+--8<-- "_snippets/url-modes.md"
+
 ## 1. Wat doet jouw rol?
 
 Je plant SMZ-capaciteit per regio en specialisme. UC-08 levert het mart
@@ -25,8 +27,8 @@ waar je op werkt. Je gebruikt het platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Superset** | Capaciteits-dashboards | https://superset.uwv-platform.local |
-| **OpenMetadata** | Definities | https://openmetadata.uwv-platform.local |
+| **Apache Superset** | Capaciteits-dashboards | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Definities | https://openmetadata.uwv-platform.local:8443 |
 
 ---
 

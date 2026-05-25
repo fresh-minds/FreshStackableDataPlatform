@@ -17,7 +17,7 @@ self-signed certs). Zorg dat je `/etc/hosts` deze entries heeft (één regel
 volstaat — IP wijst naar de ingress-controller):
 
 ```
-127.0.0.1   platform.uwv-platform.local keycloak.uwv-platform.local airflow.uwv-platform.local superset.uwv-platform.local openmetadata.uwv-platform.local minio.uwv-platform.local minio-console.uwv-platform.local grafana.uwv-platform.local prometheus.uwv-platform.local opensearch.uwv-platform.local
+127.0.0.1   platform.uwv-platform.local:8443 keycloak.uwv-platform.local:8443 airflow.uwv-platform.local:8443 superset.uwv-platform.local:8443 openmetadata.uwv-platform.local:8443 minio.uwv-platform.local:8443 minio-console.uwv-platform.local:8443 grafana.uwv-platform.local:8443 prometheus.uwv-platform.local:8443 opensearch.uwv-platform.local:8443
 ```
 
 Cluster up? Check via `kubectl get ingress -A` of:

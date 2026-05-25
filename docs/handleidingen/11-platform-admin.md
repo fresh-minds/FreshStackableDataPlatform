@@ -10,6 +10,8 @@ en achteraf gereviewd.**
 
 ---
 
+--8<-- "_snippets/url-modes.md"
+
 ## 1. Wat doet jouw rol?
 
 Je bent eindverantwoordelijk voor de werking en veiligheid van het
@@ -29,13 +31,13 @@ platform. Je gebruikt het platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Keycloak Admin** | Rolbeheer, gebruikers, MFA-policies | https://keycloak.uwv-platform.local/admin |
+| **Keycloak Admin** | Rolbeheer, gebruikers, MFA-policies | https://keycloak.uwv-platform.local:8443/admin |
 | **kubectl + k9s** | Alle clusters, alle pods | terminal |
-| **Apache Airflow** | Maintenance-DAGs | https://airflow.uwv-platform.local |
+| **Apache Airflow** | Maintenance-DAGs | https://airflow.uwv-platform.local:8443 |
 | **OpenSearch / OPA-logs** | Audit-log review | via Vector ingestion |
-| **OpenMetadata** | Service-config, governance | https://openmetadata.uwv-platform.local |
-| **Prometheus + Grafana** | Metrics, alerts | https://grafana.uwv-platform.local |
-| **MinIO Console** | Bucket-beheer | https://minio.uwv-platform.local |
+| **OpenMetadata** | Service-config, governance | https://openmetadata.uwv-platform.local:8443 |
+| **Prometheus + Grafana** | Metrics, alerts | https://grafana.uwv-platform.local:8443 |
+| **MinIO Console** | Bucket-beheer | https://minio.uwv-platform.local:8443 |
 
 - Trino break-glass queries: `kubectl -n uwv-platform port-forward svc/uwv-trino-coordinator 8443:8443` en dan via DBeaver op `localhost:8443`.
 
@@ -96,7 +98,7 @@ kubectl get trinocluster,kafkacluster,hivecluster,opacluster,airflowcluster,supe
 > In productie: gebeurt via SSO-federatie (DigiD/eHerkenning of UWV-AD).
 > In deze referentie via Keycloak Admin.
 
-1. Open https://keycloak.uwv-platform.local/admin → realm `uwv` → **Users → Add user**.
+1. Open https://keycloak.uwv-platform.local:8443/admin → realm `uwv` → **Users → Add user**.
 2. Vul username, email, voornaam, achternaam.
 3. Tab **Credentials** → temporary password.
 4. Tab **Role mappings** → wijs de juiste rol toe (één rol per persoon!).
@@ -177,7 +179,7 @@ make opa-test > evidence/opa-test-$(date -I).log
 
 # OpenMetadata classifications
 curl -H "Authorization: Bearer $TOKEN" \
-  https://openmetadata.uwv-platform.local/api/v1/tags?fields=classifications \
+  https://openmetadata.uwv-platform.local:8443/api/v1/tags?fields=classifications \
   > evidence/om-classifications-$(date -I).json
 
 # dbt test history

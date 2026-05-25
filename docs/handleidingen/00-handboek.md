@@ -24,6 +24,8 @@ opgesplitst per rol. Elke rol heeft zijn eigen handleiding met:
 
 ---
 
+--8<-- "_snippets/url-modes.md"
+
 ## Overzicht van rollen
 
 Het platform onderscheidt **11 menselijke rollen** + **1 systeemrol**, gemodelleerd
@@ -97,7 +99,7 @@ Werkt iets niet? In deze volgorde:
 
 1. **Lees** de sectie *Hulp, fouten & escalatie* in jouw rol-handleiding.
 2. **Vraag** een collega met dezelfde rol.
-3. **Mail** de data-steward (`data.steward@uwv-platform.local`).
+3. **Mail** de data-steward (`data.steward@uwv-platform.local:8443`).
 4. **Voor incidenten** (rare meldingen, plotse toegang verloren, vermoede inbreuk):
    bel de platform-admin direct, niet via e-mail.
 
@@ -144,14 +146,14 @@ configureer een TOTP-app (Google Authenticator, Microsoft Authenticator, 1Passwo
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Superset** | Dashboards bekijken: WIA-funnel, doorlooptijden | https://superset.uwv-platform.local |
-| **OpenMetadata** | Opzoeken welke kolom wat betekent, wie eigenaar is | https://openmetadata.uwv-platform.local |
+| **Apache Superset** | Dashboards bekijken: WIA-funnel, doorlooptijden | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Opzoeken welke kolom wat betekent, wie eigenaar is | https://openmetadata.uwv-platform.local:8443 |
 
 > Je gebruikt **niet**: NiFi (ingestion), Airflow (orchestratie). Die zijn voor het platform-team.
 
 ### 2.3 Eerste keer inloggen — stappen
 
-1. Open https://superset.uwv-platform.local
+1. Open https://superset.uwv-platform.local:8443
 2. Klik **Inloggen via Keycloak (UWV)**
 3. Vul gebruikersnaam + wachtwoord; bij eerste login wijzig je het wachtwoord
 4. Scan de QR-code met je TOTP-app en bevestig de eerste 6-cijferige code
@@ -281,7 +283,7 @@ ORDER BY gem_doorlooptijd DESC;
 
 **Scenario.** Wat is precies "datum_aanvraag" versus "datum_eerste_dag"? Welke is leidend?
 
-1. Open https://openmetadata.uwv-platform.local
+1. Open https://openmetadata.uwv-platform.local:8443
 2. Zoek op `mart_uc01_wia_funnel_daily` of op kolomnaam
 3. Bij elke kolom zie je: **definitie**, **eigenaar** (data-steward), **bron-tabel**,
    **bewaartermijn**, **classificatie**
@@ -329,7 +331,7 @@ je niet zou mogen zien?
 
 1. **Stop met kijken** — niet doorklikken, niet downloaden
 2. Maak **één** screenshot van je scherm voor bewijsvoering (geen BSN's expliciet)
-3. **Bel** de platform-admin (`platform.admin@uwv-platform.local`, niet via mail)
+3. **Bel** de platform-admin (`platform.admin@uwv-platform.local:8443`, niet via mail)
 4. Schrijf binnen 24 uur een korte notitie van wat, wanneer, waar
 
 ### 6.3 Wie helpt waarbij?
@@ -408,8 +410,8 @@ voor andere rollen. Wachtwoord wijzigen bij eerste login.
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Superset** | Dashboards: WW-risico, caseload, signalen | https://superset.uwv-platform.local |
-| **OpenMetadata** | Begrippen, eigenaarschap, lineage | https://openmetadata.uwv-platform.local |
+| **Apache Superset** | Dashboards: WW-risico, caseload, signalen | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Begrippen, eigenaarschap, lineage | https://openmetadata.uwv-platform.local:8443 |
 
 > Je gebruikt **niet**: NiFi, Airflow, sensitive vault.
 
@@ -619,8 +621,8 @@ gelogd en periodiek gereviewd."
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Superset** | Dashboards: caseload, trajecten | https://superset.uwv-platform.local |
-| **OpenMetadata** | Begrippen, glossary, lineage | https://openmetadata.uwv-platform.local |
+| **Apache Superset** | Dashboards: caseload, trajecten | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Begrippen, glossary, lineage | https://openmetadata.uwv-platform.local:8443 |
 
 ### 2.3 Vier-ogen-principe
 
@@ -849,8 +851,8 @@ wachtwoord wijzigen.
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Superset** | Cliënt-360-dashboard, contact-trends | https://superset.uwv-platform.local |
-| **OpenMetadata** | Begrippen opzoeken | https://openmetadata.uwv-platform.local |
+| **Apache Superset** | Cliënt-360-dashboard, contact-trends | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Begrippen opzoeken | https://openmetadata.uwv-platform.local:8443 |
 
 Voor productie: meestal werk je vanuit een **Werkmap-frontend** die UC-05
 via Trino REST API consumeert. Het platform is dan onzichtbaar; deze
@@ -1012,8 +1014,8 @@ input voor begrotingen. Je gebruikt het platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Superset** | Dashboards: schadelast, prognoses | https://superset.uwv-platform.local |
-| **OpenMetadata** | Definities, eigenaarschap | https://openmetadata.uwv-platform.local |
+| **Apache Superset** | Dashboards: schadelast, prognoses | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Definities, eigenaarschap | https://openmetadata.uwv-platform.local:8443 |
 
 ---
 
@@ -1178,8 +1180,8 @@ waar je op werkt. Je gebruikt het platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Superset** | Capaciteits-dashboards | https://superset.uwv-platform.local |
-| **OpenMetadata** | Definities | https://openmetadata.uwv-platform.local |
+| **Apache Superset** | Capaciteits-dashboards | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Definities | https://openmetadata.uwv-platform.local:8443 |
 
 ---
 
@@ -1338,8 +1340,8 @@ case en initieert proactief contact. Je gebruikt het platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Superset** | Werklijst-dashboard | https://superset.uwv-platform.local |
-| **OpenMetadata** | Definities, model-info | https://openmetadata.uwv-platform.local |
+| **Apache Superset** | Werklijst-dashboard | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Definities, model-info | https://openmetadata.uwv-platform.local:8443 |
 
 ---
 
@@ -1504,8 +1506,8 @@ en vergelijkbare studies). Je gebruikt het platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Superset** | Dashboards en SQL Lab | https://superset.uwv-platform.local |
-| **OpenMetadata** | Definities, lineage van panels | https://openmetadata.uwv-platform.local |
+| **Apache Superset** | Dashboards en SQL Lab | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Definities, lineage van panels | https://openmetadata.uwv-platform.local:8443 |
 
 Tip: Trino integreert met Python-notebooks via `trino-python-client`. Voor
 reproduceerbaar onderzoek: bewaar je notebook + queries bij je publicatie.
@@ -1682,10 +1684,10 @@ Je bewaakt de governance van het platform. Je gebruikt het platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **OpenMetadata** | Hoofdwerkplek: catalog, glossary, classificaties, profiler, lineage | https://openmetadata.uwv-platform.local |
-| **Apache Superset** | Dashboards reviewen, ownership-overzichten | https://superset.uwv-platform.local |
-| **Apache Airflow** | DQ-DAGs draaien | https://airflow.uwv-platform.local |
-| **OpenSearch (Kibana-achtig)** | OPA-decision-logs reviewen | https://openmetadata.uwv-platform.local/logs |
+| **OpenMetadata** | Hoofdwerkplek: catalog, glossary, classificaties, profiler, lineage | https://openmetadata.uwv-platform.local:8443 |
+| **Apache Superset** | Dashboards reviewen, ownership-overzichten | https://superset.uwv-platform.local:8443 |
+| **Apache Airflow** | DQ-DAGs draaien | https://airflow.uwv-platform.local:8443 |
+| **OpenSearch (Kibana-achtig)** | OPA-decision-logs reviewen | https://opensearch.uwv-platform.local:8443/logs |
 | **dbt CLI / docs** | dbt-tests + lineage-docs | lokaal of via VS Code remote |
 
 ---
@@ -1882,12 +1884,12 @@ platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Airflow** | DAGs maken, runs monitoren | https://airflow.uwv-platform.local |
+| **Apache Airflow** | DAGs maken, runs monitoren | https://airflow.uwv-platform.local:8443 |
 | **dbt CLI** | Lokaal of in CI | terminal |
 | **kubectl + k9s** | Spark-jobs, pod-status, Hive Metastore | terminal |
-| **Apache Superset** | Eigen build-dashboards reviewen | https://superset.uwv-platform.local |
-| **OpenMetadata** | Service-config, lineage publishing | https://openmetadata.uwv-platform.local |
-| **MinIO Console** | Bucket-debugging | https://minio.uwv-platform.local |
+| **Apache Superset** | Eigen build-dashboards reviewen | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Service-config, lineage publishing | https://openmetadata.uwv-platform.local:8443 |
+| **MinIO Console** | Bucket-debugging | https://minio.uwv-platform.local:8443 |
 
 - NiFi-flows worden as-code beheerd in `nifi-flows/templates/` en geïmporteerd via `kubectl port-forward` (zie `nifi-flows/templates/delta/README.md`).
 - dbt en Airflow benaderen Trino in-cluster; voor ad-hoc debug: `kubectl -n uwv-platform port-forward svc/uwv-trino-coordinator 8443:8443`.
@@ -1962,7 +1964,7 @@ version: 2
 models:
   - name: mart_xyz_daily
     meta:
-      eigenaar: data.steward@uwv-platform.local
+      eigenaar: data.steward@uwv-platform.local:8443
       domain: xyz
       legal_basis: art_6_1e
       doelbinding: [sturingsinfo]
@@ -2108,13 +2110,13 @@ platform. Je gebruikt het platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Keycloak Admin** | Rolbeheer, gebruikers, MFA-policies | https://keycloak.uwv-platform.local/admin |
+| **Keycloak Admin** | Rolbeheer, gebruikers, MFA-policies | https://keycloak.uwv-platform.local:8443/admin |
 | **kubectl + k9s** | Alle clusters, alle pods | terminal |
-| **Apache Airflow** | Maintenance-DAGs | https://airflow.uwv-platform.local |
+| **Apache Airflow** | Maintenance-DAGs | https://airflow.uwv-platform.local:8443 |
 | **OpenSearch / OPA-logs** | Audit-log review | via Vector ingestion |
-| **OpenMetadata** | Service-config, governance | https://openmetadata.uwv-platform.local |
-| **Prometheus + Grafana** | Metrics, alerts | https://grafana.uwv-platform.local |
-| **MinIO Console** | Bucket-beheer | https://minio.uwv-platform.local |
+| **OpenMetadata** | Service-config, governance | https://openmetadata.uwv-platform.local:8443 |
+| **Prometheus + Grafana** | Metrics, alerts | https://grafana.uwv-platform.local:8443 |
+| **MinIO Console** | Bucket-beheer | https://minio.uwv-platform.local:8443 |
 
 - Trino break-glass queries: `kubectl -n uwv-platform port-forward svc/uwv-trino-coordinator 8443:8443` en dan via DBeaver op `localhost:8443`.
 
@@ -2175,7 +2177,7 @@ kubectl get trinocluster,kafkacluster,hivecluster,opacluster,airflowcluster,supe
 > In productie: gebeurt via SSO-federatie (DigiD/eHerkenning of UWV-AD).
 > In deze referentie via Keycloak Admin.
 
-1. Open https://keycloak.uwv-platform.local/admin → realm `uwv` → **Users → Add user**.
+1. Open https://keycloak.uwv-platform.local:8443/admin → realm `uwv` → **Users → Add user**.
 2. Vul username, email, voornaam, achternaam.
 3. Tab **Credentials** → temporary password.
 4. Tab **Role mappings** → wijs de juiste rol toe (één rol per persoon!).
@@ -2256,7 +2258,7 @@ make opa-test > evidence/opa-test-$(date -I).log
 
 # OpenMetadata classifications
 curl -H "Authorization: Bearer $TOKEN" \
-  https://openmetadata.uwv-platform.local/api/v1/tags?fields=classifications \
+  https://openmetadata.uwv-platform.local:8443/api/v1/tags?fields=classifications \
   > evidence/om-classifications-$(date -I).json
 
 # dbt test history

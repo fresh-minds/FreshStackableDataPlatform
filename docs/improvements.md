@@ -26,14 +26,14 @@ voor opvolg-werk.
 
 | # | Item | Locatie | Prio | Effort |
 |---|---|---|---|---|
-| 1.1 | **5 mart-directories leeg**: UC-02, UC-03, UC-08, UC-09, UC-10 | `dbt/models/marts/uc{02,03,08,09,10}*/` | 🟠 | M |
+| 1.1 | **4 mart-directories leeg**: UC-02, UC-03, UC-08, UC-10 (UC-09 is opgeleverd als `uc09_reint_effect`) | `dbt/models/marts/uc{02,03,08,10}*/` | 🟠 | M |
 | 1.2 | **`gdpr_request` DAG ontbreekt** ondanks referentie in [compliance-mapping R-AVG-10](compliance-mapping.md) — inzage- en wisrecht-flow. (Self-service *access-request* is sinds ADR-0008 wél aanwezig — andere R-AVG-10-aspect.) | `platform/11-airflow/dags/` | 🔴 | M |
 | 1.3 | **Geen NetworkPolicies** — pods kunnen vrij cross-namespace praten | `platform/00-namespaces/` | 🔴 | M |
-| 1.4 | **Geen PodDisruptionBudgets / HPA** | `platform/*/` | 🟠 | S |
-| 1.5 | **Geen ResourceQuota / LimitRange** per namespace | `platform/00-namespaces/` | 🟠 | S |
+| 1.4 | **Geen HPA** — PDBs voor Stackable-producten (kafka/hive/zk/trino/nifi/airflow/superset) worden door de operators zelf gemaakt; resterende gap is HPA + PDBs voor niet-Stackable componenten | `platform/*/` | 🟠 | S |
+| 1.5 | ~~Geen ResourceQuota / LimitRange per namespace~~ — opgelost in [`platform/00-namespaces/resourcequota-limitrange.yaml`](../platform/00-namespaces/resourcequota-limitrange.yaml) | `platform/00-namespaces/` | ✅ | — |
 | 1.6 | **Geen pre-built Superset-dashboards** — DoD-anchor "WIA Funnel" niet voltooid | `platform/12-superset/dashboards/` | 🟠 | M |
 | 1.7 | **Geen kustomize `overlays/`** — geen prod-overlay om scaled-down naar production-replicas te flippen | `platform/*/overlays/` | 🟠 | M |
-| 1.8 | **Geen Prometheus AlertRules** — `runbook.md §9.3` benoemt 3 alerts, geen PrometheusRule CR | `infrastructure/helm/prometheus-stack/` | 🟠 | S |
+| 1.8 | ~~Geen Prometheus AlertRules~~ — opgelost in [`platform/14-monitoring/prometheusrule-uwv.yaml`](../platform/14-monitoring/prometheusrule-uwv.yaml); zie runbook §9 voor log-based + metric-based alerts | `platform/14-monitoring/` | ✅ | — |
 | 1.9 | **Geen Grafana-dashboards UWV-specifiek** — alleen de defaults uit kube-prometheus-stack | `infrastructure/helm/prometheus-stack/` | 🟡 | M |
 | 1.10 | **Geen KafkaTopic CRDs** — `auto.create.topics=true` in dev | `platform/06-kafka/` | 🟠 | S |
 | 1.11 | **`pseudonymize.sql` macro nergens gebruikt** in de dbt-models | `dbt/models/` | 🟡 | S |

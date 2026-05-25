@@ -94,6 +94,6 @@ Werkt iets niet? In deze volgorde:
 
 1. **Lees** de sectie *Hulp, fouten & escalatie* in jouw rol-handleiding.
 2. **Vraag** een collega met dezelfde rol.
-3. **Mail** de data-steward (`data.steward@uwv-platform.local`).
+3. **Mail** de data-steward (`data.steward@uwv-platform.local:8443`).
 4. **Voor incidenten** (rare meldingen, plotse toegang verloren, vermoede inbreuk):
    bel de platform-admin direct, niet via e-mail.

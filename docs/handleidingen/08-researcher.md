@@ -8,6 +8,8 @@ gepseudonimiseerde panels — geen productie-PII, geen rauwe BSN's.
 
 ---
 
+--8<-- "_snippets/url-modes.md"
+
 ## 1. Wat doet jouw rol?
 
 Je doet wetenschappelijk-statistisch onderzoek (UC-09 — re-integratie-effectiviteit
@@ -27,8 +29,8 @@ en vergelijkbare studies). Je gebruikt het platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Superset** | Dashboards en SQL Lab | https://superset.uwv-platform.local |
-| **OpenMetadata** | Definities, lineage van panels | https://openmetadata.uwv-platform.local |
+| **Apache Superset** | Dashboards en SQL Lab | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Definities, lineage van panels | https://openmetadata.uwv-platform.local:8443 |
 
 Tip: Trino integreert met Python-notebooks via `trino-python-client`. Voor
 reproduceerbaar onderzoek: bewaar je notebook + queries bij je publicatie.

@@ -9,6 +9,8 @@ Spark-jobs, dbt-modellen en Airflow-DAGs.
 
 ---
 
+--8<-- "_snippets/url-modes.md"
+
 ## 1. Wat doet jouw rol?
 
 Je bouwt en onderhoudt de datastromen van bron tot mart. Je gebruikt het
@@ -27,12 +29,12 @@ platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Airflow** | DAGs maken, runs monitoren | https://airflow.uwv-platform.local |
+| **Apache Airflow** | DAGs maken, runs monitoren | https://airflow.uwv-platform.local:8443 |
 | **dbt CLI** | Lokaal of in CI | terminal |
 | **kubectl + k9s** | Spark-jobs, pod-status, Hive Metastore | terminal |
-| **Apache Superset** | Eigen build-dashboards reviewen | https://superset.uwv-platform.local |
-| **OpenMetadata** | Service-config, lineage publishing | https://openmetadata.uwv-platform.local |
-| **MinIO Console** | Bucket-debugging | https://minio.uwv-platform.local |
+| **Apache Superset** | Eigen build-dashboards reviewen | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Service-config, lineage publishing | https://openmetadata.uwv-platform.local:8443 |
+| **MinIO Console** | Bucket-debugging | https://minio.uwv-platform.local:8443 |
 
 - NiFi-flows worden as-code beheerd in `nifi-flows/templates/` en geïmporteerd via `kubectl port-forward` (zie `nifi-flows/templates/delta/README.md`).
 - dbt en Airflow benaderen Trino in-cluster; voor ad-hoc debug: `kubectl -n uwv-platform port-forward svc/uwv-trino-coordinator 8443:8443`.
@@ -107,7 +109,7 @@ version: 2
 models:
   - name: mart_xyz_daily
     meta:
-      eigenaar: data.steward@uwv-platform.local
+      eigenaar: data.steward@uwv-platform.local:8443
       domain: xyz
       legal_basis: art_6_1e
       doelbinding: [sturingsinfo]

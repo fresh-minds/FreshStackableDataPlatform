@@ -27,9 +27,9 @@ audit-trail, geen reviewer-workflow en geen koppeling met R-AVG-06
 
 Tegelijk staan twee bouwstenen al in de stack:
 
-- **OpenMetadata 1.5.7** als catalog (ADR-0004) — kent sinds 1.5+ een
-  ingebouwde *Request Access*-flow met **Tasks**, **Conversations** en
-  **Reviewers/Owners** op Glossary-terms en Data Assets.
+- **OpenMetadata 1.5+** als catalog (ADR-0004; deze repo draait op 1.12.8) —
+  kent sinds 1.5+ een ingebouwde *Request Access*-flow met **Tasks**,
+  **Conversations** en **Reviewers/Owners** op Glossary-terms en Data Assets.
 - **OPA-Rego** als authorisatielaag voor Trino (ADR-0003) — leest realm-roles
   uit Keycloak via de `groups`-claim en doet daarmee RBAC, doelbinding,
   column-masking en row-filtering.

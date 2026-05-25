@@ -1,20 +1,21 @@
 # Deployment modes
 
-The UWV reference platform runs in two modes, selected via `--mode` /
+The UWV reference platform runs in three modes, selected via `--mode` /
 `DEPLOYMENT_MODE` / `make … MODE=…`. The mode is a single switch that drives
 hostnames, storage classes, ingress controller shape, and kustomize overlays
 end-to-end.
 
-| Aspect | `k3d` (default) | `aks` |
-|---|---|---|
-| Cluster type | k3d serverlb | AKS managed |
-| Browser port | `:8443` (serverlb→443) | `:443` (no port) |
-| Domain | `*.uwv-platform.local` | `*.eu-sovereigndataplatform.com` |
-| Ingress controller | DaemonSet + hostNetwork | Deployment + LoadBalancer |
-| Storage class | `local-path` | `managed-csi` (`managed-csi-premium` for MinIO) |
-| TLS | cert-manager + self-signed CA | cert-manager + Let's Encrypt |
-| CoreDNS override | none needed | `coredns-custom` ConfigMap |
-| Public DNS | `/etc/hosts` | Azure DNS zone (CNAMEs upserted by aks-deploy.sh) |
+| Aspect | `k3d` (default) | `aks` | `stackit` |
+|---|---|---|---|
+| Cluster type | k3d serverlb | AKS managed | SKE (Gardener) |
+| Browser port | `:8443` (serverlb→443) | `:443` (no port) | `:443` (no port) |
+| Domain | `*.uwv-platform.local` | `*.eu-sovereigndataplatform.com` | `*.freshstackable.com` |
+| Ingress controller | DaemonSet + hostNetwork | Deployment + LoadBalancer | Deployment + yawol-LB on reserved Floating IP 188.34.84.39 |
+| Storage class | `local-path` | `managed-csi` (`managed-csi-premium` for MinIO) | `storage-class-ske-csi-cinder` |
+| TLS | cert-manager + self-signed CA | cert-manager + Let's Encrypt | cert-manager + Let's Encrypt |
+| CoreDNS override | `IN A` + `IN AAAA` template (`*.uwv-platform.local` → host IP) | `coredns-custom` ConfigMap | none needed (public DNS) |
+| Public DNS | `/etc/hosts` | Azure DNS zone (CNAMEs upserted by aks-deploy.sh) | StackIT DNS zone (`freshstackable.com`, managed by Terraform) |
+| Hibernate | n/a — destroy + recreate | n/a — SKU-cost-driven | `make stackit-hibernate` / `…-wake` (workers scale to 0, PVCs + IP preserved) |
 
 ## Layers
 
@@ -68,9 +69,10 @@ tree at `platform-overlays/<mode>/<comp>/` (a sibling tree avoids kustomize's
 "cycle detected" error that would arise if overlays lived inside their own
 base's directory).
 
-Currently `platform-overlays/aks/` patches 11 components for the AKS domain
-and port. Adding a new mode (e.g. EKS or GKE) means copying this tree and
-adjusting the host strings.
+Currently `platform-overlays/aks/` and `platform-overlays/stackit/` patch
+the public-domain components for their respective hostnames. Adding a new
+mode (e.g. EKS or GKE) means copying one of these trees and adjusting the
+host strings.
 
 ## Adding a new component
 
@@ -99,10 +101,18 @@ adjusting the host strings.
 
 ## Adding a new mode
 
+The `stackit` mode was added by following exactly the recipe below; it's
+the working template for "add another cloud":
+
 1. Add `MODE` to the case statements in `scripts/lib/mode.sh`
    (`parse_mode_args` + `require_context` + `require_storage_class`).
-2. For every chart that has `values-aks.yaml`, create a matching
-   `values-<newmode>.yaml`.
-3. For every directory that has `platform-overlays/aks/<comp>/`, create
+2. For every chart that has `values-aks.yaml` or `values-stackit.yaml`,
+   create a matching `values-<newmode>.yaml`.
+3. For every directory that has `platform-overlays/aks/<comp>/` or
+   `platform-overlays/stackit/<comp>/`, create
    `platform-overlays/<newmode>/<comp>/` and adjust the host strings.
-4. Update `make cluster` in `Makefile` to know how to bring up the cluster.
+4. Add a `<newmode>-up` / `<newmode>-bootstrap` / `<newmode>-deploy` /
+   `<newmode>-all` target family to the `Makefile` (see the `stackit-*`
+   block for a complete example, including `hibernate`/`wake`/`status`).
+5. If the mode supports it, also add CI workflows under `.github/workflows/`
+   (`<newmode>-cd.yml` + `<newmode>-smoke.yml`).

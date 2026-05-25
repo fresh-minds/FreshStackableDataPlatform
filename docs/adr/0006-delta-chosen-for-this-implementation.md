@@ -29,7 +29,7 @@ Implementatie-impact blijft van kracht. Switching terug naar Iceberg vergt
 alleen:
 
 1. `platform-config.yaml`: `table_format: iceberg`.
-2. Trino-catalogs hertemplateren (`scripts/render-trino-catalogs.sh`) en
+2. Trino-catalogs hertemplateren (`scripts/render-trino-catalogs.py`) en
    redeployen.
 3. dbt-models opnieuw materialiseren (`make dbt-rebuild-all`).
 

@@ -8,6 +8,8 @@ data**: geen ruwe BSN, geen individuele uitkeringsbedragen.
 
 ---
 
+--8<-- "_snippets/url-modes.md"
+
 ## 1. Wat doet jouw rol?
 
 Je maakt prognoses voor schadelast, doorrekent beleidsscenario's en levert
@@ -24,8 +26,8 @@ input voor begrotingen. Je gebruikt het platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Superset** | Dashboards: schadelast, prognoses | https://superset.uwv-platform.local |
-| **OpenMetadata** | Definities, eigenaarschap | https://openmetadata.uwv-platform.local |
+| **Apache Superset** | Dashboards: schadelast, prognoses | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Definities, eigenaarschap | https://openmetadata.uwv-platform.local:8443 |
 
 ---
 

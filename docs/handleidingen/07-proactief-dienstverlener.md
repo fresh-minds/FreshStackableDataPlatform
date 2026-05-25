@@ -9,6 +9,8 @@ maar niet hebben aangevraagd. **Opt-out van de cliënt is leidend.**
 
 ---
 
+--8<-- "_snippets/url-modes.md"
+
 ## 1. Wat doet jouw rol?
 
 Je bekijkt de werklijst van mogelijke TW-rechthebbenden, beoordeelt elke
@@ -27,8 +29,8 @@ case en initieert proactief contact. Je gebruikt het platform om:
 
 | Applicatie | Wat doe je daar? | URL |
 |---|---|---|
-| **Apache Superset** | Werklijst-dashboard | https://superset.uwv-platform.local |
-| **OpenMetadata** | Definities, model-info | https://openmetadata.uwv-platform.local |
+| **Apache Superset** | Werklijst-dashboard | https://superset.uwv-platform.local:8443 |
+| **OpenMetadata** | Definities, model-info | https://openmetadata.uwv-platform.local:8443 |
 
 ---
 

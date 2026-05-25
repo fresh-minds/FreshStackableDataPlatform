@@ -36,17 +36,17 @@ Stackable Data Platform-operators in deze release (zie [`infrastructure/stackabl
 
 ## Snelstart
 
-Het platform draait in twee deployment-modes; alle Make-targets accepteren
-`MODE={k3d|aks}` (default `k3d`). De mode bepaalt:
+Het platform draait in drie deployment-modes; alle Make-targets accepteren
+`MODE={k3d|aks|stackit}` (default `k3d`). De mode bepaalt:
 
-| Aspect | k3d (default) | aks |
-|---|---|---|
-| Cluster type | k3d serverlb + local-path | AKS managed-csi + LB |
-| Domain | `uwv-platform.local:8443` | `eu-sovereigndataplatform.com` |
-| Storage class | `local-path` | `managed-csi` |
-| Ingress controller | DaemonSet + hostNetwork | Deployment + LoadBalancer |
-| Helm values | `…/values.yaml` + `values-k3d.yaml` | `…/values-aks.yaml` |
-| Platform overlays | base (flat) | `platform-overlays/aks/<comp>/` |
+| Aspect | k3d (default) | aks | stackit |
+|---|---|---|---|
+| Cluster type | k3d serverlb + local-path | AKS managed-csi + LB | SKE (Gardener) + yawol LB |
+| Domain | `uwv-platform.local:8443` | `eu-sovereigndataplatform.com` | `freshstackable.com` |
+| Storage class | `local-path` | `managed-csi` | `storage-class-ske-csi-cinder` |
+| Ingress controller | DaemonSet + hostNetwork | Deployment + LoadBalancer | Deployment + yawol Floating-IP |
+| Helm values | `…/values.yaml` + `values-k3d.yaml` | `…/values-aks.yaml` | `…/values-stackit.yaml` |
+| Platform overlays | base (flat) | `platform-overlays/aks/<comp>/` | `platform-overlays/stackit/<comp>/` |
 
 ### Mode 1 — k3d (developer laptop)
 
@@ -91,6 +91,25 @@ make aks-all          # bootstrap + deploy + smoke
 # Of in CI: gebruik de aks-deploy.yml workflow (handmatige dispatch).
 ```
 
+### Mode 3 — stackit (StackIT SKE productie)
+
+```bash
+# Vereist: stackit CLI + STACKIT_SERVICE_ACCOUNT_TOKEN, terraform.
+# Floating IP 188.34.84.39 + DNS-zone freshstackable.com worden door
+# Terraform beheerd (zie infrastructure/stackit/terraform/).
+make doctor MODE=stackit
+make stackit-up                              # terraform: SKE + reserved Floating IP
+eval "$(make stackit-context)"               # export KUBECONFIG=...
+make stackit-all                             # bootstrap + deploy + portal + smoke (~40 min)
+
+# Pauzeren (workers naar 0 — control plane sleeps, PVCs + IP behouden):
+make stackit-hibernate
+make stackit-wake                            # ~3-5 min terug
+make stackit-status                          # HEALTHY / HIBERNATED / RECONCILING
+
+# Of in CI: zie stackit-cd.yml + stackit-smoke.yml workflows.
+```
+
 ### Mode mismatch-bescherming
 
 `scripts/bootstrap.sh` en `scripts/deploy-platform.sh` weigeren te draaien als
@@ -125,12 +144,12 @@ Run 'make aks-context'.
 
 ## Documentatie
 
-- [Architectuur](docs/architecture.md)
+- [Architectuur](docs/architectuur/index.md)
 - [Achtergrondsamenvatting](docs/context-summary.md)
 - [Compliance-mapping](docs/compliance-mapping.md)
 - [Runbook](docs/runbook.md)
-- ADRs: [0001](docs/adr/0001-stackable-as-base.md) · [0002](docs/adr/0002-iceberg-vs-delta.md) · [0003](docs/adr/0003-opa-as-trino-authz.md) · [0004](docs/adr/0004-openmetadata-as-catalog.md) · [0005](docs/adr/0005-dbt-trino-as-transform.md) · [0006](docs/adr/0006-delta-chosen-for-this-implementation.md)
-- Use cases: [UC-01](docs/use-cases/uc01-wia-funnel.md) · [UC-02](docs/use-cases/uc02-wajong-ai.md) · [UC-03](docs/use-cases/uc03-ww-risk.md) · [UC-04](docs/use-cases/uc04-proactieve-tw.md) · [UC-05](docs/use-cases/uc05-client-360.md) · [UC-06](docs/use-cases/uc06-schadelast.md) · [UC-07](docs/use-cases/uc07-dq-polisadm.md) · [UC-08](docs/use-cases/uc08-smz-planning.md) · [UC-09](docs/use-cases/uc09-reint-effect.md) · [UC-10](docs/use-cases/uc10-gegevensdiensten.md)
+- ADRs: [0001](docs/adr/0001-stackable-as-base.md) · [0002](docs/adr/0002-iceberg-vs-delta.md) · [0003](docs/adr/0003-opa-as-trino-authz.md) · [0004](docs/adr/0004-openmetadata-as-catalog.md) · [0005](docs/adr/0005-dbt-trino-as-transform.md) · [0006](docs/adr/0006-delta-chosen-for-this-implementation.md) · [0007](docs/adr/0007-airflow-pipeline-architecture.md) · [0008](docs/adr/0008-self-service-data-access.md) · [0009](docs/adr/0009-networkpolicies-strategy.md) · [0010](docs/adr/0010-platform-config-single-source.md)
+- Use cases: [UC-01](docs/use-cases/uc01-wia-funnel.md) · [UC-02](docs/use-cases/uc02-wajong-ai.md) · [UC-03](docs/use-cases/uc03-ww-risk.md) · [UC-04](docs/use-cases/uc04-proactieve-tw.md) · [UC-05](docs/use-cases/uc05-client-360.md) · [UC-06](docs/use-cases/uc06-schadelast.md) · [UC-07](docs/use-cases/uc07-dq-polisadm.md) · [UC-08](docs/use-cases/uc08-smz-planning.md) · [UC-09](docs/use-cases/uc09-reint-effect.md) · [UC-10](docs/use-cases/uc10-gegevensdiensten.md) · [UC-11](docs/use-cases/uc11-klantreis.md) · [UC-12](docs/use-cases/uc12-focus-finops.md)
 
 ---
 
