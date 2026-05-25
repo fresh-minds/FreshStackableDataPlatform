@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Trivy config-scan (kustomize/helm) — SARIF upload
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'config'
           format: 'sarif'
@@ -41,7 +41,7 @@ jobs:
           category: trivy-config
 
       - name: Trivy config-scan (kustomize/helm) — summary
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'config'
           format: 'table'
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Trivy filesystem-scan (Python deps)
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
