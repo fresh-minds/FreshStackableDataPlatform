@@ -646,6 +646,193 @@ async def events_stream(req: Request) -> StreamingResponse:
     )
 
 
+# ─── Power BI embed ──────────────────────────────────────────────────────
+# Mint short-lived embed tokens voor de Astro-portal via een Service Principal.
+# De SP heeft Workspace-Contributor op de Fabric workspace (zie
+# secrets/local/uc11-multiplatform.env). We doen geen pure User-Owns-Data
+# (waar de user z'n eigen Entra-token gebruikt) omdat dat een per-user
+# Power BI Pro/PPU licentie zou eisen. In plaats daarvan: App-Owns-Data
+# met een `effectiveIdentity` waarin de gefedereerde Entra-email wordt
+# meegegeven — Power BI logt de user voor audit en kan via DAX (USERNAME,
+# CUSTOMDATA) row-level security toepassen.
+#
+# De email komt uit oauth2-proxy's X-Auth-Request-Email header — wat door
+# de Keycloak-Entra-IdP-broker (ADR-0008) ge-federeerde Entra-mail is wanneer
+# de user via Entra inlogt.
+#
+# Env-vars (uit K8s Secret `powerbi-embed-creds` in uwv-platform):
+#   FABRIC_TENANT_ID, FABRIC_CLIENT_ID, FABRIC_CLIENT_SECRET, FABRIC_WORKSPACE_ID
+
+PBI_AUTHORITY_TPL = "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
+PBI_SCOPE = "https://analysis.windows.net/powerbi/api/.default"
+PBI_API_BASE = "https://api.powerbi.com/v1.0/myorg"
+
+# In-memory token cache — SP-token leeft ~60min, embed-token max 60min.
+# We bewaren beide met TTL, lock om dubbele refresh te voorkomen.
+_pbi_token_cache: dict[str, tuple[str, float]] = {}
+_pbi_token_lock = Lock()
+
+
+async def _pbi_sp_token() -> str:
+    """OAuth2 client-credentials token voor de Power BI API. Caches tot 5min
+    voor expiry."""
+    cached = _pbi_token_cache.get("sp")
+    if cached and cached[1] > time.time() + 60:
+        return cached[0]
+    with _pbi_token_lock:
+        # double-check binnen de lock
+        cached = _pbi_token_cache.get("sp")
+        if cached and cached[1] > time.time() + 60:
+            return cached[0]
+        tenant = os.environ.get("FABRIC_TENANT_ID", "")
+        cid    = os.environ.get("FABRIC_CLIENT_ID", "")
+        secret = os.environ.get("FABRIC_CLIENT_SECRET", "")
+        if not (tenant and cid and secret):
+            raise HTTPException(
+                status_code=503,
+                detail="powerbi: FABRIC_TENANT_ID/CLIENT_ID/CLIENT_SECRET niet gezet",
+            )
+        async with httpx.AsyncClient(timeout=15) as cli:
+            resp = await cli.post(
+                PBI_AUTHORITY_TPL.format(tenant=tenant),
+                data={
+                    "client_id":     cid,
+                    "client_secret": secret,
+                    "scope":         PBI_SCOPE,
+                    "grant_type":    "client_credentials",
+                },
+            )
+        if resp.status_code != 200:
+            log.error("powerbi token: %s %s", resp.status_code, resp.text[:300])
+            raise HTTPException(status_code=503, detail="powerbi: SP-token faalt")
+        body = resp.json()
+        access_token = body["access_token"]
+        expires_at   = time.time() + int(body.get("expires_in", 3600))
+        _pbi_token_cache["sp"] = (access_token, expires_at)
+        return access_token
+
+
+async def _pbi_get(path: str, token: str) -> dict:
+    async with httpx.AsyncClient(timeout=15) as cli:
+        resp = await cli.get(
+            f"{PBI_API_BASE}{path}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    if resp.status_code != 200:
+        log.error("powerbi GET %s: %s %s", path, resp.status_code, resp.text[:300])
+        raise HTTPException(status_code=resp.status_code, detail=f"powerbi GET {path}: {resp.text[:200]}")
+    return resp.json()
+
+
+async def _pbi_post(path: str, token: str, body: dict) -> dict:
+    async with httpx.AsyncClient(timeout=20) as cli:
+        resp = await cli.post(
+            f"{PBI_API_BASE}{path}",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json=body,
+        )
+    if resp.status_code not in (200, 201):
+        log.error("powerbi POST %s: %s %s", path, resp.status_code, resp.text[:300])
+        raise HTTPException(status_code=resp.status_code, detail=f"powerbi POST {path}: {resp.text[:200]}")
+    return resp.json()
+
+
+@app.get("/api/portal/powerbi/reports")
+async def list_powerbi_reports(req: Request) -> dict:
+    """Lijst de reports in de geconfigureerde workspace.
+
+    Front-end gebruikt dit voor een dropdown op /embed/powerbi/. Auth-gewise
+    is dit user-context — de SP haalt de lijst op, maar we returnen 'm
+    alleen aan een ingelogde portal-gebruiker."""
+    user_email = _email_from_request(req)  # noqa: F841 — audit/log
+    ws = os.environ.get("FABRIC_WORKSPACE_ID", "")
+    if not ws:
+        raise HTTPException(status_code=503, detail="FABRIC_WORKSPACE_ID niet gezet")
+    token = await _pbi_sp_token()
+    data = await _pbi_get(f"/groups/{ws}/reports", token)
+    items = [
+        {"id": r["id"], "name": r["name"], "datasetId": r.get("datasetId"),
+         "embedUrl": r.get("embedUrl"), "webUrl": r.get("webUrl")}
+        for r in data.get("value", [])
+    ]
+    return {"workspace_id": ws, "reports": items}
+
+
+@app.post("/api/portal/powerbi/embed/{report_id}")
+async def generate_powerbi_embed_token(report_id: str, req: Request) -> dict:
+    """Mint een short-lived embed token voor één report.
+
+    Body: optioneel `{"roles": [...], "customData": "..."}` voor RLS-rules
+    die niet alleen op email filteren. Default: alleen `username=<email>`.
+
+    Returnt:
+        {
+          "embedUrl":   "https://app.powerbi.com/reportEmbed?...",
+          "accessToken": "<embed_token>",
+          "expiration": "2026-05-25T12:34:56Z",
+          "reportId":   "<id>",
+          "datasetId":  "<id>"
+        }
+    """
+    user_email = _email_from_request(req)
+    ws = os.environ.get("FABRIC_WORKSPACE_ID", "")
+    if not ws:
+        raise HTTPException(status_code=503, detail="FABRIC_WORKSPACE_ID niet gezet")
+
+    body: dict[str, Any] = {}
+    try:
+        if req.headers.get("content-length", "0") != "0":
+            body = await req.json()
+    except Exception:
+        body = {}
+
+    token = await _pbi_sp_token()
+
+    # 1. Haal report-metadata op — geeft datasetId en embedUrl.
+    report = await _pbi_get(f"/groups/{ws}/reports/{report_id}", token)
+    dataset_id = report.get("datasetId")
+    embed_url  = report.get("embedUrl")
+    if not (dataset_id and embed_url):
+        raise HTTPException(
+            status_code=500,
+            detail=f"powerbi: report {report_id} mist datasetId of embedUrl",
+        )
+
+    # 2. GenerateToken met effective identity = gefedereerde Entra-email.
+    #    `roles` + `customData` zijn optioneel en mogen meekomen in de
+    #    POST-body voor RLS-scenarios.
+    effective_identity: dict[str, Any] = {
+        "username": user_email,
+        "datasets": [dataset_id],
+    }
+    if isinstance(body.get("roles"), list) and body["roles"]:
+        effective_identity["roles"] = body["roles"]
+    if isinstance(body.get("customData"), str) and body["customData"]:
+        effective_identity["customData"] = body["customData"]
+
+    token_body = {
+        "accessLevel": "View",
+        "identities":  [effective_identity],
+    }
+    minted = await _pbi_post(
+        f"/groups/{ws}/reports/{report_id}/GenerateToken",
+        token,
+        token_body,
+    )
+
+    log.info(
+        "powerbi embed-token minted: user=%s report=%s expires=%s",
+        user_email, report_id, minted.get("expiration"),
+    )
+    return {
+        "embedUrl":   embed_url,
+        "accessToken": minted["token"],
+        "expiration": minted.get("expiration"),
+        "reportId":   report_id,
+        "datasetId":  dataset_id,
+    }
+
+
 # ─── Liveness ────────────────────────────────────────────────────────────
 @app.get("/api/portal/_ping")
 async def ping() -> dict[str, Any]:
