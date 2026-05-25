@@ -1,0 +1,33 @@
+# Template — NIET committen met echte waarden, alleen placeholders.
+#
+# Creëer in AKS met (van repo-root, met de SP-creds in je env):
+#
+#   set -a; source secrets/local/uc11-multiplatform.env; set +a
+#   kubectl -n uwv-platform create secret generic powerbi-embed-creds \
+#     --from-literal=FABRIC_TENANT_ID="$FABRIC_TENANT_ID" \
+#     --from-literal=FABRIC_CLIENT_ID="$FABRIC_CLIENT_ID" \
+#     --from-literal=FABRIC_CLIENT_SECRET="$FABRIC_CLIENT_SECRET" \
+#     --from-literal=FABRIC_WORKSPACE_ID="$FABRIC_WORKSPACE_ID"
+#   kubectl -n uwv-platform rollout restart deploy/udp-portal-backend
+#
+# Het Secret is `optional: true` in de Deployment (zie portal-backend.yaml),
+# dus zonder dit Secret start de portal-backend wel maar faalt de
+# /api/portal/powerbi/embed route met 503 "FABRIC_TENANT_ID/CLIENT_ID
+# /CLIENT_SECRET niet gezet".
+#
+# Productie: vervang door SealedSecret / External Secrets + Key Vault +
+# Workload Identity (zie infrastructure/azure/README.md).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: powerbi-embed-creds
+  namespace: uwv-platform
+  labels:
+    uwv.nl/powerbi-embed: "true"
+    uwv.nl/dev-only: "true"
+type: Opaque
+stringData:
+  FABRIC_TENANT_ID:     "REPLACE_ME"
+  FABRIC_CLIENT_ID:     "REPLACE_ME"
+  FABRIC_CLIENT_SECRET: "REPLACE_ME"
+  FABRIC_WORKSPACE_ID:  "REPLACE_ME"
