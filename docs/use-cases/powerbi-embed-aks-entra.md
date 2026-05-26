@@ -208,6 +208,54 @@ Verwacht gedrag:
 
 ---
 
+## Optional — RLS aanzetten via fixed-identity cloud connection
+
+De default-flow stuurt **geen** `effectiveIdentity` mee — Direct Lake-
+datasets weigeren dat zonder een fixed-identity-cloud-connection op het
+semantic model (403 "Creating embed token with effective identity is not
+supported for this datasource"). Eenmalige setup om RLS aan te zetten:
+
+1. Open **Fabric portal** → `uc12_focus_finops` (workspace **freshminds-platform**
+   / vergelijkbaar) → semantic model `uc12_focus_finops` → ⚙ **Settings**.
+2. Vouw **Gateway and cloud connections** open. Onder *Cloud connections* zie je
+   de OneLake-data-source (`uc11_lakehouse`) staan zonder gemapte connectie.
+3. Klik **Add to OneLake** of het bewerk-icoon. Bij *Authentication method*
+   kies **OAuth2** of **Service Principal** en bind aan de UC-11 SP
+   (`a1777b3a-9f6f-4eb9-9f12-bc9e7b6c8e8f` = `fabric-dbt-app-reg`). De SP
+   heeft al *OneLake Data Reader*-rechten op het lakehouse via z'n
+   workspace-Contributor-rol.
+4. Save. Power BI markeert het semantic model nu als *Direct Lake — Fixed
+   identity*.
+5. Test in de portal: zet de **"Use my identity (RLS)"** checkbox bovenaan
+   `/embed/powerbi/` aan (of voeg `?identity=on` aan de URL toe). De
+   embed-token-mint stuurt nu `effectiveIdentity={username: <jouw-email>,
+   datasets: [<dataset>]}` mee; DAX `USERNAME()` / `USERPRINCIPALNAME()`
+   in RLS-rules ziet die mail.
+
+Voor RLS per role / customData: pas in `PowerBIEmbed.tsx` de body uit naar
+`{effectiveIdentity:true, roles:['analyst'], customData:'tenant-42'}` of
+voeg een UI-veld toe — endpoint accepteert beide al.
+
+---
+
+## Report-picker dropdown
+
+Bovenaan de embed staat een dropdown met alle reports uit de Fabric
+workspace (gehaald via `GET /api/portal/powerbi/reports`). Wisselen van
+report:
+- **In de dropdown**: kies een ander rapport → embed token wordt opnieuw
+  gemint en de iframe-content swaped zonder page reload.
+- **Via URL**: `?report=<report-id>` zet de keuze direct (handig voor
+  deep-links uit OpenMetadata / Notion / etc.).
+- **Persisted**: laatste keuze wordt in `localStorage` bewaard onder
+  `udp-portal:powerbi:lastReportId` — refresh opent hetzelfde rapport.
+
+Default-volgorde: prop-override → URL `?report=` → localStorage → UC-12
+hardcoded fallback. Als de stored ID niet meer bestaat in de workspace
+(report deleted), val terug op het eerste item in de lijst.
+
+---
+
 ## Lessons learned — wat tijdens k3d-verify scheef ging (en werd gefixt)
 
 1. **`X-Auth-Request-Email` arriveert niet aan upstream.** oauth2-proxy met
