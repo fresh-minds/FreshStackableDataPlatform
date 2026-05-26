@@ -63,7 +63,7 @@ if [ -z "$CLIENT_UUID" ]; then
       \"redirectUris\":[],
       \"webOrigins\":[],
       \"defaultClientScopes\":[\"profile\",\"roles\"],
-      \"fullScopeAllowed\":false,
+      \"fullScopeAllowed\":true,
       \"attributes\":{\"use.refresh.tokens\":\"false\"}
     }")
   [ "$STATUS" = "201" ] || fail "client POST=$STATUS body=$(cat /tmp/c.json)"
@@ -81,11 +81,20 @@ RM_UUID=$(curl -fsS -H "$A" "$KC/admin/realms/uwv/clients?clientId=realm-managem
 
 HAVE=$(curl -fsS -H "$A" "$KC/admin/realms/uwv/users/$SA_USER_ID/role-mappings/clients/$RM_UUID" | grep -oE '"name":"[^"]+"' | tr -d '"' | tr '\n' ' ')
 
-log "Service-account roles diff'en met {manage-users, view-users, view-realm}"
+# Required roles, expanded:
+# - manage-users : look up + add realm-roles to users (the granted user)
+# - view-users   : pre-check / search for the target user
+# - view-realm   : list realm-level roles when ensuring the grant-role exists
+# - manage-realm : CREATE the `data_access:<catalog>.<schema>` realm-role
+#                  when it doesn't exist yet (first grant of a new catalog/
+#                  schema combo). Without this the bridge returns 403 on
+#                  POST /admin/realms/uwv/roles.
+REQUIRED_ROLES=(manage-users view-users view-realm manage-realm)
+log "Service-account roles diff'en met {${REQUIRED_ROLES[*]}}"
 NEED=0
 ROLES_JSON='['
 SEP=''
-for r in manage-users view-users view-realm; do
+for r in "${REQUIRED_ROLES[@]}"; do
   echo "$HAVE" | grep -q "name:$r" && continue
   RID=$(curl -fsS -H "$A" "$KC/admin/realms/uwv/clients/$RM_UUID/roles/$r" | grep -oE '"id":"[^"]+"' | head -1 | cut -d'"' -f4)
   [ -n "$RID" ] || { log "  warn: role $r niet vindbaar in realm-management"; continue; }
@@ -101,5 +110,66 @@ if [ "$NEED" -gt 0 ]; then
   [ "$STATUS" = "204" ] || fail "role-assign HTTP=$STATUS body=$(cat /tmp/r.json)"
   pass "$NEED role(s) toegekend aan service-account"
 else
-  pass "alle 3 service-account roles al toegekend"
+  pass "alle ${#REQUIRED_ROLES[@]} service-account roles al toegekend"
+fi
+
+# ---------------------------------------------------------------------------
+# Client-roles protocol-mapper
+#
+# Background: this realm overrides the standard `roles` client-scope so it
+# only contains a *realm roles* mapper (claim: `roles`). There is no
+# *client roles* mapper, so the bridge's SA token does NOT carry
+# `resource_access.realm-management.roles` even with fullScopeAllowed=true
+# and the realm-management roles correctly assigned to the SA user.
+# Result without this step: every admin-API call returns 403.
+#
+# We add a per-client mapper on om-access-bridge that exposes the
+# realm-management client roles in `resource_access.realm-management.roles`,
+# matching what Keycloak's default `roles` scope would have done.
+# ---------------------------------------------------------------------------
+MAPPER_NAME="realm-management-roles"
+# `|| true` masks pipefail + grep-no-match: under `set -o pipefail`, a
+# non-matching grep returns 1 which would otherwise abort the script via
+# `set -e`. We want "no mapper" to be a normal control-flow signal.
+HAVE_MAPPER=$(curl -fsS -H "$A" "$KC/admin/realms/uwv/clients/$CLIENT_UUID/protocol-mappers/models" \
+  | { grep -oE "\"name\":\"${MAPPER_NAME}\"" || true; } | head -1)
+if [ -z "$HAVE_MAPPER" ]; then
+  log "Add client-roles protocol-mapper voor realm-management op ${CLIENT_ID}"
+  STATUS=$(curl -sS -o /tmp/m.json -w '%{http_code}' -X POST -H "$A" -H 'Content-Type: application/json' \
+    "$KC/admin/realms/uwv/clients/$CLIENT_UUID/protocol-mappers/models" -d "{
+      \"name\":\"${MAPPER_NAME}\",
+      \"protocol\":\"openid-connect\",
+      \"protocolMapper\":\"oidc-usermodel-client-role-mapper\",
+      \"config\":{
+        \"multivalued\":\"true\",
+        \"userinfo.token.claim\":\"false\",
+        \"id.token.claim\":\"false\",
+        \"access.token.claim\":\"true\",
+        \"claim.name\":\"resource_access.\${client_id}.roles\",
+        \"jsonType.label\":\"String\",
+        \"usermodel.clientRoleMapping.clientId\":\"realm-management\"
+      }
+    }")
+  [ "$STATUS" = "201" ] || fail "mapper POST=$STATUS body=$(cat /tmp/m.json)"
+  pass "mapper aangemaakt"
+else
+  pass "mapper ${MAPPER_NAME} al aanwezig"
+fi
+
+# ---------------------------------------------------------------------------
+# fullScopeAllowed: existing clients (created before this script learned to
+# default to true) may still have it set to false. Idempotently flip.
+# ---------------------------------------------------------------------------
+CUR_FULL=$(curl -fsS -H "$A" "$KC/admin/realms/uwv/clients/$CLIENT_UUID" \
+  | { grep -oE '"fullScopeAllowed":(true|false)' || true; } | head -1 | cut -d':' -f2)
+if [ "$CUR_FULL" = "false" ]; then
+  log "fullScopeAllowed=false → patching naar true"
+  CLIENT_BODY=$(curl -fsS -H "$A" "$KC/admin/realms/uwv/clients/$CLIENT_UUID" \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); d["fullScopeAllowed"]=True; print(json.dumps(d))')
+  STATUS=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT -H "$A" -H 'Content-Type: application/json' \
+    "$KC/admin/realms/uwv/clients/$CLIENT_UUID" -d "$CLIENT_BODY")
+  [ "$STATUS" = "204" ] || fail "client PUT=$STATUS"
+  pass "fullScopeAllowed=true"
+else
+  pass "fullScopeAllowed al true"
 fi

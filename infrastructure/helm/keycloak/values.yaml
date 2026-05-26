@@ -73,6 +73,39 @@ extraVolumeMounts:
 # or CoreDNS hosts-override on AKS). The PUBLIC AKS ingress with the LE cert
 # lives in infrastructure/azure/public-ingresses.yaml as `keycloak-public`.
 proxy: edge
+extraEnvVars:
+  - name: KC_HOSTNAME
+    value: "https://keycloak.uwv-platform.local:8443"
+  - name: KC_HOSTNAME_STRICT
+    value: "false"
+  - name: KC_HOSTNAME_STRICT_BACKCHANNEL
+    value: "false"
+  - name: KC_PROXY_HEADERS
+    value: "xforwarded"
+  # ---- Entra ID broker (feature/entra-id-broker) ----
+  # Beschikbaar gemaakt voor post-import patch-Job en debugging. De
+  # realm-import zelf gebruikt deze NIET automatisch — Keycloak doet
+  # geen env-substitutie in realm-import-files. Zie 02-authentication/
+  # README voor de feitelijke vervangingsstrategie (sed/jq pre-deploy
+  # of Admin REST patch post-deploy).
+  - name: ENTRA_TENANT_ID
+    valueFrom:
+      secretKeyRef:
+        name: keycloak-entra-broker
+        key: tenantId
+        optional: true
+  - name: ENTRA_CLIENT_ID
+    valueFrom:
+      secretKeyRef:
+        name: keycloak-entra-broker
+        key: clientId
+        optional: true
+  - name: ENTRA_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: keycloak-entra-broker
+        key: clientSecret
+        optional: true
 
 ingress:
   enabled: true

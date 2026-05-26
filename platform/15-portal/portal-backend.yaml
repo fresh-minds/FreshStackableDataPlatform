@@ -111,6 +111,38 @@ spec:
                   name: portal-backend-secrets
                   key: grafana-api-key
                   optional: true
+            # ─── Power BI embed (ADR-0008) ────────────────────────────
+            # Service Principal credentials voor het minten van
+            # short-lived embed-tokens via POST /api/portal/powerbi/embed.
+            # Komt uit `powerbi-embed-creds` Secret (zie
+            # platform/15-portal/powerbi-embed-creds-template.yaml of de
+            # one-liner in docs/use-cases/powerbi-embed-aks-entra.md).
+            # Optional: zonder Secret faalt enkel de embed-route, niet
+            # de hele backend.
+            - name: FABRIC_TENANT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: powerbi-embed-creds
+                  key: FABRIC_TENANT_ID
+                  optional: true
+            - name: FABRIC_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: powerbi-embed-creds
+                  key: FABRIC_CLIENT_ID
+                  optional: true
+            - name: FABRIC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: powerbi-embed-creds
+                  key: FABRIC_CLIENT_SECRET
+                  optional: true
+            - name: FABRIC_WORKSPACE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: powerbi-embed-creds
+                  key: FABRIC_WORKSPACE_ID
+                  optional: true
           volumeMounts:
             - name: data
               mountPath: /var/lib/portal-backend

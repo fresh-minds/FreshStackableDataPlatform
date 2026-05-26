@@ -46,10 +46,14 @@ twee keer is een no-op.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import hmac
+import json
 import logging
 import os
+import re
 import time
 from typing import Any
 
@@ -61,7 +65,7 @@ from pydantic import BaseModel, Field
 LOG = logging.getLogger("om-access-bridge")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 
-KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL", "http://keycloak.uwv-auth.svc.cluster.local:8080")
+KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL", "http://keycloak.uwv-auth.svc.cluster.local:80")
 KEYCLOAK_REALM = os.environ.get("KEYCLOAK_REALM", "uwv")
 KEYCLOAK_CLIENT_ID = os.environ.get("KEYCLOAK_CLIENT_ID", "om-access-bridge")
 KEYCLOAK_CLIENT_SECRET = os.environ.get("KEYCLOAK_CLIENT_SECRET", "")
@@ -81,6 +85,13 @@ REPLAY_WINDOW_SECONDS = int(os.environ.get("REPLAY_WINDOW_SECONDS", "300"))
 # platform/13-openmetadata-config/services/). Oude conventie "trino"
 # blijft als backward-compat — beide herkenbaar.
 SUPPORTED_SERVICES = {"trino", "uwv-trino"}
+
+# OM ChangeEvent's `about` field wraps the entity FQN in an entity-ref
+# token, e.g. `<#E::table::uwv-trino.gold.uc11.tbl>`. The bridge accepts
+# both wrapped and bare FQNs; this regex extracts the bare form when
+# wrapped. The entityType segment (`table` here) is not used — the
+# bridge already enforces the parent event's entityType separately.
+_ENTITY_REF_RE = re.compile(r"^<#E::[^:]+::(?P<fqn>.+)>$")
 
 app = FastAPI(title="OM Access Bridge — UWV data platform")
 
@@ -103,24 +114,87 @@ _processed_events: set[str] = set()
 # ---------------------------------------------------------------------------
 
 
+def _decode_received_signature(received: str) -> tuple[bytes, str] | None:
+    """Decode an X-OM-Signature value (after stripping `sha256=`).
+
+    OM 1.12 emits the HMAC as base64 (standard or URL-safe, with or
+    without padding). Earlier OM versions and our own test path emit hex.
+    Returns (raw_digest_bytes, kind) on success, None on bad format.
+    `kind` is "hex" / "base64" for log/debug only.
+    """
+    s = received.strip()
+    if len(s) == 64 and all(c in "0123456789abcdefABCDEF" for c in s):
+        try:
+            return bytes.fromhex(s), "hex"
+        except ValueError:
+            pass
+    s_padded = s + "=" * (-len(s) % 4)
+    for decoder in (base64.b64decode, base64.urlsafe_b64decode):
+        try:
+            raw = decoder(s_padded.encode(), validate=False)
+        except (binascii.Error, ValueError):
+            continue
+        if len(raw) == 32:  # SHA-256 → 32 bytes
+            return raw, "base64"
+    return None
+
+
 def _verify_signature(raw_body: bytes, signature_header: str, timestamp: str) -> None:
+    """Verify the OM webhook HMAC-signature.
+
+    OM 1.12's GenericPublisher (SubscriptionUtil.prepareWebhookHeaders →
+    calculateHMAC) signs the JSON body alone and sends:
+      `X-OM-Signature: sha256=<base64(HmacSHA256(secret, body))>`.
+    There is no `X-OM-Timestamp` header in OM 1.12. The HMAC is
+    base64-encoded (not hex like Stripe/GitHub-style webhooks).
+
+    Earlier bridge versions (and this function's legacy mode) expected
+    `timestamp.body` payload + `X-OM-Timestamp` header, with hex HMAC.
+    To stay compatible with our own /replay path and unit tests we still
+    accept that scheme when both a timestamp header and a matching HMAC
+    are present.
+
+    Replay protection for the canonical OM path comes from
+    `_processed_events` keyed on task_id — OM retries with the same id.
+    """
     if not OM_WEBHOOK_SECRET:
         raise HTTPException(status_code=500, detail="OM_WEBHOOK_SECRET niet geconfigureerd")
     if not signature_header or not signature_header.startswith("sha256="):
         raise HTTPException(status_code=401, detail="Ontbrekende of ongeldige X-OM-Signature")
-    try:
-        ts = int(timestamp)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=401, detail="Ongeldig X-OM-Timestamp")
-    drift = abs(time.time() - ts)
-    if drift > REPLAY_WINDOW_SECONDS:
-        raise HTTPException(status_code=401, detail=f"Timestamp buiten ±{REPLAY_WINDOW_SECONDS}s window")
-    # Sign(payload) = HMAC(secret, f"{timestamp}.{raw_body}")
-    signed = f"{timestamp}.".encode() + raw_body
-    expected = hmac.new(OM_WEBHOOK_SECRET.encode(), signed, hashlib.sha256).hexdigest()
     received = signature_header.split("=", 1)[1]
-    if not hmac.compare_digest(expected, received):
-        raise HTTPException(status_code=401, detail="HMAC-signature klopt niet")
+    secret_bytes = OM_WEBHOOK_SECRET.encode()
+
+    decoded = _decode_received_signature(received)
+    if decoded is None:
+        LOG.warning("X-OM-Signature kon niet als hex/base64 worden gedecodeerd: %r", received[:80])
+        raise HTTPException(status_code=401, detail="X-OM-Signature niet decodeerbaar")
+    received_raw, sig_kind = decoded
+
+    # Canonical OM 1.12 scheme: body-only HMAC.
+    expected_body = hmac.new(secret_bytes, raw_body, hashlib.sha256).digest()
+    if hmac.compare_digest(expected_body, received_raw):
+        LOG.debug("HMAC OK via body-only (%s)", sig_kind)
+        return
+
+    # Legacy / self-signed: `timestamp.body` HMAC, requires X-OM-Timestamp.
+    if timestamp:
+        try:
+            ts = int(timestamp)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=401, detail="Ongeldig X-OM-Timestamp")
+        drift = abs(time.time() - ts)
+        if drift > REPLAY_WINDOW_SECONDS:
+            raise HTTPException(
+                status_code=401,
+                detail=f"Timestamp buiten ±{REPLAY_WINDOW_SECONDS}s window",
+            )
+        signed = f"{timestamp}.".encode() + raw_body
+        expected_legacy = hmac.new(secret_bytes, signed, hashlib.sha256).digest()
+        if hmac.compare_digest(expected_legacy, received_raw):
+            LOG.debug("HMAC OK via legacy timestamp.body (%s)", sig_kind)
+            return
+
+    raise HTTPException(status_code=401, detail="HMAC-signature klopt niet")
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +389,29 @@ class OpenMetadata:
                 refs.append({"id": uid, "type": "user", "name": u})
         return refs
 
+    async def lookup_team_users(
+        self,
+        client: httpx.AsyncClient,
+        team_name: str,
+    ) -> list[str]:
+        """Resolve a Team's member-usernames.
+
+        Returns the list of `users[].name` on a Team entity. Empty list
+        if the team has no users or doesn't exist. Used to expand
+        Group/Team owners into real human assignees so an access-request
+        Task lands on someone who can actually approve it.
+        """
+        r = await client.get(
+            f"{self._base}/api/v1/teams/name/{team_name}",
+            params={"fields": "users"},
+            headers=self._auth(),
+        )
+        if r.status_code != 200:
+            LOG.warning("OM team %s niet vindbaar (status=%d)", team_name, r.status_code)
+            return []
+        users = r.json().get("users") or []
+        return [u.get("name") for u in users if u.get("name")]
+
     async def create_request_task(
         self,
         *,
@@ -377,18 +474,84 @@ class AccessRequestBody(BaseModel):
 def _parse_grant(event: dict[str, Any]) -> tuple[str, str, str]:
     """Return (requester_username, role_name, task_id).
 
+    Handles two OM event shapes:
+
+    1. **OM 1.12+ ChangeEvent (canonical):**
+           {
+             "eventType":  "taskResolved",
+             "entityType": "THREAD",
+             "entity":     "<JSON-stringified Thread>",
+             ...
+           }
+       Inside the Thread we find `task` (RequestDescription block),
+       `about`, `createdBy`, `message`.
+
+    2. **Legacy / hand-crafted (tests, /replay):** Thread fields are at
+       the top level — `event["task"]`, `event["about"]`, etc.
+
     Raises HTTPException als het event niet matched onze contract — een
     afwijzing op format is correcter dan stilzwijgend negeren.
     """
-    if event.get("entityType") != "task":
-        raise HTTPException(status_code=400, detail=f"Niet-task event: {event.get('entityType')!r}")
-    task = event.get("task") or {}
-    if event.get("eventType") not in {"taskResolved", "taskClosed"}:
-        raise HTTPException(status_code=400, detail=f"Niet-resolved event: {event.get('eventType')!r}")
-    if (task.get("resolution") or "").lower() != "approved":
-        raise HTTPException(status_code=400, detail=f"Task niet approved: {task.get('resolution')!r}")
+    # Only accept the "user accepted the suggestion" event. OM 1.12 fires
+    # `taskClosed` for explicit rejections — never grant on those.
+    if event.get("eventType") != "taskResolved":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Niet-taskResolved event: {event.get('eventType')!r}",
+        )
 
-    requester = task.get("createdBy")
+    # entityType is "THREAD" (uppercase) on OM 1.12, "task" on the legacy
+    # path. Accept both case-insensitively.
+    entity_type = (event.get("entityType") or "").lower()
+    if entity_type not in {"task", "thread"}:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Niet-task/thread event: {event.get('entityType')!r}",
+        )
+
+    # In the OM 1.12 ChangeEvent, the Thread is shipped as a JSON-encoded
+    # string under `entity`. Parse it if present; otherwise fall back to
+    # the legacy flat layout.
+    raw_entity = event.get("entity")
+    thread: dict[str, Any]
+    if isinstance(raw_entity, str) and raw_entity.lstrip().startswith("{"):
+        try:
+            thread = json.loads(raw_entity)
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"event.entity is geen geldige JSON: {e}",
+            ) from e
+    elif isinstance(raw_entity, dict):
+        thread = raw_entity
+    else:
+        thread = event  # legacy / hand-crafted
+
+    task = thread.get("task") or event.get("task") or {}
+
+    # Status / resolution check.
+    #
+    # OM 1.12 RequestDescription tasks don't carry a `resolution` field —
+    # the signal is `task.status == "Closed"` after a `/resolve` (=
+    # accepted) call. The `taskResolved` eventType already excludes
+    # rejections (which fire `taskClosed`), so a closed task here means
+    # the suggestion was applied.
+    #
+    # Legacy support: accept resolution=="approved" too.
+    status = (task.get("status") or "").lower()
+    resolution = (task.get("resolution") or "").lower()
+    if status != "closed" and resolution != "approved":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Task niet approved/closed: status={task.get('status')!r} "
+                f"resolution={task.get('resolution')!r}"
+            ),
+        )
+
+    # createdBy is the original requester (who opened the access-request
+    # Task), not the approver in `closedBy`/`updatedBy`.
+    requester = thread.get("createdBy") or event.get("createdBy") or task.get("createdBy")
     if not requester:
         raise HTTPException(status_code=400, detail="Task mist 'createdBy'")
 
@@ -397,6 +560,8 @@ def _parse_grant(event: dict[str, Any]) -> tuple[str, str, str]:
     # access-request behandeld. Dit voorkomt dat een RequestDescription-Task
     # voor een puur description-doel per ongeluk een grant triggert.
     title_or_msg = " ".join(filter(None, [
+        thread.get("message"),
+        thread.get("description"),
         task.get("description"),
         task.get("message"),
         task.get("taskName"),
@@ -411,22 +576,34 @@ def _parse_grant(event: dict[str, Any]) -> tuple[str, str, str]:
             ),
         )
 
-    about = task.get("about") or ""
+    # `about` lives on the Thread (or on task in legacy events). It's the
+    # OM entity reference for the target asset and is wrapped as
+    # `<#E::table::FQN>` in real OM events; strip the wrapper.
+    about_raw = thread.get("about") or task.get("about") or ""
+    about = about_raw
+    m = _ENTITY_REF_RE.match(about_raw)
+    if m:
+        about = m.group("fqn")
+
     parts = about.split(".")
     if len(parts) < 3 or parts[0] not in SUPPORTED_SERVICES:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Asset FQN {about!r} niet bruikbaar — verwacht "
-                "<trino>.<catalog>.<schema>[.<table>]"
+                f"Asset FQN {about_raw!r} niet bruikbaar — verwacht "
+                "<trino>.<catalog>.<schema>[.<table>] (optioneel met "
+                "<#E::table::...> wrapper)"
             ),
         )
     catalog, schema = parts[1], parts[2]
     role_name = f"data_access:{catalog}.{schema}"
 
-    task_id = task.get("id") or ""
-    if not task_id:
+    task_id_raw = task.get("id")
+    if task_id_raw in (None, ""):
         raise HTTPException(status_code=400, detail="Task mist 'id'")
+    # OM emits task.id as a positive integer; coerce to str for our
+    # downstream logging and response model.
+    task_id = str(task_id_raw)
 
     return requester, role_name, task_id
 
@@ -480,10 +657,36 @@ async def create_access_request(body: AccessRequestBody) -> dict[str, Any]:
 
         asset = await openmetadata.get_table(client, body.asset_fqn)
 
-        # Owners → assignees. Als asset geen owner heeft, val terug op
-        # data.steward zodat de Task niet ongeassigned blijft hangen.
+        # Owners → assignees. User-owners gaan direct erin; team/group-
+        # owners expanderen we naar hun users (een Task met alleen een
+        # team-assignee kan niet door een persoon worden geresolved). Als
+        # geen van beide bronnen iets oplevert, val terug op data.steward
+        # zodat de Task niet ongeassigned blijft hangen.
         owners = asset.get("owners") or []
-        owner_names = [o["name"] for o in owners if o.get("type") == "user" and o.get("name")]
+        owner_names: list[str] = []
+        for o in owners:
+            name = o.get("name")
+            otype = o.get("type")
+            if not name:
+                continue
+            if otype == "user":
+                owner_names.append(name)
+            elif otype == "team":
+                team_members = await openmetadata.lookup_team_users(client, name)
+                if team_members:
+                    LOG.info(
+                        "Team-owner %s expanded naar %d user(s): %s",
+                        name, len(team_members), team_members,
+                    )
+                    owner_names.extend(team_members)
+                else:
+                    LOG.warning(
+                        "Team-owner %s heeft geen users — fallback naar data.steward",
+                        name,
+                    )
+        # Dedup terwijl volgorde behouden blijft.
+        seen: set[str] = set()
+        owner_names = [n for n in owner_names if not (n in seen or seen.add(n))]
         if not owner_names:
             owner_names = ["data.steward"]
 
