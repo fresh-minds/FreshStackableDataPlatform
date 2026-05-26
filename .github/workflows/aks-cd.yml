@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repo @ ${{ github.sha }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python (voor render-trino-catalogs.py)
         uses: actions/setup-python@v5
@@ -54,7 +54,7 @@ jobs:
           cache-dependency-path: portal/package-lock.json
 
       - name: Azure login (service principal)
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
