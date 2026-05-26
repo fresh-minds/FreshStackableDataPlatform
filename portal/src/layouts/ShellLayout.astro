@@ -59,7 +59,9 @@ const {
   activeSection = 'home',
   activeSubsection,
   persona = 'data_engineer',
-  userName = 'Karel Goense',
+  // userName starts empty; loadIdentity() vult de avatar/dropdown vanuit
+  // /oauth2/userinfo en renderWho() rendert het via data-who-name selectors.
+  userName = '',
   embedMode = false,
 } = Astro.props;
 
@@ -703,8 +705,14 @@ const userInitial = (userName.trim().charAt(0) || '?').toUpperCase();
           document.querySelectorAll<HTMLElement>('[data-who-avatar-large]').forEach((el) => {
             el.textContent = initial;
           });
-          const nameEl = document.querySelector<HTMLElement>('[data-who-name]');
-          if (nameEl) nameEl.textContent = user;
+          // Multiple sinks: user dropdown name + hero greeting <em>. Update all.
+          document.querySelectorAll<HTMLElement>('[data-who-name]').forEach((el) => {
+            el.textContent = user;
+          });
+          // Hero greeting comma — empty when no name, ", " when name is known.
+          document.querySelectorAll<HTMLElement>('[data-who-prefix]').forEach((el) => {
+            el.textContent = ', ';
+          });
           const emailEl = document.querySelector<HTMLElement>('[data-who-email]');
           if (emailEl) emailEl.textContent = user;
         }

@@ -14,13 +14,14 @@ import ItemTile from './ItemTile.astro';
 import { RECENTS, EXPLORE, HERO_STATS } from '../../data/v2-homepage';
 
 interface Props {
-  /** Greeting display name. Defaults to "Karel" for the mockup. */
+  /** Greeting display name. Empty by default; renderWho() in ShellLayout
+   *  vult [data-who-name] uit sessionStorage zodra SSO-identity binnen is. */
   userName?: string;
   /** Persona label shown under the greeting. */
   personaLabel?: string;
 }
 const {
-  userName = 'Karel',
+  userName = '',
   personaLabel = 'Data Engineer',
 } = Astro.props;
 ---
@@ -30,7 +31,7 @@ const {
   <header class="v2-hero">
     <div class="v2-hero-text">
       <span class="v2-eyebrow">Mijn werkplek</span>
-      <h1 class="v2-hero-title">Welkom terug, <em>{userName}</em></h1>
+      <h1 class="v2-hero-title">Welkom terug<span data-who-prefix>{userName ? ', ' : ''}</span><em data-who-name>{userName}</em></h1>
       <p class="v2-hero-sub" data-persona-sub>
         Persona: <b>{personaLabel}</b>
       </p>

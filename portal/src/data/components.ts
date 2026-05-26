@@ -626,10 +626,10 @@ export const stages: StageMeta[] = [
   { id: 'pipeline',       title: 'Pipeline-orkestratie',     blurb: 'Wat draait wanneer, in welke volgorde, met welke afhankelijkheid.',     icon: '/icons/stage/pipeline.svg',       kind: 'overlay',       category: 'pipeline' },
   { id: 'observability',  title: 'Observability',            blurb: 'Metrics, logs en alerts om de gezondheid van het platform te zien.',    icon: '/icons/stage/observability.svg',  kind: 'overlay',       category: 'observability' },
   { id: 'identity',       title: 'Identiteit & Toegang',     blurb: 'SSO regelt wie wat mag — elk onderdeel checkt het token.',              icon: '/icons/stage/identity.svg',       kind: 'side',          category: 'identity' },
-  // Coding agents lane: coördineert agents die op de laptop van de developer
-  // draaien (Multica). De voormalige runtime-agent lane (Nanitics) is uit het
-  // platform gehaald en bewaard op de feature/nanitics branch.
-  { id: 'agents',         title: 'Agents & AI-tooling',      blurb: 'Coördinatie van coding agents (Multica) en gerelateerde dev-loop tooling.', icon: '/icons/stage/agents.svg',         kind: 'overlay',       category: 'agents' },
+  // Agents-lane: Multica coördineert coding-agents (dev-loop, op de laptop
+  // van de developer), Nanitics Observatory is de in-cluster runtime + trace-
+  // viewer voor platform-watcher-agents. Beide zijn onderdeel van het platform.
+  { id: 'agents',         title: 'Agents & AI-tooling',      blurb: 'Coördinatie van coding agents (Multica) plus de in-cluster agent-runtime (Nanitics Observatory).', icon: '/icons/stage/agents.svg',         kind: 'overlay',       category: 'agents' },
 ];
 
 export function stageById(id: ComponentStage): StageMeta | undefined {

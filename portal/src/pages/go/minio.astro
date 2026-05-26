@@ -72,13 +72,12 @@
             throw new Error('geen redirect-URL — heeft MinIO OIDC discovery gedaan?');
           }
           window.location.replace(url);
-        } catch (e) {
+        } catch {
+          // SSO redirect mislukt — toon de fallback met handmatige login-link.
           const fb = document.getElementById('fallback');
           const ld = document.getElementById('loading');
           if (fb) fb.className = 'fallback show';
           if (ld) ld.style.display = 'none';
-          // eslint-disable-next-line no-console
-          console.warn('MinIO SSO redirect mislukt:', e);
         }
       })();
     </script>
