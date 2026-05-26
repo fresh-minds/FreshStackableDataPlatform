@@ -4,6 +4,17 @@ Praktische gids voor het aanvragen van toegang tot een dataset op het UWV
 data-platform. Architectuur: zie [ADR-0008](adr/0008-self-service-data-access.md).
 Bridge-service: zie [platform/18-om-access-bridge/](../platform/18-om-access-bridge/README.md).
 
+> **De bridge wordt automatisch meegedeployd** als laatste stap van
+> `make deploy-platform` (zodra OpenMetadata het admin-JWT-secret heeft
+> gepubliceerd). Op een verse k3d/AKS-cluster verwacht je hem live te
+> zien als `kubectl -n uwv-platform get deploy om-access-bridge`.
+> Bij een hibernated SKE-cluster of als je `SKIP_OM_BRIDGE=1` hebt
+> gezet, draai 'm los met `make deploy-om-bridge` (zie
+> [scripts/deploy-platform.sh](../scripts/deploy-platform.sh)). Het
+> portal-formulier én de handmatige OM-flow gaan beide stuk zonder de
+> bridge — je submit zal 404/502 geven of je Task blijft hangen zonder
+> grant.
+
 ---
 
 ## TL;DR — 30 seconden (portal-flow)
@@ -92,6 +103,13 @@ Motivation: UC-11 funnel-analyse — afsluitratio per kanaal. Synthetische
 
 Grant na approval: realm-role `data_access:gold.uc11_klantreis`.
 
+> ⚠️ **Heads-up:** deze specifieke `mart_*` tabel heeft lineage geregistreerd
+> in OM en raakt op OM 1.12 momenteel de OpenSearch lineage-script bug —
+> de approval-PUT geeft 500. Zie de FAQ "Mijn aanvraag op een
+> `mart_*` of `uc11_*` tabel faalt met 500" onderaan voor de workaround
+> (admin kent de role handmatig toe). Een staging/silver-tabel uit
+> dezelfde catalog werkt nu wél foutloos via dezelfde grant.
+
 ### Voorbeeld 2 — FEZ-analist wil bronze-data voor reconciliatie
 
 ```
@@ -115,8 +133,12 @@ flow handmatig.
 1. Open <https://openmetadata.uwv-platform.local:8443>.
 2. Sidebar links → **Explore** → filter Tables → zoek dataset.
 3. Op asset-pagina: tab **Activity Feed** → **+ Add Task** → **Request Description**.
-4. **Description begint met `Request Access`** — anders triggert de bridge niet.
-5. Assignee = de Owner / Reviewer rechts op de asset-pagina.
+4. **Description (of message of taskName) bevat ergens `Request Access`** —
+   case-insensitive, hoeft niet aan het begin. Anders triggert de bridge
+   niet (zie `_parse_grant` "convention guard").
+5. Assignee = de Owner / Reviewer rechts op de asset-pagina. Is dat een
+   team zonder users in OM? Set dan een persoon als secundaire owner;
+   de portal-flow expandeert dat automatisch, de handmatige niet.
 6. Submit. Verder loopt het identiek aan de portal-flow.
 
 > De portal-flow doet stap 3–5 voor je en voorkomt dat je de
@@ -143,14 +165,36 @@ follow-up in [docs/improvements.md](improvements.md).
 Default-SLA: 5 werkdagen. Daarna mag je platform-admin escaleren. (Een
 SLA-DAG op open Tasks is een open issue.)
 
+**Aan wie wordt mijn Task toegewezen als de owner een team is?**
+Veel datasets hebben een **team/group als owner** (bv. `divisie_klantcontact`)
+in plaats van een persoon. De portal-flow expandeert team-owners
+automatisch naar hun users. Als de owner-team géén users heeft
+gekoppeld in OM, valt de bridge terug op `data.steward` zodat de Task
+niet ongeassigned blijft hangen. Wil je dat van een specifiek persoon
+afhangen? Zet die persoon expliciet als owner op het asset in
+OpenMetadata.
+
+**Mijn aanvraag op een `mart_*` of `uc11_*` tabel faalt met "500 server
+error" tijdens approval — wat is dat?**
+Bekend probleem in OM 1.12 op assets **met lineage of data-products**:
+de `PUT /api/v1/feed/tasks/{id}/resolve` API gooit een
+`script_exception` op de OpenSearch lineage-index, en de Task wordt niet
+afgesloten → geen webhook → geen grant. Tijdelijke workaround tot OM-fix:
+laat de platform-admin het Keycloak realm-role
+`data_access:<catalog>.<schema>` met de hand toekennen. Tracking:
+[OS lineage script bug — onderzoekstaak (open)](improvements.md).
+Niet-lineage assets (bv. staging-tabellen in `bronze`/`gold.crm`) werken
+zonder probleem.
+
 **De bridge zegt 400 op mijn Task — wat ging er fout?**
-Drie veelvoorkomende oorzaken:
+Vier veelvoorkomende oorzaken:
 
 | Status / log-bericht | Wat te doen |
 |---|---|
 | `Task is niet als access-request gemarkeerd` | Voeg `Request Access` toe aan de description en re-submit. |
-| `Asset FQN ... niet bruikbaar` | Asset is geen Trino-table. Alleen `trino.<catalog>.<schema>.<table>` werkt; voor andere asset-types (Topics, Dashboards) is dit pad nog niet ondersteund. |
-| `Task niet approved` | Reviewer heeft de Task gesloten met een andere resolution (Closed zonder Approved). Maak een nieuwe Task. |
+| `Asset FQN ... niet bruikbaar` | Asset is geen Trino-table. Alleen `trino.<catalog>.<schema>.<table>` of de OM entity-ref `<#E::table::...>` wordt herkend; voor andere asset-types (Topics, Dashboards) is dit pad nog niet ondersteund. |
+| `Task niet approved/closed` | Reviewer heeft de Task gesloten met **Reject** (eventType `taskClosed`) i.p.v. **Accept Suggestion** (eventType `taskResolved`). Maak een nieuwe Task. |
+| `HMAC-signature klopt niet` | Bridge-secret in `om-access-bridge-secret` matcht niet met OM's stored secret. Run `make deploy-om-bridge` om beide opnieuw te bootstrappen. |
 
 ---
 
@@ -164,11 +208,16 @@ Als Owner/Reviewer van een dataset:
    [trino-doelbinding.rego](../opa-policies-src/trino/trino-doelbinding.rego))
    — als de aanvrager's primaire rol de purpose niet kent, helpt de grant
    niet en moet je afwijzen of escaleren.
-4. Klik **Accept Suggestion** / **Resolve → Approved** in OM.
+4. Klik **Accept Suggestion** (≡ `PUT /tasks/{id}/resolve` → fires
+   `taskResolved` → bridge kent de role toe).
 5. Vermeld in een comment de geldigheidsduur (audit-trail).
 
-Voor afwijzing: zelfde knoppen maar resolution **Closed** zonder approved;
-voeg motivatie toe.
+**Voor afwijzing:** gebruik **Close** (een andere knop / actie, niet
+"Resolve") en zet een motivatie in een comment. Onder de motorkap is
+dat `PUT /tasks/{id}/close` → fires `taskClosed`. De bridge negeert
+`taskClosed`-events expliciet, dus er volgt géén grant — perfect voor
+audit-trail "aanvraag afgewezen". Vermijd "Resolve" voor een rejection,
+want dat zou de role wél toekennen.
 
 ---
 

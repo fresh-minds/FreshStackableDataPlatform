@@ -322,7 +322,8 @@
         "realm-management": [
           "manage-users",
           "view-users",
-          "view-realm"
+          "view-realm",
+          "manage-realm"
         ]
       }
     }
@@ -646,10 +647,26 @@
         "profile",
         "roles"
       ],
-      "fullScopeAllowed": false,
+      "fullScopeAllowed": true,
       "attributes": {
         "use.refresh.tokens": "false"
-      }
+      },
+      "protocolMappers": [
+        {
+          "name": "realm-management-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "false",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "claim.name": "resource_access.${client_id}.roles",
+            "jsonType.label": "String",
+            "usermodel.clientRoleMapping.clientId": "realm-management"
+          }
+        }
+      ]
     },
     {
       "clientId": "jupyter",
