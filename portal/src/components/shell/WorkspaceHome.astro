@@ -32,7 +32,7 @@ const {
       <span class="v2-eyebrow">Mijn werkplek</span>
       <h1 class="v2-hero-title">Welkom terug, <em>{userName}</em></h1>
       <p class="v2-hero-sub" data-persona-sub>
-        Persona: <b>{personaLabel}</b> · 3 nieuwe meldingen · 1 DAG vraagt aandacht
+        Persona: <b>{personaLabel}</b>
       </p>
     </div>
     <div class="v2-hero-stats">
@@ -142,8 +142,7 @@ const {
     const label = PERSONA_LABELS[role] ?? role;
     const sub = document.querySelector<HTMLElement>('[data-persona-sub]');
     if (sub) {
-      sub.innerHTML =
-        `Persona: <b>${label}</b> · 3 nieuwe meldingen · 1 DAG vraagt aandacht`;
+      sub.innerHTML = `Persona: <b>${label}</b>`;
     }
   }
 
@@ -162,15 +161,6 @@ const {
     const r = sessionStorage.getItem('uwv-portal-role');
     if (r && PERSONA_LABELS[r] && r !== role) applyPersona(r);
   }, 250);
-
-  // Persona-switcher in the topbar dispatches 'persona-changed' on click.
-  // Switch the shortcuts-grid + hero label in real time, no reload.
-  window.addEventListener('persona-changed', (e) => {
-    const detail = (e as CustomEvent).detail;
-    if (detail?.role && PERSONA_LABELS[detail.role]) {
-      applyPersona(detail.role);
-    }
-  });
 
   // ───────────────────────────────────────────────────
   // Recents: fetch live data van /api/portal/recents en
