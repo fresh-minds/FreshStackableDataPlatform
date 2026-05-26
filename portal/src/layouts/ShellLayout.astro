@@ -438,27 +438,13 @@ const userInitial = (userName.trim().charAt(0) || '?').toUpperCase();
              in fase D. -->
         <NotificationBell client:load />
 
-        <!-- Persona switcher -->
-        <div class="topbarv2-dropdown" data-dropdown="persona">
-          <button class="topbarv2-persona" type="button" data-dropdown-toggle="persona">
-            <span class="topbarv2-persona-dot" style={`background: ${currentPersona.color}`}>{currentPersona.initials}</span>
-            <span class="topbarv2-persona-label">{currentPersona.label}</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-          </button>
-          <div class="topbarv2-panel topbarv2-panel--right topbarv2-panel--wide" role="menu">
-            <div class="topbarv2-panel-head">Wissel persona</div>
-            {Object.entries(PERSONAS).map(([id, p]) => (
-              <a
-                class:list={['topbarv2-persona-item', { 'is-current': id === persona }]}
-                href="#"
-                data-persona-switch={id}
-              >
-                <span class="topbarv2-persona-dot topbarv2-persona-dot--sm" style={`background: ${p.color}`}>{p.initials}</span>
-                <span class="topbarv2-persona-text"><b>{p.label}</b><em>{id}</em></span>
-                {id === persona && <span class="topbarv2-persona-check">✓</span>}
-              </a>
-            ))}
-          </div>
+        <!-- Persona indicator — read-only display van de SSO-rol.
+             Vroeger een dropdown waarmee je handmatig een andere persona kon
+             kiezen, maar in SSO-modus is dat semantisch fout: de rol komt uit
+             Keycloak-claims. renderWho() updatet dot+label uit sessionStorage. -->
+        <div class="topbarv2-persona" title={currentPersona.label}>
+          <span class="topbarv2-persona-dot" style={`background: ${currentPersona.color}`}>{currentPersona.initials}</span>
+          <span class="topbarv2-persona-label">{currentPersona.label}</span>
         </div>
 
         <!-- Theme toggle -->
@@ -763,48 +749,6 @@ const userInitial = (userName.trim().charAt(0) || '?').toUpperCase();
 
       renderWho();      // paint from sessionStorage first (no flicker)
       loadIdentity();   // then refresh from /oauth2/userinfo
-
-      // ───────────────────────────────────────────────────
-      // Persona switcher — in-tab role change
-      // ───────────────────────────────────────────────────
-      // Klik op een persona-item in de topbar dropdown:
-      //   1. schrijft uwv-portal-role naar sessionStorage,
-      //   2. updated de topbar persona-pill (renderWho lees sessionStorage),
-      //   3. broadcast een 'persona-changed' event zodat de WorkspaceHome
-      //      shortcut-grid (en straks de favorites-filter) mee-switchen.
-      // Geen page reload meer — voelt instant.
-      // Update ook de visuele "✓" markering op de items.
-      function updatePersonaCheckmarks(activeRole: string): void {
-        document.querySelectorAll<HTMLAnchorElement>('[data-persona-switch]').forEach((a) => {
-          const isActive = a.dataset.personaSwitch === activeRole;
-          a.classList.toggle('is-current', isActive);
-          // Re-render the ✓ glyph: remove an existing one and add a new
-          // one in place so we don't drift between SSR and client state.
-          const existing = a.querySelector('.topbarv2-persona-check');
-          existing?.remove();
-          if (isActive) {
-            const check = document.createElement('span');
-            check.className = 'topbarv2-persona-check';
-            check.textContent = '✓';
-            a.appendChild(check);
-          }
-        });
-      }
-      document.querySelectorAll<HTMLAnchorElement>('[data-persona-switch]').forEach((a) => {
-        a.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const role = a.dataset.personaSwitch;
-          if (!role) return;
-          sessionStorage.setItem('uwv-portal-role', role);
-          renderWho();
-          updatePersonaCheckmarks(role);
-          closeAllDropdowns();
-          window.dispatchEvent(
-            new CustomEvent('persona-changed', { detail: { role } }),
-          );
-        });
-      });
     </script>
 
     <!-- ─── GLOBAL SHELL STYLES ──────────────────────────── -->
@@ -1148,11 +1092,8 @@ const userInitial = (userName.trim().charAt(0) || '?').toUpperCase();
         background: var(--bg-elev);
         color: var(--ink-1);
         font-size: var(--text-meta);
-        cursor: pointer;
         font-family: var(--font-sans);
-        transition: border-color var(--motion-fast);
       }
-      .topbarv2-persona:hover { border-color: var(--ink-4); }
       .topbarv2-persona-dot {
         width: 24px;
         height: 24px;
@@ -1164,11 +1105,6 @@ const userInitial = (userName.trim().charAt(0) || '?').toUpperCase();
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
-      }
-      .topbarv2-persona-dot--sm {
-        width: 22px;
-        height: 22px;
-        font-size: 10px;
       }
 
       .topbarv2-user {
@@ -1364,27 +1300,6 @@ const userInitial = (userName.trim().charAt(0) || '?').toUpperCase();
         font-size: var(--text-meta);
         text-align: center;
       }
-
-      .topbarv2-persona-item {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 8px 10px;
-        border-radius: var(--radius-sm);
-        color: var(--ink-1);
-        text-decoration: none;
-        transition: background var(--motion-fast);
-        font-size: var(--text-meta);
-      }
-      .topbarv2-persona-item:hover {
-        background: var(--bg-sunken);
-        text-decoration: none;
-      }
-      .topbarv2-persona-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
-      .topbarv2-persona-text b  { font-weight: var(--weight-medium); }
-      .topbarv2-persona-text em { font-style: normal; color: var(--ink-3); font-size: 11px; font-family: var(--font-mono); }
-      .topbarv2-persona-check { color: var(--accent); font-weight: var(--weight-bold); }
-      .topbarv2-persona-item.is-current { background: color-mix(in oklch, var(--accent) 8%, transparent); }
 
       /* ─── Command palette ─── */
       .cmdk[hidden] { display: none !important; }

@@ -89,9 +89,11 @@ LAYERS=(
   "platform/19-nanitics-observatory"
   "platform/20-multica-daemon"
 )
-# NB: 18-om-access-bridge still has a separate flow (`make deploy-om-bridge`)
-# because it needs the OM JWT to be seeded into its Secret before deploy,
-# which only makes sense after OpenMetadata is up.
+# NB: 18-om-access-bridge is NOT in this LAYERS array — it needs the OM
+# JWT seeded into its Secret before deploy, plus a Keycloak-client +
+# OM-subscription setup pass. We call `make deploy-om-bridge` at the
+# end of this script (after openmetadata-admin secret exists). Set
+# SKIP_OM_BRIDGE=1 to opt out.
 #
 # 19-nanitics-observatory and 20-multica-daemon land here despite needing
 # out-of-band secrets, because the secrets can't be auto-seeded (operator
@@ -432,6 +434,36 @@ echo "DAGs unpaused (skipped any that don'\''t exist yet — parse delay is norm
   ' 2>&1 | tail -2 || true
 else
   printf '\033[1;33m!!\033[0m uwv-airflow-scheduler-default-0 nog niet ready — DAGs blijven paused tot je manueel `airflow dags unpause` draait\n'
+fi
+
+# om-access-bridge (ADR-0008): self-service data-access webhook bridge.
+#
+# Was eerder een opt-in `make deploy-om-bridge` target omdat het de OM admin
+# JWT moet seeden, en die JWT bestaat pas nadat OpenMetadata up is. We
+# wachten kort tot dat secret er is en draaien dan de bridge-deploy.
+# Faalt elegant als OM nog niet ready is — gebruiker krijgt een waarschuwing
+# met de hint om `make deploy-om-bridge` zelf te draaien.
+log "om-access-bridge (ADR-0008): wait for OM admin token, then deploy"
+om_ready=false
+for i in 1 2 3 4 5 6; do
+  if kubectl -n uwv-meta get secret openmetadata-admin -o jsonpath='{.data.jwtToken}' 2>/dev/null | grep -q .; then
+    om_ready=true
+    break
+  fi
+  sleep 5
+done
+if $om_ready; then
+  if [[ "${SKIP_OM_BRIDGE:-}" == "1" ]]; then
+    log "  SKIP_OM_BRIDGE=1 gezet — om-access-bridge wordt niet gedeployd"
+  elif command -v make >/dev/null && [[ -f "$ROOT/Makefile" ]]; then
+    (cd "$ROOT" && make deploy-om-bridge MODE="${MODE:-k3d}" 2>&1) | sed 's/^/  /' || \
+      printf '\033[1;33m!!\033[0m om-access-bridge deploy gefaald — run `make deploy-om-bridge` handmatig\n'
+  else
+    printf '\033[1;33m!!\033[0m make/Makefile niet beschikbaar — run `make deploy-om-bridge` handmatig\n'
+  fi
+else
+  printf '\033[1;33m!!\033[0m openmetadata-admin secret nog niet aanwezig na 30s — '
+  printf 'om-access-bridge overgeslagen. Run `make deploy-om-bridge` zodra OM ready is.\n'
 fi
 
 log "Deploy-platform fase 1 stub klaar."

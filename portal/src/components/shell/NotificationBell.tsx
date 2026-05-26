@@ -8,9 +8,8 @@
   panel.
 
   Fallback: if /api/portal/events errors out (backend down, network
-  blocked) the browser keeps auto-reconnecting in the background. We
-  also seed the list with a few sample events so the UI never feels
-  empty during dev / cluster restart.
+  blocked) the browser keeps auto-reconnecting in the background.
+  Empty state is shown until the backend delivers real events.
 
   Multi-dropdown coordination with the vanilla dropdowns elsewhere in
   the topbar is intentionally light: this component closes via click-
@@ -30,41 +29,14 @@ interface NotificationEvent {
   href: string;
 }
 
-const SEED_EVENTS: NotificationEvent[] = [
-  {
-    id: 'evt-1',
-    tone: 'down',
-    title: 'Airflow · sales_bronze_to_silver gefaald',
-    detail: 'Run 2026-05-21 03:14 — taak load_invoices',
-    ago: '12m',
-    href: '/embed/airflow/?path=%2Fdags%2Fsales_bronze_to_silver',
-  },
-  {
-    id: 'evt-2',
-    tone: 'info',
-    title: 'Superset · WIA-monitor met je gedeeld',
-    detail: 'Door data_steward@uwv',
-    ago: '1u',
-    href: '/embed/superset/?path=%2Fdashboard%2Flist%2F%3Ffilters%3D(slug%3Awia-monitor)',
-  },
-  {
-    id: 'evt-3',
-    tone: 'ok',
-    title: 'OPA · toegang verleend tot silver.uwv_wia',
-    detail: 'Door platform_admin',
-    ago: '3u',
-    href: '/embed/openmetadata/?path=%2Ftable%2Ftrino.silver.uwv_wia.aanvraag',
-  },
-];
-
 // Maximum events we keep in client-side state. Backend caps history at 50;
 // here we trim harder because the dropdown only shows the most recent.
 const MAX_EVENTS = 10;
 
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
-  const [events, setEvents] = useState<NotificationEvent[]>(SEED_EVENTS);
-  const [unread, setUnread] = useState(SEED_EVENTS.length);
+  const [events, setEvents] = useState<NotificationEvent[]>([]);
+  const [unread, setUnread] = useState(0);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Click-outside + Escape close.
@@ -87,12 +59,11 @@ export default function NotificationBell() {
   }, []);
 
   // Subscribe to /api/portal/events. EventSource auto-reconnects on
-  // network blips; on first message we wipe the seed-state so the
-  // displayed history matches what the backend has (max 50 there).
-  // If the backend is unreachable, the seed events stay on screen.
+  // network blips. The displayed history matches what the backend has
+  // (max 50 there). If the backend is unreachable, the empty state
+  // stays on screen.
   useEffect(() => {
     let es: EventSource | null = null;
-    let seenLive = false;
 
     function isValidTone(t: unknown): t is EventTone {
       return t === 'down' || t === 'ok' || t === 'info';
@@ -125,12 +96,9 @@ export default function NotificationBell() {
       };
 
       setEvents((evs) => {
-        // First live event after page load → drop the SSR seed so the
-        // backend history wins. Dedupe on id (server may replay).
-        const base = seenLive ? evs : [];
-        seenLive = true;
-        if (base.some((x) => x.id === normalised.id)) return base;
-        return [normalised, ...base].slice(0, MAX_EVENTS);
+        // Dedupe on id (server may replay historical events on connect).
+        if (evs.some((x) => x.id === normalised.id)) return evs;
+        return [normalised, ...evs].slice(0, MAX_EVENTS);
       });
 
       setUnread((u) => {
@@ -148,7 +116,7 @@ export default function NotificationBell() {
         // existing events stay on screen until the next successful poll.
       };
     } catch {
-      // Browser without EventSource support — fall back to seed-only.
+      // Browser without EventSource support — empty state stays.
     }
 
     return () => {

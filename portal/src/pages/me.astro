@@ -1,7 +1,6 @@
 ---
 import ShellLayout from '../layouts/ShellLayout.astro';
 import Eyebrow from '../components/primitives/Eyebrow.astro';
-import Button from '../components/primitives/Button.astro';
 import Tag from '../components/primitives/Tag.astro';
 import { roles } from '../data/roles';
 import { components } from '../data/components';
@@ -89,12 +88,9 @@ const payload = {
         <span> — workflows, foutmeldingen, escalatie.</span>
       </li>
       <li><a href={DOCS_URL} target="_blank" rel="noopener noreferrer">Open de platform-documentatie ↗</a></li>
-      <li>Mail <a href="mailto:data.steward@uwv-platform.local">data.steward@uwv-platform.local</a> bij vragen over data</li>
+      <li>Bij vragen over data: neem contact op met je data steward</li>
       <li>Bel platform-admin bij vermoede inbreuk (niet via mail)</li>
     </ul>
-    <div class="help-cta">
-      <Button href="/me/">Andere rol kiezen</Button>
-    </div>
   </section>
   </div>
 
@@ -428,63 +424,6 @@ const payload = {
     .help-list li:last-child { border-bottom: 0; }
     .help-list a { color: var(--ink-1); }
     .help-list a:hover { color: var(--ink-1); text-decoration: underline; }
-    .help-cta { margin-top: var(--space-4); }
-
-    /* ─── Upload CTA card ─── */
-    /* Upload + arch + access-request sections zijn uit het template
-       gehaald (Optie A — strak). De CSS hieronder blijft staan als
-       documentatie van wat ze deden; verwijder gerust bij volgende
-       cleanup. */
-    .upload-cta-card-legacy-unused {
-      display: flex;
-      align-items: center;
-      gap: var(--space-4);
-      padding: var(--space-5);
-      background: var(--bg-elev);
-      border: 1.5px dashed color-mix(in srgb, var(--accent) 60%, transparent);
-      border-radius: var(--radius-md);
-      color: var(--ink-1);
-      max-width: 560px;
-      transition: border-color .15s, transform .15s, box-shadow .15s;
-    }
-    .upload-cta-card:hover {
-      border-color: var(--accent);
-      transform: translateY(-1px);
-      box-shadow: var(--card-shadow-hover);
-      text-decoration: none;
-    }
-    .upload-cta-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 48px;
-      height: 48px;
-      border-radius: var(--radius-sm);
-      background: color-mix(in srgb, var(--accent) 12%, transparent);
-      color: var(--accent);
-      flex-shrink: 0;
-    }
-    .upload-cta-body {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-1);
-      flex: 1;
-      min-width: 0;
-    }
-    .upload-cta-title {
-      font-size: var(--text-body);
-      font-weight: var(--weight-medium);
-      color: var(--ink-1);
-    }
-    .upload-cta-hint {
-      font-size: var(--text-meta);
-      color: var(--ink-3);
-    }
-    .upload-cta-arrow {
-      font-size: 20px;
-      color: var(--accent);
-      flex-shrink: 0;
-    }
 
     /* ─── Picker grid ─── */
     .role-picker-grid {

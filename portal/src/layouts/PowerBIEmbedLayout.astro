@@ -1,0 +1,103 @@
+---
+/*
+  PowerBIEmbedLayout — speciale embed-shell voor Power BI.
+
+  Verschilt van EmbedLayout.astro doordat het ipv een iframe naar een
+  service-subdomein een React Island rendert die powerbi-client-react
+  gebruikt met een server-mint embed-token. Dat omzeilt Microsoft's
+  restrictieve `frame-ancestors`-CSP op app.fabric.microsoft.com (zie
+  ADR-0008 / docs/use-cases/powerbi-embed-aks-entra.md).
+
+  Same chrome als EmbedLayout: top sub-bar met breadcrumb + "Open in nieuw
+  tabblad" + fullscreen. Hieronder fills een React Island het beschikbare
+  shell-main.
+*/
+import ShellLayout from './ShellLayout.astro';
+import type { PlatformComponent } from '../data/components';
+import PowerBIEmbed from '../components/powerbi/PowerBIEmbed';
+
+interface Props {
+  component: PlatformComponent;
+  /** Optioneel: report-ID om te embedden. Default = UC-12 (zie PowerBIEmbed.tsx). */
+  reportId?: string;
+  /** Optioneel: page-naam binnen het report. */
+  pageName?: string;
+}
+
+const { component, reportId, pageName } = Astro.props;
+// Fallback-URL voor de "Open in nieuw tabblad"-knop.
+const externalUrl =
+  reportId
+    ? `https://app.fabric.microsoft.com/groups/me/reports/${reportId}`
+    : (component.url ?? 'https://app.fabric.microsoft.com/');
+---
+
+<ShellLayout
+  title={component.name}
+  description={`${component.name} · embedded in UWV Platform Portal`}
+  activeSection="dashboarding"
+  activeSubsection={component.id}
+  embedMode={true}
+>
+  <!-- ─── Embed sub-bar — zelfde patroon als EmbedLayout.astro ─── -->
+  <header class="embed-subbar">
+    <div class="embed-subbar-left">
+      <a class="embed-back" href="/" title="Terug naar portal" aria-label="Terug naar portal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6"/>
+        </svg>
+        <span class="embed-back-label">Portal</span>
+      </a>
+      <span class="embed-divider" aria-hidden="true">/</span>
+      <span class="embed-service">
+        <img class="embed-service-icon" src={component.icon} alt="" width="18" height="18" />
+        <span class="embed-service-name">{component.name}</span>
+      </span>
+      <span class="embed-divider" aria-hidden="true">·</span>
+      <span class="embed-deep mono" title="SDK-embed via Entra SSO (ADR-0008)">SDK-embed</span>
+    </div>
+    <div class="embed-subbar-right">
+      <a
+        class="embed-btn"
+        href={externalUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Open in nieuw tabblad"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 3h7v7M10 14L21 3M21 14v7H3V3h7"/>
+        </svg>
+        <span>Nieuw tabblad</span>
+      </a>
+      <button class="embed-btn" type="button" id="embed-fullscreen" title="Volledig scherm (verberg shell)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6"/>
+        </svg>
+        <span>Volledig</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="embed-frame-wrap">
+    <PowerBIEmbed client:only="react" reportId={reportId} pageName={pageName} />
+  </div>
+</ShellLayout>
+
+<script>
+  // Fullscreen toggle — verbergt rail + topbar + sub-bar via [data-fullscreen=true].
+  const fsBtn = document.getElementById('embed-fullscreen');
+  function setFullscreen(on: boolean): void {
+    if (on) document.documentElement.dataset.fullscreen = 'true';
+    else delete document.documentElement.dataset.fullscreen;
+  }
+  fsBtn?.addEventListener('click', () => {
+    const isOn = document.documentElement.dataset.fullscreen === 'true';
+    setFullscreen(!isOn);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.documentElement.dataset.fullscreen === 'true') {
+      e.preventDefault();
+      setFullscreen(false);
+    }
+  });
+</script>

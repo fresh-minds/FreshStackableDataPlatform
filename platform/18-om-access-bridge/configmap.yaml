@@ -8,7 +8,11 @@ metadata:
   name: om-access-bridge-config
   namespace: uwv-platform
 data:
-  KEYCLOAK_URL: "http://keycloak.uwv-auth.svc.cluster.local:8080"
+  # The Stackable Keycloak Service exposes :80 (svc.spec.ports[0].port=80,
+  # targetPort=http=8080 on the pod). The cluster-internal call must go
+  # to :80 — :8080 would hit the headless metrics Service instead and
+  # times out on the admin REST API. See bug surfaced in E2E test 2026-05-25.
+  KEYCLOAK_URL: "http://keycloak.uwv-auth.svc.cluster.local:80"
   KEYCLOAK_REALM: "uwv"
   KEYCLOAK_CLIENT_ID: "om-access-bridge"
   REPLAY_WINDOW_SECONDS: "300"

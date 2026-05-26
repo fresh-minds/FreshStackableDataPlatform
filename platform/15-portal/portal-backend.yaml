@@ -59,13 +59,21 @@ spec:
             httpGet: { path: /api/portal/_ping, port: http }
             initialDelaySeconds: 3
             periodSeconds: 10
+            timeoutSeconds: 3
           livenessProbe:
             httpGet: { path: /api/portal/_ping, port: http }
             initialDelaySeconds: 10
             periodSeconds: 30
+            timeoutSeconds: 3
+          # Vóór de Power BI embed-routes was 192Mi voldoende. Met de
+          # SP-token-cache + httpx async-pools + outbound roundtrips
+          # naar api.powerbi.com piekte het bij elke embed-request boven
+          # 192Mi → OOMKill (exit 137). 512Mi geeft genoeg headroom
+          # voor 10+ parallelle embeds. CPU bump zodat liveness probe
+          # niet meer wordt verdrukt tijdens een SP-token-mint.
           resources:
-            requests: { cpu: 10m, memory: 64Mi }
-            limits:   { cpu: 200m, memory: 192Mi }
+            requests: { cpu: 50m,  memory: 128Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -110,6 +118,38 @@ spec:
                 secretKeyRef:
                   name: portal-backend-secrets
                   key: grafana-api-key
+                  optional: true
+            # ─── Power BI embed (ADR-0008) ────────────────────────────
+            # Service Principal credentials voor het minten van
+            # short-lived embed-tokens via POST /api/portal/powerbi/embed.
+            # Komt uit `powerbi-embed-creds` Secret (zie
+            # platform/15-portal/powerbi-embed-creds-template.yaml of de
+            # one-liner in docs/use-cases/powerbi-embed-aks-entra.md).
+            # Optional: zonder Secret faalt enkel de embed-route, niet
+            # de hele backend.
+            - name: FABRIC_TENANT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: powerbi-embed-creds
+                  key: FABRIC_TENANT_ID
+                  optional: true
+            - name: FABRIC_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: powerbi-embed-creds
+                  key: FABRIC_CLIENT_ID
+                  optional: true
+            - name: FABRIC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: powerbi-embed-creds
+                  key: FABRIC_CLIENT_SECRET
+                  optional: true
+            - name: FABRIC_WORKSPACE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: powerbi-embed-creds
+                  key: FABRIC_WORKSPACE_ID
                   optional: true
           volumeMounts:
             - name: data
