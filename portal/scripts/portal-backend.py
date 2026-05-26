@@ -121,12 +121,22 @@ def _ensure_schema() -> None:
 
 # ─── Auth ────────────────────────────────────────────────────────────────
 def _email_from_request(req: Request) -> str:
-    """oauth2-proxy passes X-Auth-Request-Email. Trust only that, only
-    behind the proxy. Empty / missing → 401 (no anonymous state)."""
-    email = req.headers.get("x-auth-request-email", "").strip()
-    if not email:
-        raise HTTPException(status_code=401, detail="not authenticated")
-    return email
+    """oauth2-proxy passes the user's email to upstream. Different versions /
+    configs use different header names — we accept the three commonly-set
+    variants in order of preference. Empty / missing → 401 (no anonymous state).
+
+    Headers checked (first hit wins):
+      - X-Auth-Request-Email  : set by oauth2-proxy when `set_xauthrequest=true`
+                                on the upstream request (newer versions)
+      - X-Forwarded-Email     : standard upstream header when
+                                `pass_user_headers=true`
+      - X-Auth-Request-User   : username fallback
+    """
+    for hdr in ("x-auth-request-email", "x-forwarded-email", "x-auth-request-user"):
+        val = req.headers.get(hdr, "").strip()
+        if val:
+            return val
+    raise HTTPException(status_code=401, detail="not authenticated")
 
 
 # ─── Schemas ─────────────────────────────────────────────────────────────
@@ -798,27 +808,39 @@ async def generate_powerbi_embed_token(report_id: str, req: Request) -> dict:
             detail=f"powerbi: report {report_id} mist datasetId of embedUrl",
         )
 
-    # 2. GenerateToken met effective identity = gefedereerde Entra-email.
-    #    `roles` + `customData` zijn optioneel en mogen meekomen in de
-    #    POST-body voor RLS-scenarios.
-    effective_identity: dict[str, Any] = {
-        "username": user_email,
-        "datasets": [dataset_id],
+    # 2. V2 embed-token via het top-level `/GenerateToken` endpoint
+    #    (Direct Lake-datasets vereisen V2 — V1 op `/reports/<id>/GenerateToken`
+    #    geeft "Embedding a DirectLake dataset is not supported with V1").
+    #
+    #    `effectiveIdentity` (RLS doorgifte) is alleen mogelijk als de
+    #    semantic model een "fixed identity"-cloud-connection heeft. Zonder
+    #    dat geeft Power BI 403 "Creating embed token with effective identity
+    #    is not supported for this datasource". We sturen 'm daarom alleen
+    #    mee als de caller expliciet `effectiveIdentity=true` aanvinkt of
+    #    `roles`/`customData` meegeeft (= RLS-intent expliciet maakt). Audit-
+    #    only doorgifte van de user-email gebeurt via de logregel hieronder.
+    token_body: dict[str, Any] = {
+        "datasets":         [{"id": dataset_id}],
+        "reports":          [{"id": report_id, "allowEdit": False}],
+        "targetWorkspaces": [{"id": ws}],
     }
-    if isinstance(body.get("roles"), list) and body["roles"]:
-        effective_identity["roles"] = body["roles"]
-    if isinstance(body.get("customData"), str) and body["customData"]:
-        effective_identity["customData"] = body["customData"]
-
-    token_body = {
-        "accessLevel": "View",
-        "identities":  [effective_identity],
-    }
-    minted = await _pbi_post(
-        f"/groups/{ws}/reports/{report_id}/GenerateToken",
-        token,
-        token_body,
+    want_identity = bool(
+        body.get("effectiveIdentity")
+        or body.get("roles")
+        or body.get("customData")
     )
+    if want_identity:
+        effective_identity: dict[str, Any] = {
+            "username": user_email,
+            "datasets": [dataset_id],
+        }
+        if isinstance(body.get("roles"), list) and body["roles"]:
+            effective_identity["roles"] = body["roles"]
+        if isinstance(body.get("customData"), str) and body["customData"]:
+            effective_identity["customData"] = body["customData"]
+        token_body["identities"] = [effective_identity]
+
+    minted = await _pbi_post("/GenerateToken", token, token_body)
 
     log.info(
         "powerbi embed-token minted: user=%s report=%s expires=%s",

@@ -201,7 +201,33 @@ Verwacht gedrag:
 | Pure User-Owns-Data | Niet geïmplementeerd | Vereist per-user PBI-licentie + MSAL.js flow apart van Keycloak. Hybride is bewust gekozen — zie architectuur §. |
 | Token-refresh tijdens lange sessies | Werkt | React Island refresht 5min voor expiry zonder remount via `setAccessToken`. |
 | Listing reports in de UI | Wel endpoint (`/api/portal/powerbi/reports`), nog geen dropdown | UC-12 is hardcoded als default. Volgende slice: dropdown + URL-param `?report=<id>`. |
-| RLS per role | Endpoint accepteert `{roles, customData}` in de POST-body | Frontend stuurt nu niks mee. Activate door body uit te breiden in `PowerBIEmbed.tsx`. |
+| RLS per role / effectiveIdentity | Endpoint accepteert `{effectiveIdentity, roles, customData}` in de POST-body — **vereist eerst "fixed identity"-cloud-connection op de semantic model** | Zonder fixed identity geeft Power BI 403 "Creating embed token with effective identity is not supported for this datasource" voor Direct Lake. Configureer in Fabric UI: dataset → *Gateway and cloud connections* → fixed identity = de UC-11 SP. |
 | ADR-0008 nummer-collision | Twee files met `0008-` prefix: `entra-broker-via-keycloak.md` (deze branch) + `self-service-data-access.md` (main) | Hernoemen bij merge naar `0011-entra-broker-via-keycloak.md`. |
 | Power BI tenant-setting "SP can use APIs" | Handmatige Fabric Admin-actie | Niet automatiseerbaar via Terraform. |
 | K8s Secret is een dev-pattern | Werkt | Productie: Azure Key Vault + Workload Identity (zie infrastructure/azure/README.md). |
+
+---
+
+## Lessons learned — wat tijdens k3d-verify scheef ging (en werd gefixt)
+
+1. **`X-Auth-Request-Email` arriveert niet aan upstream.** oauth2-proxy met
+   `set_xauthrequest=true` zet die header alleen op de `/oauth2/auth`-RESPONSE
+   (voor nginx `auth_request`-flow); upstream POST/GET-requests krijgen
+   `X-Forwarded-Email` (door `pass_user_headers=true`). De portal-backend
+   las alleen `X-Auth-Request-Email` en gaf dus 401 op álle endpoints —
+   inclusief de bestaande `/api/portal/recents`. **Fix**: backend
+   `_email_from_request` valt nu door drie headers heen
+   (`X-Auth-Request-Email` → `X-Forwarded-Email` → `X-Auth-Request-User`).
+2. **`POST /reports/<id>/GenerateToken` mint V1-tokens; Direct Lake vereist V2.**
+   Symptoom: `400 InvalidRequest "Embedding a DirectLake dataset is not
+   supported with V1"`. **Fix**: V2-endpoint `POST /GenerateToken` met
+   `{datasets[], reports[], targetWorkspaces[]}` body (Power BI Datasets API).
+3. **`effectiveIdentity` zonder fixed-identity-connection wordt geweigerd voor
+   Direct Lake.** Symptoom: `403 InvalidRequest "Creating embed token with
+   effective identity is not supported for this datasource"`. **Werkrond**:
+   backend stuurt `identities` alleen mee als de caller expliciet
+   `effectiveIdentity=true` (of `roles`/`customData`) doorgeeft. Audit-only
+   doorgifte van de user-email blijft via de log-regel werken. Volgende stap
+   is de "fixed identity"-cloud-connection configureren op het semantic
+   model (zie open issues hierboven), dan kan RLS terug aan via een POST-body
+   met `effectiveIdentity: true`.
