@@ -31,7 +31,7 @@ type CmdkType =
 type ServiceSlug =
   | 'airflow' | 'dbt' | 'grafana' | 'hive' | 'jupyter' | 'kafka'
   | 'keycloak' | 'minio' | 'multica' | 'nifi' | 'opa' | 'openmetadata'
-  | 'opensearch' | 'prometheus' | 'spark' | 'superset' | 'trino';
+  | 'opensearch' | 'powerbi' | 'prometheus' | 'spark' | 'superset' | 'trino';
 
 interface CmdkItem {
   type: CmdkType;

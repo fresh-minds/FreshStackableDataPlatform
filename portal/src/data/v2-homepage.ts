@@ -20,7 +20,7 @@ export type ItemType =
 export type ServiceSlug =
   | 'airflow' | 'dbt' | 'grafana' | 'hive' | 'jupyter' | 'kafka'
   | 'keycloak' | 'minio' | 'multica' | 'nifi' | 'opa' | 'openmetadata'
-  | 'opensearch' | 'prometheus' | 'spark' | 'superset' | 'trino';
+  | 'opensearch' | 'powerbi' | 'prometheus' | 'spark' | 'superset' | 'trino';
 
 export interface RecentItem {
   type: ItemType;
@@ -75,9 +75,10 @@ export const EXPLORE: ExploreCategory[] = [
     title: 'BI & Analyse',
     sub:   'Dashboards, queries, notebooks',
     items: [
-      { type: 'dashboard', service: 'superset', title: 'Superset', subtitle: 'Dashboards + SQLLab',     href: '/embed/superset/' },
-      { type: 'notebook',  service: 'jupyter',  title: 'Jupyter',  subtitle: 'Notebooks (Trino+Delta)', href: '/embed/jupyter/' },
-      { type: 'pipeline',  service: 'dbt',      title: 'dbt-docs', subtitle: 'Lineage + tests',         href: '/embed/dbt-docs/' },
+      { type: 'dashboard', service: 'superset', title: 'Superset', subtitle: 'Dashboards + SQLLab',          href: '/embed/superset/' },
+      { type: 'dashboard', service: 'powerbi',  title: 'Power BI', subtitle: 'Fabric SDK-embed (Entra SSO)', href: '/embed/powerbi/' },
+      { type: 'notebook',  service: 'jupyter',  title: 'Jupyter',  subtitle: 'Notebooks (Trino+Delta)',      href: '/embed/jupyter/' },
+      { type: 'pipeline',  service: 'dbt',      title: 'dbt-docs', subtitle: 'Lineage + tests',              href: '/embed/dbt-docs/' },
     ],
   },
   {
