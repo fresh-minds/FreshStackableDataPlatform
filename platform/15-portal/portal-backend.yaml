@@ -59,13 +59,21 @@ spec:
             httpGet: { path: /api/portal/_ping, port: http }
             initialDelaySeconds: 3
             periodSeconds: 10
+            timeoutSeconds: 3
           livenessProbe:
             httpGet: { path: /api/portal/_ping, port: http }
             initialDelaySeconds: 10
             periodSeconds: 30
+            timeoutSeconds: 3
+          # Vóór de Power BI embed-routes was 192Mi voldoende. Met de
+          # SP-token-cache + httpx async-pools + outbound roundtrips
+          # naar api.powerbi.com piekte het bij elke embed-request boven
+          # 192Mi → OOMKill (exit 137). 512Mi geeft genoeg headroom
+          # voor 10+ parallelle embeds. CPU bump zodat liveness probe
+          # niet meer wordt verdrukt tijdens een SP-token-mint.
           resources:
-            requests: { cpu: 10m, memory: 64Mi }
-            limits:   { cpu: 200m, memory: 192Mi }
+            requests: { cpu: 50m,  memory: 128Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
