@@ -67,6 +67,49 @@ DB_PATH = os.environ.get("PORTAL_DB_PATH", "/var/lib/portal-backend/portal.db")
 MAX_RECENTS = 20  # how many recent items to keep per user
 
 
+# ─── Shared outbound HTTP client ─────────────────────────────────────────
+# Eén module-level httpx.AsyncClient die de lifespan van de pod meegaat,
+# bounded keepalive-pool. Vóór deze refactor maakte elke Power BI / Airflow /
+# OpenMetadata / Grafana / Superset call een eigen `async with httpx.AsyncClient()`
+# — het cleanup-pad daarvan laat connection-pool state achter, en na ~10u
+# normaal verkeer groeit RSS over 512Mi → OOMKill (exit 137) → Service
+# endpoints leeg → nginx 503-fallback.
+#
+# Met deze singleton blijft RSS stabiel rond ~120Mi (gemeten in dev). Per-call
+# timeouts gaan nu via de `timeout=` kwarg op .get()/.post() i.p.v. op de
+# client-constructor.
+_http_client: httpx.AsyncClient | None = None
+
+
+def http() -> httpx.AsyncClient:
+    """Geeft de shared httpx-client. Raises als startup nog niet draaide."""
+    if _http_client is None:  # pragma: no cover - startup-race fence
+        raise RuntimeError("http client not initialized (FastAPI startup miss?)")
+    return _http_client
+
+
+@app.on_event("startup")
+async def _init_http_client() -> None:
+    global _http_client
+    _http_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(15.0, connect=5.0),
+        limits=httpx.Limits(
+            max_keepalive_connections=20,
+            max_connections=50,
+            keepalive_expiry=30.0,
+        ),
+    )
+    log.info("shared httpx.AsyncClient ready (max 50 conns, 20 keepalive)")
+
+
+@app.on_event("shutdown")
+async def _close_http_client() -> None:
+    global _http_client
+    if _http_client is not None:
+        await _http_client.aclose()
+        _http_client = None
+
+
 # ─── DB setup ────────────────────────────────────────────────────────────
 def _db() -> sqlite3.Connection:
     """Open a fresh connection. SQLite is single-writer; we keep per-request
@@ -473,15 +516,16 @@ async def search(req: Request, q: str = "") -> JSONResponse:
     if cached is not None:
         return JSONResponse({"items": cached, "q": q, "cached": True})
 
-    # Parallel fetch — single shared httpx client so connections pool.
-    async with httpx.AsyncClient() as client:
-        results = await asyncio.gather(
-            _search_openmetadata(client, q),
-            _search_airflow(client, q),
-            _search_superset(client, q),
-            _search_grafana(client, q),
-            return_exceptions=True,
-        )
+    # Shared module-level client (zie _init_http_client). Bundled fan-out
+    # met asyncio.gather hergebruikt de connection pool.
+    client = http()
+    results = await asyncio.gather(
+        _search_openmetadata(client, q),
+        _search_airflow(client, q),
+        _search_superset(client, q),
+        _search_grafana(client, q),
+        return_exceptions=True,
+    )
 
     merged: list[dict[str, Any]] = []
     for r in results:
@@ -566,39 +610,42 @@ async def _poll_airflow_failures() -> None:
     # set kicks in and we only see truly new ones.
     since = datetime.now(timezone.utc) - timedelta(hours=1)
 
-    async with httpx.AsyncClient() as client:
-        while True:
-            try:
-                r = await client.get(
-                    f"{base}/api/v1/dags/~/dagRuns",
-                    params={
-                        "state": "failed",
-                        "execution_date_gte": since.isoformat(),
-                        "limit": 20,
-                        "order_by": "-execution_date",
-                    },
-                    auth=auth,
-                    timeout=8.0,
-                )
-                r.raise_for_status()
-                runs = r.json().get("dag_runs") or []
-                for run in runs:
-                    run_key = f"{run.get('dag_id')}/{run.get('dag_run_id')}"
-                    if run_key in _seen_failed_runs:
-                        continue
-                    _seen_failed_runs.add(run_key)
-                    dag_id = run.get('dag_id', '')
-                    _publish_event({
-                        'id':     run_key,
-                        'tone':   'down',
-                        'title':  f"Airflow · {dag_id} gefaald",
-                        'detail': f"Run {run.get('dag_run_id', '')}",
-                        'ago':    _fmt_ago(run.get('execution_date') or run.get('end_date')),
-                        'href':   f"/embed/airflow/?path=%2Fdags%2F{dag_id}",
-                    })
-            except Exception as exc:
-                log.info("airflow poll failed: %s", exc)
-            await asyncio.sleep(POLL_INTERVAL)
+    # Shared module-level client. Voorheen een eigen AsyncClient die de
+    # while-loop lang openhield; bij elke pod-restart werd die opnieuw
+    # opgebouwd. De singleton hergebruikt connections cross-task.
+    client = http()
+    while True:
+        try:
+            r = await client.get(
+                f"{base}/api/v1/dags/~/dagRuns",
+                params={
+                    "state": "failed",
+                    "execution_date_gte": since.isoformat(),
+                    "limit": 20,
+                    "order_by": "-execution_date",
+                },
+                auth=auth,
+                timeout=8.0,
+            )
+            r.raise_for_status()
+            runs = r.json().get("dag_runs") or []
+            for run in runs:
+                run_key = f"{run.get('dag_id')}/{run.get('dag_run_id')}"
+                if run_key in _seen_failed_runs:
+                    continue
+                _seen_failed_runs.add(run_key)
+                dag_id = run.get('dag_id', '')
+                _publish_event({
+                    'id':     run_key,
+                    'tone':   'down',
+                    'title':  f"Airflow · {dag_id} gefaald",
+                    'detail': f"Run {run.get('dag_run_id', '')}",
+                    'ago':    _fmt_ago(run.get('execution_date') or run.get('end_date')),
+                    'href':   f"/embed/airflow/?path=%2Fdags%2F{dag_id}",
+                })
+        except Exception as exc:
+            log.info("airflow poll failed: %s", exc)
+        await asyncio.sleep(POLL_INTERVAL)
 
 
 @app.on_event("startup")
@@ -702,16 +749,16 @@ async def _pbi_sp_token() -> str:
                 status_code=503,
                 detail="powerbi: FABRIC_TENANT_ID/CLIENT_ID/CLIENT_SECRET niet gezet",
             )
-        async with httpx.AsyncClient(timeout=15) as cli:
-            resp = await cli.post(
-                PBI_AUTHORITY_TPL.format(tenant=tenant),
-                data={
-                    "client_id":     cid,
-                    "client_secret": secret,
-                    "scope":         PBI_SCOPE,
-                    "grant_type":    "client_credentials",
-                },
-            )
+        resp = await http().post(
+            PBI_AUTHORITY_TPL.format(tenant=tenant),
+            data={
+                "client_id":     cid,
+                "client_secret": secret,
+                "scope":         PBI_SCOPE,
+                "grant_type":    "client_credentials",
+            },
+            timeout=15.0,
+        )
         if resp.status_code != 200:
             log.error("powerbi token: %s %s", resp.status_code, resp.text[:300])
             raise HTTPException(status_code=503, detail="powerbi: SP-token faalt")
@@ -723,11 +770,11 @@ async def _pbi_sp_token() -> str:
 
 
 async def _pbi_get(path: str, token: str) -> dict:
-    async with httpx.AsyncClient(timeout=15) as cli:
-        resp = await cli.get(
-            f"{PBI_API_BASE}{path}",
-            headers={"Authorization": f"Bearer {token}"},
-        )
+    resp = await http().get(
+        f"{PBI_API_BASE}{path}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=15.0,
+    )
     if resp.status_code != 200:
         log.error("powerbi GET %s: %s %s", path, resp.status_code, resp.text[:300])
         raise HTTPException(status_code=resp.status_code, detail=f"powerbi GET {path}: {resp.text[:200]}")
@@ -735,12 +782,12 @@ async def _pbi_get(path: str, token: str) -> dict:
 
 
 async def _pbi_post(path: str, token: str, body: dict) -> dict:
-    async with httpx.AsyncClient(timeout=20) as cli:
-        resp = await cli.post(
-            f"{PBI_API_BASE}{path}",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            json=body,
-        )
+    resp = await http().post(
+        f"{PBI_API_BASE}{path}",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json=body,
+        timeout=20.0,
+    )
     if resp.status_code not in (200, 201):
         log.error("powerbi POST %s: %s %s", path, resp.status_code, resp.text[:300])
         raise HTTPException(status_code=resp.status_code, detail=f"powerbi POST {path}: {resp.text[:200]}")
