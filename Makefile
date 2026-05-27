@@ -333,7 +333,14 @@ aks-all: aks-up aks-context aks-bootstrap aks-deploy aks-smoke ## End-to-end AKS
 # Auto-export KUBECONFIG to the terraform-generated kubeconfig when targets
 # below are invoked. Recipes inherit this so bootstrap/deploy/smoke don't
 # need a manual `export KUBECONFIG=...` first.
-STACKIT_KUBECONFIG := $(shell test -f infrastructure/stackit/terraform/kubeconfig.yaml && \
+#
+# `=` (not `:=`) is load-bearing: the shell-call is re-evaluated each time
+# the variable is referenced, NOT at Makefile parse time. With `:=`, an
+# empty kubeconfig.yaml at parse time (e.g. directly after stackit-down or
+# the first half of stackit-all) would lock STACKIT_KUBECONFIG to "" for
+# the rest of the make invocation, even after `stackit-up` produces the
+# file. With `=`, the path is resolved when the recipe actually runs.
+STACKIT_KUBECONFIG = $(shell test -f infrastructure/stackit/terraform/kubeconfig.yaml && \
   cd infrastructure/stackit/terraform && terraform output -raw kubeconfig_absolute_path 2>/dev/null)
 
 .PHONY: stackit-up
