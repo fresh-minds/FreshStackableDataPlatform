@@ -30,16 +30,30 @@ fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# portal/dist contains a ~4 MB self-contained dbt-docs.html that, with the
-# rest of the bundle, busts the 1 MiB ConfigMap limit. Split into two
-# tarballs (main + dbt-docs) so each fits, and have the initContainer
-# extract both.
-log "Packaging portal/dist (split: main + dbt-docs)"
-tar czf "$TMP/portal-dist.tar.gz" --exclude=dbt-docs.html -C portal/dist .
+# portal/dist needs to fit in ConfigMaps (1 MiB hard limit each). Split into
+# THREE tarballs to handle the current bundle size (~2.1 MB total compressed):
+#   - main:      everything except dbt-docs.html and _astro/   (~975 KB)
+#   - _astro:    JS bundles + fonts                              (~442 KB)
+#   - dbt-docs:  the 4 MB self-contained dbt-docs.html alone    (~706 KB)
+# Each must be < 1 MiB. If the portal grows further this WILL fail again —
+# at that point switch the platform-landing Deployment to a registry-based
+# nginx image (see future Phase 7).
+log "Packaging portal/dist (split: main + _astro + dbt-docs)"
+tar czf "$TMP/portal-dist.tar.gz" --exclude=dbt-docs.html --exclude=_astro -C portal/dist .
 MAIN_SIZE=$(wc -c <"$TMP/portal-dist.tar.gz")
 log "  main tarball: $MAIN_SIZE bytes"
 if (( MAIN_SIZE > 1000000 )); then
-  error "main tarball is larger than 1 MB — ConfigMap won't accept it. Trim portal/dist or switch to a registry."
+  error "main tarball is larger than 1 MB — split _astro further or switch to a registry-based image."
+fi
+
+ASTRO_SIZE=0
+if [[ -d portal/dist/_astro ]]; then
+  tar czf "$TMP/astro.tar.gz" -C portal/dist _astro
+  ASTRO_SIZE=$(wc -c <"$TMP/astro.tar.gz")
+  log "  _astro tarball: $ASTRO_SIZE bytes"
+  if (( ASTRO_SIZE > 1000000 )); then
+    error "_astro tarball is larger than 1 MB — split into chunks or switch to a registry-based image."
+  fi
 fi
 
 DBT_SIZE=0
@@ -61,6 +75,13 @@ log "Apply ConfigMap platform-landing-dist (main tarball)"
 kubectl -n uwv-platform delete configmap platform-landing-dist --ignore-not-found >/dev/null
 kubectl -n uwv-platform create configmap platform-landing-dist \
   --from-file=portal-dist.tar.gz="$TMP/portal-dist.tar.gz" >/dev/null
+
+if (( ASTRO_SIZE > 0 )); then
+  log "Apply ConfigMap platform-landing-astro (_astro tarball)"
+  kubectl -n uwv-platform delete configmap platform-landing-astro --ignore-not-found >/dev/null
+  kubectl -n uwv-platform create configmap platform-landing-astro \
+    --from-file=astro.tar.gz="$TMP/astro.tar.gz" >/dev/null
+fi
 
 if (( DBT_SIZE > 0 )); then
   log "Apply ConfigMap platform-landing-dbt-docs (dbt-docs.html tarball)"

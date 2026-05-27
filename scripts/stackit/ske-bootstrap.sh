@@ -26,6 +26,7 @@ bash "$ROOT/scripts/bootstrap.sh" --mode=stackit
 # Same OpenMetadata mysql-secrets workaround as AKS — the chart hardcodes that
 # secret name even when running on postgres.
 log "Create OpenMetadata mysql-secrets (workaround for chart's hardcoded name)"
+PG_PW=$(kubectl -n uwv-data get secret postgres-postgresql -o jsonpath='{.data.postgres-password}' | base64 -d)
 kubectl create namespace uwv-meta --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n uwv-meta create secret generic mysql-secrets \
   --from-literal=openmetadata-mysql-password="${PG_PW}" \

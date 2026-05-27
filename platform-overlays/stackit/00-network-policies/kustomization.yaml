@@ -1,0 +1,37 @@
+# StackIT SKE network-policy overlay.
+#
+# SKE runs on Gardener with Calico in NetworkPolicy-enforced mode. The
+# base platform applies `default-deny-all` in every uwv-* namespace and a
+# small set of allow-policies for in-cluster traffic. Those allow-policies
+# are insufficient on SKE for three reasons:
+#
+# 1. CoreDNS on SKE listens on port 8053 (Service maps :53 → :8053).
+#    Calico enforces NetworkPolicy on the POST-NAT pod port → egress on
+#    port 53 alone gets dropped at the pod. Add a parallel
+#    `allow-dns-egress-stackit-coredns` policy that allows 8053 as well.
+#    (Coexists with the base `allow-dns-egress` rule — both apply.)
+#
+# 2. cert-manager spins up `cm-acme-http-solver` Pods per HTTP-01
+#    challenge in the same namespace as the Certificate. Without an
+#    explicit allow-ingress rule for those Pods, default-deny-all blocks
+#    ingress-nginx from reaching them → challenges hang forever (~1h
+#    timeout). `allow-acme-solver` targets the `http01-solver=true` label
+#    that cert-manager auto-puts on those Pods.
+#
+# 3. The public ingresses (Keycloak, Grafana, MinIO, etc.) need
+#    ingress-nginx → backend Pod traffic. Keycloak has a custom
+#    `allow-keycloak-from-everywhere-in-cluster` policy via the base
+#    platform; the rest do not. `allow-from-ingress-nginx` is a single
+#    catch-all per namespace using the `kubernetes.io/metadata.name=
+#    ingress-nginx` namespace label.
+#
+# Applied by scripts/stackit/ske-deploy.sh in a post-step after
+# `deploy-platform.sh` (so the base default-deny-all exists) and BEFORE
+# `public-ingresses.yaml` is applied (so LE solver Pods are reachable
+# from the moment cert-manager creates them).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - allow-dns-egress-coredns-8053.yaml
+  - allow-acme-solver.yaml
+  - allow-from-ingress-nginx.yaml

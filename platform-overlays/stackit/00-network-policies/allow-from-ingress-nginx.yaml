@@ -1,0 +1,68 @@
+# Allow ingress vanuit de ingress-nginx namespace.
+#
+# Onze 11 public Ingresses (keycloak, grafana, prometheus, minio, minio-api,
+# superset, airflow, dbt-docs, openmetadata, opensearch, platform) staan
+# verspreid over 3 namespaces. Keycloak heeft via de base platform een
+# eigen explicit-allow policy; de overige backends staan achter default-
+# deny-all en blokkeren ingress-nginx → 503 "no backend endpoints".
+#
+# Deze policy is catch-all per namespace: alle pods accepteren ingress van
+# elke pod in de `ingress-nginx` namespace. Beperkt door de namespace-
+# label `kubernetes.io/metadata.name=ingress-nginx` die Kubernetes >= 1.21
+# automatisch op elke namespace zet.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-ingress-nginx
+  namespace: uwv-platform
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-ingress-nginx
+  namespace: uwv-meta
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-ingress-nginx
+  namespace: uwv-monitoring
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-ingress-nginx
+  namespace: uwv-auth
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx

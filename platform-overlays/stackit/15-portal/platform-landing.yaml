@@ -97,10 +97,13 @@ spec:
               set -e
               cd /html
               tar -xzf /dist/portal-dist.tar.gz
-              # dbt-docs.html ships as a separate ConfigMap (it alone is ~700 KB
-              # gzipped — combined with the main bundle it busts the 1 MiB CM
-              # limit). The mount is optional so the Pod still starts if
-              # dbt-docs hasn't been published yet.
+              # _astro/ JS bundles ship as a separate ConfigMap (~450 KB gz).
+              # dbt-docs.html ships as a third ConfigMap (~700 KB gz).
+              # Both mounts are optional so the Pod still starts if a piece
+              # hasn't been published yet.
+              if [ -f /dist-astro/astro.tar.gz ]; then
+                tar -xzf /dist-astro/astro.tar.gz
+              fi
               if [ -f /dist-dbt/dbt-docs.tar.gz ]; then
                 tar -xzf /dist-dbt/dbt-docs.tar.gz
               fi
@@ -108,6 +111,7 @@ spec:
           volumeMounts:
             - { name: html, mountPath: /html }
             - { name: dist-tar, mountPath: /dist }
+            - { name: dist-astro-tar, mountPath: /dist-astro }
             - { name: dist-dbt-tar, mountPath: /dist-dbt }
       containers:
         - name: nginx
@@ -159,6 +163,8 @@ spec:
           emptyDir: {}
         - name: dist-tar
           configMap: { name: platform-landing-dist }
+        - name: dist-astro-tar
+          configMap: { name: platform-landing-astro, optional: true }
         - name: dist-dbt-tar
           configMap: { name: platform-landing-dbt-docs, optional: true }
         - name: nginx-conf

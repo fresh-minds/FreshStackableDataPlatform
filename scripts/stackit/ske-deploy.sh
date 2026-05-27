@@ -24,6 +24,15 @@ require_context
 
 bash "$ROOT/scripts/deploy-platform.sh" --mode=stackit
 
+# ---- StackIT NetworkPolicy overlay ----
+# Three Gardener/SKE-specific gaps that the base platform's default-deny-all
+# doesn't cover by itself: CoreDNS listens on port 8053 (not 53), cert-manager
+# HTTP-01 solver Pods need explicit ingress-allow, and the non-Keycloak
+# public-Ingress backends need ingress-from-ingress-nginx. See the overlay's
+# kustomization.yaml header for the full story.
+log "stackit-post: applying NetworkPolicy overlay (allow-dns-8053 + acme-solver + ingress-nginx)"
+kubectl apply -k "$ROOT/platform-overlays/stackit/00-network-policies/" >/dev/null
+
 # ---- Ensure public DNS apex+wildcard exist in Azure DNS ----
 # Idempotent — `az network dns record-set a add-record` is upsert-like
 # (it adds if missing). Skipped if `az` cli or the DNS zone resource group
