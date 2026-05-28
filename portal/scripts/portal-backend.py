@@ -195,10 +195,19 @@ class Item(BaseModel):
     href:     str = Field(..., min_length=1, max_length=1000)
 
 
-# ─── Recents ─────────────────────────────────────────────────────────────
-@app.get("/api/portal/recents")
-async def get_recents(req: Request) -> JSONResponse:
-    email = _email_from_request(req)
+# ─── Sync DB-helpers (gerund via asyncio.to_thread vanuit async handlers) ──
+# Uitleg: sqlite3 is een sync C-library. Direct aanroepen vanuit een
+# `async def` handler blokt de single uvicorn event-loop tot de SQL-call
+# klaar is. Onder concurrent load (SSE-stream + Airflow polls + Power BI
+# embed-mints + recents/favorites traffic) genoeg om de liveness-probe
+# `_ping` over zijn 3s timeout te trekken → kubelet kills de pod als
+# "Container backend failed liveness probe, will be restarted".
+#
+# asyncio.to_thread() draait de sync-call op de default ThreadPoolExecutor
+# (CPython default = min(32, cpu_count+4) threads). Event-loop blijft
+# responsive; SQLite zelf serialiseert intern via WAL.
+
+def _db_get_recents(email: str) -> list[dict[str, Any]]:
     with closing(_db()) as conn:
         rows = conn.execute(
             """
@@ -210,12 +219,10 @@ async def get_recents(req: Request) -> JSONResponse:
             """,
             (email, MAX_RECENTS),
         ).fetchall()
-    return JSONResponse({"items": [dict(r) for r in rows]})
+    return [dict(r) for r in rows]
 
 
-@app.post("/api/portal/recents")
-async def post_recents(item: Item, req: Request) -> JSONResponse:
-    email = _email_from_request(req)
+def _db_upsert_recent(email: str, item: "Item") -> None:
     with closing(_db()) as conn:
         # UPSERT — bumps opened_at on every call. After insert, prune the
         # oldest entries beyond MAX_RECENTS to keep the table small per user.
@@ -233,7 +240,6 @@ async def post_recents(item: Item, req: Request) -> JSONResponse:
             """,
             (email, item.key, item.type, item.service, item.title, item.subtitle, item.href),
         )
-        # Prune older entries beyond MAX_RECENTS.
         conn.execute(
             """
             DELETE FROM recents
@@ -247,13 +253,9 @@ async def post_recents(item: Item, req: Request) -> JSONResponse:
             """,
             (email, email, MAX_RECENTS),
         )
-    return JSONResponse({"ok": True})
 
 
-# ─── Favorites ───────────────────────────────────────────────────────────
-@app.get("/api/portal/favorites")
-async def get_favorites(req: Request) -> JSONResponse:
-    email = _email_from_request(req)
+def _db_get_favorites(email: str) -> list[dict[str, Any]]:
     with closing(_db()) as conn:
         rows = conn.execute(
             """
@@ -264,12 +266,10 @@ async def get_favorites(req: Request) -> JSONResponse:
             """,
             (email,),
         ).fetchall()
-    return JSONResponse({"items": [dict(r) for r in rows]})
+    return [dict(r) for r in rows]
 
 
-@app.post("/api/portal/favorites")
-async def post_favorites(item: Item, req: Request) -> JSONResponse:
-    email = _email_from_request(req)
+def _db_upsert_favorite(email: str, item: "Item") -> None:
     with closing(_db()) as conn:
         conn.execute(
             """
@@ -284,18 +284,51 @@ async def post_favorites(item: Item, req: Request) -> JSONResponse:
             """,
             (email, item.key, item.type, item.service, item.title, item.subtitle, item.href),
         )
+
+
+def _db_delete_favorite(email: str, key: str) -> int:
+    with closing(_db()) as conn:
+        cur = conn.execute(
+            "DELETE FROM favorites WHERE user_email = ? AND item_key = ?",
+            (email, key),
+        )
+        return cur.rowcount
+
+
+# ─── Recents ─────────────────────────────────────────────────────────────
+@app.get("/api/portal/recents")
+async def get_recents(req: Request) -> JSONResponse:
+    email = _email_from_request(req)
+    items = await asyncio.to_thread(_db_get_recents, email)
+    return JSONResponse({"items": items})
+
+
+@app.post("/api/portal/recents")
+async def post_recents(item: Item, req: Request) -> JSONResponse:
+    email = _email_from_request(req)
+    await asyncio.to_thread(_db_upsert_recent, email, item)
+    return JSONResponse({"ok": True})
+
+
+# ─── Favorites ───────────────────────────────────────────────────────────
+@app.get("/api/portal/favorites")
+async def get_favorites(req: Request) -> JSONResponse:
+    email = _email_from_request(req)
+    items = await asyncio.to_thread(_db_get_favorites, email)
+    return JSONResponse({"items": items})
+
+
+@app.post("/api/portal/favorites")
+async def post_favorites(item: Item, req: Request) -> JSONResponse:
+    email = _email_from_request(req)
+    await asyncio.to_thread(_db_upsert_favorite, email, item)
     return JSONResponse({"ok": True, "starred": True})
 
 
 @app.delete("/api/portal/favorites/{key:path}")
 async def delete_favorite(key: str, req: Request) -> JSONResponse:
     email = _email_from_request(req)
-    with closing(_db()) as conn:
-        cur = conn.execute(
-            "DELETE FROM favorites WHERE user_email = ? AND item_key = ?",
-            (email, key),
-        )
-        removed = cur.rowcount
+    removed = await asyncio.to_thread(_db_delete_favorite, email, key)
     return JSONResponse({"ok": True, "starred": False, "removed": removed})
 
 
@@ -725,9 +758,26 @@ PBI_SCOPE = "https://analysis.windows.net/powerbi/api/.default"
 PBI_API_BASE = "https://api.powerbi.com/v1.0/myorg"
 
 # In-memory token cache — SP-token leeft ~60min, embed-token max 60min.
-# We bewaren beide met TTL, lock om dubbele refresh te voorkomen.
+# Lock voorkomt dat 10 parallelle embed-mints tegelijk een SP-token POSTen
+# naar login.microsoftonline.com (rate-limit safe + dedup).
+#
+# BELANGRIJK: `asyncio.Lock` (niet `threading.Lock`) — we acquireren 'm vanuit
+# een async context met `async with`, en houden 'm vast over een `await http().post()`.
+# Een sync threading.Lock blokt dan de hele event-loop voor alle andere tasks
+# (kubelet liveness probe inclusief), wat onder concurrent load eerder tot
+# Connection-reset op alle endpoints leidde.
 _pbi_token_cache: dict[str, tuple[str, float]] = {}
-_pbi_token_lock = Lock()
+_pbi_token_lock: asyncio.Lock | None = None
+
+
+def _pbi_lock() -> asyncio.Lock:
+    """Lazy init — asyncio.Lock() moet bound zijn aan de juiste event-loop,
+    en die bestaat pas ná FastAPI startup. Lazy creatie houdt module-import
+    schoon."""
+    global _pbi_token_lock
+    if _pbi_token_lock is None:
+        _pbi_token_lock = asyncio.Lock()
+    return _pbi_token_lock
 
 
 async def _pbi_sp_token() -> str:
@@ -736,7 +786,7 @@ async def _pbi_sp_token() -> str:
     cached = _pbi_token_cache.get("sp")
     if cached and cached[1] > time.time() + 60:
         return cached[0]
-    with _pbi_token_lock:
+    async with _pbi_lock():
         # double-check binnen de lock
         cached = _pbi_token_cache.get("sp")
         if cached and cached[1] > time.time() + 60:
