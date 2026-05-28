@@ -6,10 +6,9 @@
     - src/pages/styleguide/portal-v2.astro    (mockup showcase)
     - src/components/shell/WorkspaceHome.astro
 
-  RECENTS + HERO_STATS start empty and are filled client-side from
-  /api/portal/recents resp. /api/portal/stats (the stats endpoint
-  is still TODO — see fase 2). EXPLORE is static and mirrors
-  src/data/components.ts categories.
+  HERO_STATS start empty and is filled client-side from
+  /api/portal/stats (still TODO — see fase 2). EXPLORE is static
+  and mirrors src/data/components.ts categories.
 */
 
 // Item type drives the colour-tint behind the brand icon and the chip label.
@@ -21,17 +20,6 @@ export type ServiceSlug =
   | 'airflow' | 'dbt' | 'grafana' | 'hive' | 'jupyter' | 'kafka'
   | 'keycloak' | 'minio' | 'multica' | 'nifi' | 'opa' | 'openmetadata'
   | 'opensearch' | 'powerbi' | 'prometheus' | 'spark' | 'superset' | 'trino';
-
-export interface RecentItem {
-  type: ItemType;
-  service: ServiceSlug;
-  title: string;
-  subtitle: string;
-  owner: string;
-  status: 'ok' | 'warn' | 'down' | null;
-  starred: boolean;
-  href: string;
-}
 
 export interface ExploreItem {
   type: ItemType;
@@ -46,13 +34,6 @@ export interface ExploreCategory {
   sub: string;
   items: ExploreItem[];
 }
-
-// Recent items — most-recently-opened by the user.
-// Empty by default. WorkspaceHome's client-side script fetches
-// /api/portal/recents and renders the live history; if the backend
-// is unreachable the section stays empty (better than misleading
-// hardcoded sample data in production).
-export const RECENTS: RecentItem[] = [];
 
 // "Verkennen" — all platform services, grouped by stage.
 // Elke tegel landt op de embed-route van die service; voor services

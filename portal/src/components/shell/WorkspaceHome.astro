@@ -2,16 +2,15 @@
 /*
   WorkspaceHome — the v2 homepage body.
 
-  Hero (greeting + KPI stats), Recents, Persona shortcuts, and
-  "Verkennen" categorized service tiles. Designed to drop into any
-  page that uses ShellLayout.
+  Hero (greeting + KPI stats) and "Verkennen" categorized service
+  tiles. Designed to drop into any page that uses ShellLayout.
 
   Used by:
     - src/pages/index.astro                   (live /)
     - src/pages/styleguide/portal-v2.astro    (mockup showcase)
 */
 import ItemTile from './ItemTile.astro';
-import { RECENTS, EXPLORE, HERO_STATS } from '../../data/v2-homepage';
+import { EXPLORE, HERO_STATS } from '../../data/v2-homepage';
 
 interface Props {
   /** Greeting display name. Empty by default; renderWho() in ShellLayout
@@ -45,34 +44,6 @@ const {
       ))}
     </div>
   </header>
-
-  <!-- ─── Recents ─── -->
-  <!-- SSR rendert sample-recents (uit v2-homepage.ts) als first paint.
-       Client-side script hieronder fetcht /api/portal/recents en
-       vervangt de inhoud als de backend bereikbaar is. Bij onbereik-
-       bare backend (lokale dev, cluster restart) blijft de sample
-       staan zodat de page niet leeg oogt. -->
-  <section class="v2-section">
-    <header class="v2-section-head">
-      <h2>Recent geopend</h2>
-    </header>
-    <div class="v2-grid" data-recents-grid>
-      {RECENTS.map((r) => (
-        <ItemTile
-          type={r.type}
-          service={r.service}
-          title={r.title}
-          subtitle={r.subtitle}
-          owner={r.owner}
-          href={r.href}
-          status={r.status}
-          starred={r.starred}
-          itemKey={r.href}
-          starrable={true}
-        />
-      ))}
-    </div>
-  </section>
 
   <!-- ─── Verkennen ─── -->
   <section class="v2-section">
@@ -162,117 +133,6 @@ const {
     const r = sessionStorage.getItem('uwv-portal-role');
     if (r && PERSONA_LABELS[r] && r !== role) applyPersona(r);
   }, 250);
-
-  // ───────────────────────────────────────────────────
-  // Recents: fetch live data van /api/portal/recents en
-  // vervang de SSR sample-tegels. Bij failure → laat sample staan.
-  // ───────────────────────────────────────────────────
-  type RecentRow = {
-    key: string;
-    type: string;
-    service: string;
-    title: string;
-    subtitle: string;
-    href: string;
-    opened_at?: string;
-  };
-
-  function escapeHtml(s: string): string {
-    return s.replace(/[&<>"']/g, (c) => ({
-      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;',
-    }[c]!));
-  }
-
-  // Compact relative-time formatting ("net" / "12m" / "3u" / "2d").
-  function formatAgo(timestamp: string | undefined): string {
-    if (!timestamp) return '';
-    // SQLite stores datetime() as "YYYY-MM-DD HH:MM:SS" in UTC. Replace
-    // the space with 'T' and append 'Z' for ISO parsing.
-    const iso = timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T') + 'Z';
-    const then = new Date(iso).getTime();
-    if (Number.isNaN(then)) return '';
-    const sec = Math.max(0, Math.floor((Date.now() - then) / 1000));
-    if (sec < 60)    return 'net';
-    if (sec < 3600)  return `${Math.floor(sec / 60)}m`;
-    if (sec < 86400) return `${Math.floor(sec / 3600)}u`;
-    return `${Math.floor(sec / 86400)}d`;
-  }
-
-  function renderRecent(item: RecentRow, favoriteKeys: Set<string>): string {
-    const titleEsc = escapeHtml(item.title);
-    const subEsc   = escapeHtml(item.subtitle || '');
-    const ago      = formatAgo(item.opened_at);
-    const sub      = ago && subEsc ? `${ago} · ${subEsc}` : (ago || subEsc);
-    const starred  = favoriteKeys.has(item.key);
-    const keyEsc   = escapeHtml(item.key);
-    const typeEsc  = escapeHtml(item.type);
-    const svcEsc   = escapeHtml(item.service);
-    const hrefEsc  = escapeHtml(item.href);
-    const ariaLbl  = starred ? 'Verwijder uit favorieten' : 'Markeer als favoriet';
-    return `
-      <a class="v2-tile" href="${hrefEsc}" data-type="${typeEsc}" data-item-key="${keyEsc}">
-        <span class="v2-tile-brand" aria-hidden="true">
-          <img src="/icons/brand/${svcEsc}.svg" alt="" width="24" height="24" loading="lazy" />
-        </span>
-        <span class="v2-tile-body">
-          <span class="v2-tile-row">
-            <span class="v2-tile-title">${titleEsc}</span>
-            <button type="button" class="v2-tile-star"
-                    aria-pressed="${starred ? 'true' : 'false'}"
-                    aria-label="${ariaLbl}"
-                    data-action="favorite-toggle"
-                    data-item-key="${keyEsc}"
-                    data-item-type="${typeEsc}"
-                    data-item-service="${svcEsc}"
-                    data-item-title="${titleEsc}"
-                    data-item-subtitle="${subEsc}"
-                    data-item-href="${hrefEsc}">★</button>
-          </span>
-          ${sub ? `<span class="v2-tile-subtitle">${sub}</span>` : ''}
-          <span class="v2-tile-meta">
-            <span class="v2-type-chip" data-type="${typeEsc}">${typeEsc}</span>
-          </span>
-        </span>
-      </a>`;
-  }
-
-  async function fetchJson(url: string): Promise<any | null> {
-    try {
-      const r = await fetch(url, { credentials: 'include' });
-      if (!r.ok) return null;
-      return await r.json();
-    } catch {
-      return null;
-    }
-  }
-
-  async function loadRecents(): Promise<void> {
-    const container = document.querySelector<HTMLElement>('[data-recents-grid]');
-    if (!container) return;
-
-    // Parallel fetch — favorites bepalen welke recents een ster krijgen.
-    const [recentsRes, favoritesRes] = await Promise.all([
-      fetchJson('/api/portal/recents'),
-      fetchJson('/api/portal/favorites'),
-    ]);
-
-    if (!recentsRes || !Array.isArray(recentsRes.items) || recentsRes.items.length === 0) {
-      // Geen backend / lege state → SSR sample blijft staan.
-      return;
-    }
-
-    const favoriteKeys = new Set<string>(
-      Array.isArray(favoritesRes?.items)
-        ? favoritesRes.items.map((f: { key: string }) => f.key)
-        : []
-    );
-
-    container.innerHTML = recentsRes.items
-      .map((row: RecentRow) => renderRecent(row, favoriteKeys))
-      .join('');
-  }
-
-  loadRecents();
 </script>
 
 <style>
