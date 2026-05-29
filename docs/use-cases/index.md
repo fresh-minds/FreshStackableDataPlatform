@@ -1,6 +1,6 @@
 ---
 title: Use cases — overzicht
-description: 11 concrete business-flows met scope, doelbinding, CGM-entiteiten en datapad.
+description: 12 concrete business-flows met scope, doelbinding, CGM-entiteiten en datapad.
 ---
 
 <!-- Auto-generated door scripts/docs_gen.py uit portal/src/data/components.ts.
@@ -8,7 +8,7 @@ description: 11 concrete business-flows met scope, doelbinding, CGM-entiteiten e
 
 # Use cases
 
-Elf use-case-specs onder [`use-cases/`](https://github.com/fresh-minds/FreshStackableDataPlatform/tree/main/docs/use-cases),
+Twaalf use-case-specs onder [`use-cases/`](https://github.com/fresh-minds/FreshStackableDataPlatform/tree/main/docs/use-cases),
 elk met scope, CGM-entiteiten, doelbinding, AI-Act-classificatie en
 Definition-of-Done-anchors.
 
@@ -25,6 +25,7 @@ Definition-of-Done-anchors.
 | [UC-09](uc09-reint-effect.md) | Re-integratie-effectmeting | Mart aanwezig | Re-integratie | Beperkt |
 | [UC-10](uc10-gegevensdiensten.md) | Gegevensdiensten-API | Placeholder | Cross-domein | n.v.t. |
 | [UC-11](uc11-klantreis.md) | Integrale Klantreis (event-stream + fasen) | Mart aanwezig · [walkthrough](uc11-klantreis-walkthrough.md) | Cross-domein | Beperkt |
+| [UC-12](uc12-focus-finops.md) | FOCUS FinOps — kostenrapportage | Mart aanwezig · [Power BI-variant](uc12-focus-finops-powerbi.md) | FinOps | Laag |
 
 ## UC-11 — speciale walkthrough
 

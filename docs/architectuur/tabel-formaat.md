@@ -22,7 +22,7 @@ platform:
 
 | Component | Hoe |
 |---|---|
-| **Trino-catalogs** | Templates onder `platform/09-trino/catalogs/*.yaml.tmpl` worden gerenderd door `scripts/render-trino-catalogs.py` op basis van `table_format`. Connector wordt `delta-lake` of `iceberg`. |
+| **Trino-catalogs** | Templates onder `platform/09-trino/catalogs/*.yaml.tmpl` worden gerenderd door `scripts/render-trino-catalogs.sh` op basis van `table_format`. Connector wordt `delta-lake` of `iceberg`. |
 | **dbt** | `dbt_project.yml` zet `vars: table_format: "{{ env_var('TABLE_FORMAT', 'delta') }}"`. Macro `table_format_properties()` levert de juiste `properties{}` per model. |
 | **Spark** | Env var `TABLE_FORMAT` op `SparkApplication`. Helper `spark-jobs/lib/lakehouse_io.py` schakelt `write_iceberg()` vs `write_delta()`. |
 | **NiFi** | Twee templates onder `nifi-flows/templates/{iceberg,delta}/`. Per default deployen we de Delta-variant (= NiFi → Kafka, en Spark schrijft Delta). |

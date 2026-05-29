@@ -10,6 +10,11 @@ hide:
 
 # UWV Reference Data Platform
 
+<figure markdown="span">
+  ![Portal — Verkennen-overzicht met alle platformcomponenten](assets/portal-verkennen.png){ .hero-screenshot }
+  <figcaption>De portal-shell — één launchpad voor alle platform-UI's, gegroepeerd per laag.</figcaption>
+</figure>
+
 Een **fictieve, illustratieve** referentie-implementatie van een modern data-
 en analyticsplatform voor UWV, gebouwd op open source en gericht op compliance
 met NORA, AVG, BIO/BIO2, NIS2 en de AI Act.
@@ -27,7 +32,7 @@ met NORA, AVG, BIO/BIO2, NIS2 en de AI Act.
 
     ---
 
-    19 componenten over 9 lagen — van ingestie
+    20 componenten over 9 lagen — van ingestie
     tot consumptie, met identity, observability en governance als
     cross-cutting lanen.
 
@@ -47,8 +52,8 @@ met NORA, AVG, BIO/BIO2, NIS2 en de AI Act.
 
     ---
 
-    11 concrete business-flows — van WIA-funnel (UC-01) tot
-    integrale klantreis (UC-11) — met scope, CGM-entiteiten, doelbinding
+    12 concrete business-flows — van WIA-funnel (UC-01) tot
+    FOCUS FinOps (UC-12) — met scope, CGM-entiteiten, doelbinding
     en AI-Act-classificatie.
 
     [:octicons-arrow-right-24: Bekijk use cases](use-cases/index.md)
@@ -57,9 +62,9 @@ met NORA, AVG, BIO/BIO2, NIS2 en de AI Act.
 
     ---
 
-    8 ADRs leggen de fundamentele keuzes vast: Stackable, Delta vs Iceberg,
+    11 ADRs leggen de fundamentele keuzes vast: Stackable, Delta vs Iceberg,
     OPA als Trino-authz, OpenMetadata als catalog, dbt-trino als
-    transformatielaag.
+    transformatielaag, NetworkPolicies en Entra-brokering.
 
     [:octicons-arrow-right-24: Bekijk ADRs](adr/index.md)
 
@@ -99,7 +104,7 @@ echo "127.0.0.1 keycloak.uwv-platform.local \
 # Cluster + platform deployen (~15-30 min op de eerste run)
 make cluster        # k3d cluster create
 make bootstrap      # cert-manager, MinIO, Postgres, Keycloak, Stackable operators
-make deploy-platform # Trino, Spark, Kafka, NiFi, Airflow, Superset, OpenMetadata
+make deploy-platform # Trino, Spark, Airflow, Superset, OpenMetadata
 make seed           # synthetische data laden (10k cliënten)
 make test           # smoke tests
 ```
@@ -109,7 +114,7 @@ make test           # smoke tests
 | Laag | Component | Kort |
 |---|---|---|
 | Identiteit | **Keycloak** | OIDC, MFA, rol-claims |
-| Ingestie | **NiFi → Kafka** | Visuele flows, schaalbare event-bus |
+| Ingestie | **Spark Structured Streaming** | Leest JSONL uit de S3 raw-zone → Delta (NiFi/Kafka als template, operators uit) |
 | Opslag | **MinIO + Hive Metastore** | S3-compatible, Delta-tabellen, catalog |
 | Verwerking | **Spark (Stackable)** | Structured Streaming + batch |
 | Query | **Trino + OPA** | SQL over lakehouse met policy-checks |

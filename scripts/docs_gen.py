@@ -159,6 +159,7 @@ class Component:
     url: str | None
     prometheus_job: str | None
     roles_using: tuple[str, ...]
+    status: str | None = None
 
 
 @dataclass(frozen=True)
@@ -188,6 +189,7 @@ def load_registry() -> tuple[list[Component], list[Stage]]:
             url=c.get("url"),
             prometheus_job=c.get("prometheusJob"),
             roles_using=tuple(c.get("rolesUsing") or ()),
+            status=c.get("status"),
         )
         for c in comps_raw
     ]
@@ -237,6 +239,20 @@ def render_index(stages: list[Stage], comps: list[Component]) -> str:
     pipeline_stages = [s for s in stages if s.id != "sources"]
     role_count = len({r for c in comps for r in c.roles_using if r != "*"})
 
+    # Hero-screenshot van de portal ("Verkennen"-overzicht). Alleen embedden
+    # als het bestand bestaat, zodat `mkdocs build --strict` niet breekt op een
+    # ontbrekende afbeelding. Plaats het bestand op docs/assets/portal-verkennen.png.
+    hero = ""
+    if (DOCS_DIR / "assets" / "portal-verkennen.png").exists():
+        hero = (
+            '\n<figure markdown="span">\n'
+            '  ![Portal — Verkennen-overzicht met alle platformcomponenten]'
+            "(assets/portal-verkennen.png){ .hero-screenshot }\n"
+            "  <figcaption>De portal-shell — één launchpad voor alle "
+            "platform-UI's, gegroepeerd per laag.</figcaption>\n"
+            "</figure>\n"
+        )
+
     return f"""---
 title: Home
 description: UWV referentie-implementatie van een compliant data- en analyticsplatform.
@@ -245,7 +261,7 @@ hide:
 ---
 
 # UWV Reference Data Platform
-
+{hero}
 Een **fictieve, illustratieve** referentie-implementatie van een modern data-
 en analyticsplatform voor UWV, gebouwd op open source en gericht op compliance
 met NORA, AVG, BIO/BIO2, NIS2 en de AI Act.
@@ -283,8 +299,8 @@ met NORA, AVG, BIO/BIO2, NIS2 en de AI Act.
 
     ---
 
-    11 concrete business-flows — van WIA-funnel (UC-01) tot
-    integrale klantreis (UC-11) — met scope, CGM-entiteiten, doelbinding
+    12 concrete business-flows — van WIA-funnel (UC-01) tot
+    FOCUS FinOps (UC-12) — met scope, CGM-entiteiten, doelbinding
     en AI-Act-classificatie.
 
     [:octicons-arrow-right-24: Bekijk use cases](use-cases/index.md)
@@ -293,9 +309,9 @@ met NORA, AVG, BIO/BIO2, NIS2 en de AI Act.
 
     ---
 
-    8 ADRs leggen de fundamentele keuzes vast: Stackable, Delta vs Iceberg,
+    11 ADRs leggen de fundamentele keuzes vast: Stackable, Delta vs Iceberg,
     OPA als Trino-authz, OpenMetadata als catalog, dbt-trino als
-    transformatielaag.
+    transformatielaag, NetworkPolicies en Entra-brokering.
 
     [:octicons-arrow-right-24: Bekijk ADRs](adr/index.md)
 
@@ -335,7 +351,7 @@ echo "127.0.0.1 keycloak.uwv-platform.local \\
 # Cluster + platform deployen (~15-30 min op de eerste run)
 make cluster        # k3d cluster create
 make bootstrap      # cert-manager, MinIO, Postgres, Keycloak, Stackable operators
-make deploy-platform # Trino, Spark, Kafka, NiFi, Airflow, Superset, OpenMetadata
+make deploy-platform # Trino, Spark, Airflow, Superset, OpenMetadata
 make seed           # synthetische data laden (10k cliënten)
 make test           # smoke tests
 ```
@@ -345,7 +361,7 @@ make test           # smoke tests
 | Laag | Component | Kort |
 |---|---|---|
 | Identiteit | **Keycloak** | OIDC, MFA, rol-claims |
-| Ingestie | **NiFi → Kafka** | Visuele flows, schaalbare event-bus |
+| Ingestie | **Spark Structured Streaming** | Leest JSONL uit de S3 raw-zone → Delta (NiFi/Kafka als template, operators uit) |
 | Opslag | **MinIO + Hive Metastore** | S3-compatible, Delta-tabellen, catalog |
 | Verwerking | **Spark (Stackable)** | Structured Streaming + batch |
 | Query | **Trino + OPA** | SQL over lakehouse met policy-checks |
@@ -439,7 +455,7 @@ Auth/authz en observability raken alle componenten — zie
 | Laag in referentie-arch. | Component in deze repo |
 |---|---|
 | Bronnen | `data-generation/` — synthetische generators voor Polisadm/WW/WIA/Wajong/CRM/FEZ |
-| Ingestie & integratie | `platform/07-nifi/` (NiFi) + `platform/06-kafka/` (Kafka) + `nifi-flows/templates/` |
+| Ingestie & integratie | Spark Structured Streaming uit `s3a://uwv-raw/` (`platform/08-spark/apps/`) + NiFi/Kafka-templates onder `nifi-flows/templates/` (operators uit in deze release) |
 | Opslag (lakehouse, medallion) | MinIO (`platform/03-storage/`) + Delta-tabellen + `platform/05-hive-metastore/` |
 | Processing & ML | `platform/08-spark/apps/` (PySpark via SparkApplication) + `dbt/` (Trino-side transforms) |
 | Semantische laag | dbt-marts (`dbt/models/marts/uc0x_*/`) + Trino views (`gold` catalog) |
@@ -489,6 +505,15 @@ def render_componenten(comps: list[Component], stages: list[Stage]) -> str:
                 roles_str = ", ".join(f"`{r}`" for r in c.roles_using) if c.roles_using else "_geen specifieke rol_"
 
             sections.append(f"### {c.name} {{ #{c.id} }}\n")
+            if c.status == "template":
+                sections.append("!!! warning \"Template — niet actief in deze release\"")
+                sections.append(
+                    "    De Stackable-operator hiervoor staat **uit** in "
+                    "`infrastructure/stackablectl/release.yaml`. De flow is als "
+                    "referentie-template aanwezig onder `nifi-flows/templates/`; "
+                    "de Delta-route leest JSONL direct uit `s3a://uwv-raw/` via "
+                    "Spark Structured Streaming.\n"
+                )
             sections.append(f"!!! abstract \"Wat doet {c.name}?\"")
             sections.append(f"    {c.purpose}\n")
             sections.append(f"**Laag:** `{c.layer}` · **Stage:** `{c.stage}` · **Prometheus job:** {prom}")
@@ -607,7 +632,7 @@ Dit volgt 1-op-1 de rol-handleidingen:
 - **Data-steward** → read-only over alle zones (governance).
 - **Researcher** → uitsluitend `sandbox`.
 - **Platform-admin** → alles, maar elke query wordt audit-logged (zie
-  [Runbook](../runbook.md#audit-trail)).
+  [Runbook § 10.3](../runbook.md#103-per-release-audit-trail)).
 
 Welke kolommen je in een gold-mart precies ziet hangt af van de OPA-policies
 in [`opa-policies-src/`](https://github.com/fresh-minds/FreshStackableDataPlatform/tree/main/opa-policies-src).
@@ -949,12 +974,12 @@ expliciet tot platform-rollen.
 def render_use_cases_index() -> str:
     return f"""---
 title: Use cases — overzicht
-description: 11 concrete business-flows met scope, doelbinding, CGM-entiteiten en datapad.
+description: 12 concrete business-flows met scope, doelbinding, CGM-entiteiten en datapad.
 ---
 
 # Use cases
 
-Elf use-case-specs onder [`use-cases/`](https://github.com/fresh-minds/FreshStackableDataPlatform/tree/main/docs/use-cases),
+Twaalf use-case-specs onder [`use-cases/`](https://github.com/fresh-minds/FreshStackableDataPlatform/tree/main/docs/use-cases),
 elk met scope, CGM-entiteiten, doelbinding, AI-Act-classificatie en
 Definition-of-Done-anchors.
 
@@ -971,6 +996,7 @@ Definition-of-Done-anchors.
 | [UC-09](uc09-reint-effect.md) | Re-integratie-effectmeting | Mart aanwezig | Re-integratie | Beperkt |
 | [UC-10](uc10-gegevensdiensten.md) | Gegevensdiensten-API | Placeholder | Cross-domein | n.v.t. |
 | [UC-11](uc11-klantreis.md) | Integrale Klantreis (event-stream + fasen) | Mart aanwezig · [walkthrough](uc11-klantreis-walkthrough.md) | Cross-domein | Beperkt |
+| [UC-12](uc12-focus-finops.md) | FOCUS FinOps — kostenrapportage | Mart aanwezig · [Power BI-variant](uc12-focus-finops-powerbi.md) | FinOps | Laag |
 
 ## UC-11 — speciale walkthrough
 
@@ -1018,6 +1044,9 @@ wordt niet bewerkt maar als "superseded by" gemarkeerd.
 | [0006](0006-delta-chosen-for-this-implementation.md) | Delta gekozen voor deze implementatie | Accepted |
 | [0007](0007-airflow-pipeline-architecture.md) | Airflow pipeline-architectuur | Accepted |
 | [0008](0008-self-service-data-access.md) | Self-service data-access flow | Accepted |
+| [0009](0009-networkpolicies-strategy.md) | NetworkPolicies — default-deny in cloud, off in k3d | Accepted |
+| [0010](0010-platform-config-single-source.md) | platform-config.yaml als single source of truth | Accepted |
+| [0011](0011-entra-broker-via-keycloak.md) | Entra ID via Keycloak-brokering | Accepted |
 
 ## ADR-format
 
@@ -1125,6 +1154,14 @@ def render_extra_css() -> str:
    bovenmarge zodat de sticky-header ze niet afdekt. */
 .md-typeset h3[id] {
   scroll-margin-top: 4rem;
+}
+
+/* Hero-screenshot bovenaan de homepage (portal "Verkennen"-overzicht). */
+.md-typeset .hero-screenshot {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 """
 

@@ -35,7 +35,7 @@ Auth/authz en observability raken alle componenten — zie
 | Laag in referentie-arch. | Component in deze repo |
 |---|---|
 | Bronnen | `data-generation/` — synthetische generators voor Polisadm/WW/WIA/Wajong/CRM/FEZ |
-| Ingestie & integratie | `platform/07-nifi/` (NiFi) + `platform/06-kafka/` (Kafka) + `nifi-flows/templates/` |
+| Ingestie & integratie | Spark Structured Streaming uit `s3a://uwv-raw/` (`platform/08-spark/apps/`) + NiFi/Kafka-templates onder `nifi-flows/templates/` (operators uit in deze release) |
 | Opslag (lakehouse, medallion) | MinIO (`platform/03-storage/`) + Delta-tabellen + `platform/05-hive-metastore/` |
 | Processing & ML | `platform/08-spark/apps/` (PySpark via SparkApplication) + `dbt/` (Trino-side transforms) |
 | Semantische laag | dbt-marts (`dbt/models/marts/uc0x_*/`) + Trino views (`gold` catalog) |
@@ -123,12 +123,13 @@ SSO regelt wie wat mag — elk onderdeel checkt het token.
 
 ### Agents & AI-tooling { #agents }
 
-Coördinatie van coding agents (Multica) en gerelateerde dev-loop tooling.
+Coördinatie van coding agents (Multica) plus de in-cluster agent-runtime (Nanitics Observatory).
 
 | Component | Verantwoordelijkheid | Doel |
 |---|---|---|
 | [Multica](componenten.md#multica) | Coördinatie van coding agents (Claude Code, Codex, Copilot CLI, …) — taken, voortgang, skills. | Taken toewijzen aan coding agents; voortgang volgen. Agents draaien op je laptop. |
 | [Nanitics Observatory](componenten.md#nanitics) | In-cluster agent-runtime + trace-viewer. Watcher monitort het platform en filed issues naar Multica. | Bekijk watcher-runs (span tree, LLM-calls, tool-calls) en triggert handmatige investigations. |
+| [nao](componenten.md#nao) | Open-source analytics agent — natuurlijke taal → SQL op Trino, met chat-UI en visualisaties. | Eindgebruikers stellen vragen in gewone taal en zien direct de SQL + het antwoord, met OpenMetadata-context. |
 
 
 ## Verder lezen

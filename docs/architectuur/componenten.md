@@ -34,6 +34,9 @@ _Data binnenhalen en op een event-bus zetten._
 
 ### Apache NiFi { #nifi }
 
+!!! warning "Template — niet actief in deze release"
+    De Stackable-operator hiervoor staat **uit** in `infrastructure/stackablectl/release.yaml`. De flow is als referentie-template aanwezig onder `nifi-flows/templates/`; de Delta-route leest JSONL direct uit `s3a://uwv-raw/` via Spark Structured Streaming.
+
 !!! abstract "Wat doet Apache NiFi?"
     Data uit UWV-bronsystemen ophalen en in het platform binnenbrengen.
 
@@ -45,6 +48,9 @@ Visuele ingestion-flows — bronsystemen → Kafka.
 - **Gebruikt door:** `platform_admin`, `data_engineer`
 
 ### Kafka { #kafka }
+
+!!! warning "Template — niet actief in deze release"
+    De Stackable-operator hiervoor staat **uit** in `infrastructure/stackablectl/release.yaml`. De flow is als referentie-template aanwezig onder `nifi-flows/templates/`; de Delta-route leest JSONL direct uit `s3a://uwv-raw/` via Spark Structured Streaming.
 
 !!! abstract "Wat doet Kafka?"
     Data-events bufferen en doorzetten naar verwerking. Schaalbare doorvoer.
@@ -109,7 +115,7 @@ Streaming + batch jobs die Delta-tabellen op MinIO schrijven.
 
 SQL query-engine over Delta-lakehouse, met OPA-authorisatie.
 
-- **URL:** _geen UI_
+- **URL:** [Live UI ↗](https://trino.uwv-platform.local:8443)
 - **Gebruikt door:** `wia_beoordelaar`, `ww_handhaver`, `wajong_arbeidsdeskundige`, `fez_analist`, `smz_planner`, `proactief_dienstverlener`, `researcher`, `data_steward`, `data_engineer`, `platform_admin`
 
 ### OPA { #opa }
@@ -250,7 +256,7 @@ Logs (Vector) + search-backend voor OpenMetadata.
 
 ## Agents & AI-tooling
 
-_Coördinatie van coding agents (Multica) en gerelateerde dev-loop tooling._
+_Coördinatie van coding agents (Multica) plus de in-cluster agent-runtime (Nanitics Observatory)._
 
 ### Multica { #multica }
 
@@ -276,6 +282,18 @@ In-cluster agent-runtime + trace-viewer. Watcher monitort het platform en filed 
 - **URL:** [Live UI ↗](https://nanitics.uwv-platform.local:8443/api/observatory/)
 - **Gebruikt door:** `platform_admin`, `data_engineer`
 
+### nao { #nao }
+
+!!! abstract "Wat doet nao?"
+    Eindgebruikers stellen vragen in gewone taal en zien direct de SQL + het antwoord, met OpenMetadata-context.
+
+**Laag:** `ai-agents` · **Stage:** `agents` · **Prometheus job:** _niet gemonitord_
+
+Open-source analytics agent — natuurlijke taal → SQL op Trino, met chat-UI en visualisaties.
+
+- **URL:** [Live UI ↗](https://nao.uwv-platform.local:8443)
+- **Gebruikt door:** `platform_admin`, `data_engineer`, `data_steward`, `wia_beoordelaar`
+
 
 ## Rol-matrix { #rol-matrix }
 
@@ -284,17 +302,17 @@ referentie-implementatie via de portal-shortcuts naar de UI van het
 component wordt gestuurd. Een lege cel betekent dat de rol normaliter geen
 directe toegang nodig heeft (toegang kan alsnog via JIT/break-glass).
 
-| Rol | keycloak | nifi | kafka | minio | hive | spark | trino | opa | superset | openmetadata | dbt-docs | jupyter | airflow | prometheus | grafana | opensearch | multica | powerbi | nanitics |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `wia_beoordelaar` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  |
-| `ww_handhaver` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  |
-| `wajong_arbeidsdeskundige` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |  | ✓ |  |
-| `crm_medewerker` | ✓ |  |  |  |  |  |  |  | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  |
-| `fez_analist` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |  | ✓ |  |
-| `smz_planner` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  |
-| `proactief_dienstverlener` | ✓ |  |  |  |  |  | ✓ |  | ✓ |  |  |  |  |  |  |  |  | ✓ |  |
-| `researcher` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |  | ✓ |  |
-| `data_steward` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ | ✓ | ✓ |  |  |  | ✓ |  | ✓ |  |
-| `data_engineer` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  |  | ✓ | ✓ | ✓ | ✓ |  | ✓ |  | ✓ |  | ✓ |
-| `platform_admin` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `data_analyst` | ✓ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |
+| Rol | keycloak | nifi | kafka | minio | hive | spark | trino | opa | superset | openmetadata | dbt-docs | jupyter | airflow | prometheus | grafana | opensearch | multica | powerbi | nanitics | nao |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `wia_beoordelaar` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  | ✓ |
+| `ww_handhaver` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  |  |
+| `wajong_arbeidsdeskundige` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |  | ✓ |  |  |
+| `crm_medewerker` | ✓ |  |  |  |  |  |  |  | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  |  |
+| `fez_analist` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |  | ✓ |  |  |
+| `smz_planner` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  |  |
+| `proactief_dienstverlener` | ✓ |  |  |  |  |  | ✓ |  | ✓ |  |  |  |  |  |  |  |  | ✓ |  |  |
+| `researcher` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ |  | ✓ |  |  |  |  |  | ✓ |  |  |
+| `data_steward` | ✓ |  |  |  |  |  | ✓ |  | ✓ | ✓ | ✓ | ✓ |  |  |  | ✓ |  | ✓ |  | ✓ |
+| `data_engineer` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  |  | ✓ | ✓ | ✓ | ✓ |  | ✓ |  | ✓ |  | ✓ | ✓ |
+| `platform_admin` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `data_analyst` | ✓ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |

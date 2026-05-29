@@ -21,6 +21,9 @@ wordt niet bewerkt maar als "superseded by" gemarkeerd.
 | [0006](0006-delta-chosen-for-this-implementation.md) | Delta gekozen voor deze implementatie | Accepted |
 | [0007](0007-airflow-pipeline-architecture.md) | Airflow pipeline-architectuur | Accepted |
 | [0008](0008-self-service-data-access.md) | Self-service data-access flow | Accepted |
+| [0009](0009-networkpolicies-strategy.md) | NetworkPolicies — default-deny in cloud, off in k3d | Accepted |
+| [0010](0010-platform-config-single-source.md) | platform-config.yaml als single source of truth | Accepted |
+| [0011](0011-entra-broker-via-keycloak.md) | Entra ID via Keycloak-brokering | Accepted |
 
 ## ADR-format
 

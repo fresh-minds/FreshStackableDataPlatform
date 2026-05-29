@@ -22,7 +22,8 @@ export type ComponentId =
   | 'grafana'
   | 'opensearch'
   | 'multica'
-  | 'nanitics';
+  | 'nanitics'
+  | 'nao';
 
 // Legacy "layer" — fijne granulariteit voor de oude card-tag.
 export type ComponentLayer =
@@ -84,6 +85,10 @@ export interface PlatformComponent {
   name: string;
   layer: ComponentLayer;
   stage: ComponentStage;
+  // 'template' = de Stackable-operator staat uit in
+  // infrastructure/stackablectl/release.yaml; de component is een
+  // referentie-template, niet actief gedeployed in deze release.
+  status?: 'template';
   short: string;
   purpose: string;
   icon: string;
@@ -115,6 +120,7 @@ export const components: PlatformComponent[] = [
     name: 'Apache NiFi',
     layer: 'streaming',
     stage: 'ingestion',
+    status: 'template',
     short: 'Visuele ingestion-flows — bronsystemen → Kafka.',
     purpose: 'Data uit UWV-bronsystemen ophalen en in het platform binnenbrengen.',
     icon: '/icons/brand/nifi.svg',
@@ -130,6 +136,7 @@ export const components: PlatformComponent[] = [
     name: 'Kafka',
     layer: 'streaming',
     stage: 'ingestion',
+    status: 'template',
     short: 'Event-bus tussen NiFi-ingestion en Spark Structured Streaming.',
     purpose: 'Data-events bufferen en doorzetten naar verwerking. Schaalbare doorvoer.',
     icon: '/icons/brand/kafka.svg',
@@ -472,6 +479,24 @@ export const components: PlatformComponent[] = [
     url: 'https://nanitics.uwv-platform.local:8443/api/observatory/',
     embed: { mode: 'subdomain' },
     rolesUsing: ['platform_admin', 'data_engineer'],
+  },
+  {
+    id: 'nao',
+    name: 'nao',
+    layer: 'ai-agents',
+    stage: 'agents',
+    // Analytics-lane: open-source analytics agent. NL → SQL over de gold/silver
+    // Trino-catalog. Read-only; user-facing in tegenstelling tot Multica
+    // (dev-loop) en Nanitics (runtime/observability). Zie
+    // platform/21-nao/README.md voor de lane-tabel.
+    short: 'Open-source analytics agent — natuurlijke taal → SQL op Trino, met chat-UI en visualisaties.',
+    purpose: 'Eindgebruikers stellen vragen in gewone taal en zien direct de SQL + het antwoord, met OpenMetadata-context.',
+    icon: '/icons/brand/nao.svg',
+    url: 'https://nao.uwv-platform.local:8443',
+    // Cross-origin op eigen subdomein achter oauth2-proxy; ingress strip
+    // X-Frame-Options zodat de portal-shell de UI kan inbedden.
+    embed: { mode: 'subdomain' },
+    rolesUsing: ['platform_admin', 'data_engineer', 'data_steward', 'wia_beoordelaar'],
   },
 ];
 
