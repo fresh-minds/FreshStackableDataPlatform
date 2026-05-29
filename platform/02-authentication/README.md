@@ -45,7 +45,7 @@ Airflow, NiFi, OpenMetadata, Portal) blijven onveranderd Keycloak-tokens
 zien. Op de Keycloak-loginpagina verschijnt een knop **"Microsoft Entra ID"**
 naast het reguliere username/password-veld; de gebruiker kiest.
 
-Zie [`docs/adr/0003-entra-broker-via-keycloak.md`](../../docs/adr/0003-entra-broker-via-keycloak.md)
+Zie [`docs/adr/0011-entra-broker-via-keycloak.md`](../../docs/adr/0011-entra-broker-via-keycloak.md)
 voor de architectuurkeuze (broker vs. parallelle IDPs).
 
 ### Wat is in de repo gewijzigd

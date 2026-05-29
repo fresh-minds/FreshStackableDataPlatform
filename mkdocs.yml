@@ -190,6 +190,9 @@ nav:
       - UC-11 · Walkthrough: use-cases/uc11-klantreis-walkthrough.md
       - UC-12 · FOCUS FinOps: use-cases/uc12-focus-finops.md
       - "UC-12 · FOCUS FinOps — Power BI variant": use-cases/uc12-focus-finops-powerbi.md
+      - "Power BI in-portal embed (AKS + Entra)": use-cases/powerbi-embed-aks-entra.md
+  - AI-agenten:
+      - Overzicht: agents/index.md
   - Beslissingen:
       - Overzicht: adr/index.md
       - ADR-0001 · Stackable als basis: adr/0001-stackable-as-base.md
@@ -202,6 +205,7 @@ nav:
       - ADR-0008 · Self-service data-access: adr/0008-self-service-data-access.md
       - ADR-0009 · NetworkPolicies-strategie: adr/0009-networkpolicies-strategy.md
       - ADR-0010 · platform-config single source: adr/0010-platform-config-single-source.md
+      - ADR-0011 · Entra-broker via Keycloak: adr/0011-entra-broker-via-keycloak.md
   - Compliance:
       - Compliance-mapping: compliance-mapping.md
       - Context (NORA/AVG/BIO/AI Act): context-summary.md

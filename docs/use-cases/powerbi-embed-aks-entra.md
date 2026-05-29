@@ -1,7 +1,7 @@
 # Power BI in-portal embed — AKS + Entra ID SSO
 
 End-state: een gebruiker logt op `https://platform.eu-sovereigndataplatform.com/`
-in via **Microsoft Entra ID** (via de Keycloak-broker, [ADR-0008](../adr/0008-entra-broker-via-keycloak.md)),
+in via **Microsoft Entra ID** (via de Keycloak-broker, [ADR-0011](../adr/0011-entra-broker-via-keycloak.md)),
 klikt links op **Dashboarding → Power BI**, en ziet het UC-12 FinOps-rapport
 **ingebed in de portal-shell** zonder iframe-blok of "Open in nieuw tabblad"-omweg.
 
@@ -188,7 +188,7 @@ Verwacht gedrag:
 | [`portal/nginx.conf`](../../portal/nginx.conf) | CSP — `app.powerbi.com` + `api.powerbi.com` toegevoegd |
 | [`platform/15-portal/portal-backend.yaml`](../../platform/15-portal/portal-backend.yaml) | 4 secretKeyRef-envs voor de SP-creds |
 | [`platform/15-portal/powerbi-embed-creds-template.yaml`](../../platform/15-portal/powerbi-embed-creds-template.yaml) | Template voor de `kubectl create secret`-stap |
-| [`docs/adr/0008-entra-broker-via-keycloak.md`](../adr/0008-entra-broker-via-keycloak.md) | Architectuur-beslissing IdP-brokering |
+| [`docs/adr/0011-entra-broker-via-keycloak.md`](../adr/0011-entra-broker-via-keycloak.md) | Architectuur-beslissing IdP-brokering |
 | [`infrastructure/helm/keycloak/realm-uwv.json`](../../infrastructure/helm/keycloak/realm-uwv.json) | Entra als IdP in het `uwv` realm |
 | [`tests/smoke/10-entra-broker.sh`](../../tests/smoke/10-entra-broker.sh) | Structuur-check van de realm-import |
 
@@ -202,7 +202,7 @@ Verwacht gedrag:
 | Token-refresh tijdens lange sessies | Werkt | React Island refresht 5min voor expiry zonder remount via `setAccessToken`. |
 | Listing reports in de UI | Wel endpoint (`/api/portal/powerbi/reports`), nog geen dropdown | UC-12 is hardcoded als default. Volgende slice: dropdown + URL-param `?report=<id>`. |
 | RLS per role / effectiveIdentity | Endpoint accepteert `{effectiveIdentity, roles, customData}` in de POST-body — **vereist eerst "fixed identity"-cloud-connection op de semantic model** | Zonder fixed identity geeft Power BI 403 "Creating embed token with effective identity is not supported for this datasource" voor Direct Lake. Configureer in Fabric UI: dataset → *Gateway and cloud connections* → fixed identity = de UC-11 SP. |
-| ADR-0008 nummer-collision | Twee files met `0008-` prefix: `entra-broker-via-keycloak.md` (deze branch) + `self-service-data-access.md` (main) | Hernoemen bij merge naar `0011-entra-broker-via-keycloak.md`. |
+| ADR-nummer-collision | ~~Twee files met `0008-` prefix.~~ Opgelost: de Entra-broker-ADR is hernoemd naar [`0011-entra-broker-via-keycloak.md`](../adr/0011-entra-broker-via-keycloak.md); `0008` is nu uniek de self-service-data-access-ADR. | Opgelost |
 | Power BI tenant-setting "SP can use APIs" | Handmatige Fabric Admin-actie | Niet automatiseerbaar via Terraform. |
 | K8s Secret is een dev-pattern | Werkt | Productie: Azure Key Vault + Workload Identity (zie infrastructure/azure/README.md). |
 

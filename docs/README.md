@@ -24,6 +24,7 @@ deze map dieper.
 - [0008 — Self-service data-access](adr/0008-self-service-data-access.md)
 - [0009 — NetworkPolicies-strategie](adr/0009-networkpolicies-strategy.md)
 - [0010 — platform-config als single source](adr/0010-platform-config-single-source.md)
+- [0011 — Entra ID via Keycloak-brokering](adr/0011-entra-broker-via-keycloak.md)
 
 ### Use cases
 
