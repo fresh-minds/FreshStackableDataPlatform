@@ -5,7 +5,7 @@ Declaratieve namespaces voor het UWV-platform. Ook door
 
 | Namespace | Inhoud |
 |---|---|
-| `uwv-platform` | Stackable workloads: ZK, HMS, Kafka, NiFi, Spark, Trino, OPA, Airflow, Superset |
+| `uwv-platform` | Stackable workloads: HMS, Spark, Trino, OPA, Airflow, Superset (ZooKeeper/Kafka/NiFi-operators staan uit in deze release) |
 | `uwv-data` | Gedeelde Postgres-instance |
 | `uwv-meta` | OpenMetadata + OpenSearch |
 | `uwv-monitoring` | kube-prometheus-stack (Prometheus, Grafana) |
@@ -14,8 +14,14 @@ Declaratieve namespaces voor het UWV-platform. Ook door
 Labels (`uwv.nl/*`) worden door OpenMetadata's Kubernetes-connector (fase 8)
 opgepikt voor governance-context.
 
-## Apply
+## Deploy
 
 ```bash
 kubectl apply -k platform/00-namespaces/
+```
+
+## Verify
+
+```bash
+kubectl get ns -l uwv.nl/environment=dev   # de uwv-* namespaces moeten Active zijn
 ```

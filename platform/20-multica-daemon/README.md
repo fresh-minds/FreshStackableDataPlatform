@@ -1,4 +1,4 @@
-# 18 — Multica daemon (in-cluster)
+# 20 — Multica daemon (in-cluster)
 
 Runs the **Multica agent-runtime daemon** as a Kubernetes Deployment, so
 approved Multica tasks get claimed and executed in-cluster instead of
