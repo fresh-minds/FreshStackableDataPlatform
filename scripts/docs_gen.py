@@ -1087,6 +1087,42 @@ De architectuur-documentatie staat nu onder
 """
 
 
+HANDLEIDINGEN_DIR = DOCS_DIR / "handleidingen"
+HANDBOEK_GUIDES = [
+    "01-wia-beoordelaar", "02-ww-handhaver", "03-wajong-arbeidsdeskundige",
+    "04-crm-medewerker", "05-fez-analist", "06-smz-planner",
+    "07-proactief-dienstverlener", "08-researcher", "09-data-steward",
+    "10-data-engineer", "11-platform-admin", "12-smoketest-systeem",
+]
+
+
+def render_handboek() -> str:
+    """Bouw docs/handleidingen/00-handboek.md uit de losse rol-handleidingen.
+
+    De preface (alles vóór de eerste `## Handleiding —`) is hand-geschreven en
+    wordt behouden; de 12 rol-secties worden uit de individuele guides
+    geconcateneerd zodat het handboek niet kan driften. Per guide:
+    - de H1 (`# Handleiding — X`) wordt gedemoveerd naar `## `;
+    - de per-guide `--8<-- "_snippets/url-modes.md"`-include wordt verwijderd
+      (de preface bevat hem al één keer).
+    Dit bestand draagt GEEN generated-banner: het is leesbare prose en de
+    preface blijft handmatig bewerkbaar. `--check` bewaakt wel de drift.
+    """
+    handboek = HANDLEIDINGEN_DIR / "00-handboek.md"
+    existing = handboek.read_text(encoding="utf-8")
+    marker = "## Handleiding —"
+    preface = existing[: existing.index(marker)].rstrip() if marker in existing else existing.rstrip()
+
+    sections: list[str] = []
+    for slug in HANDBOEK_GUIDES:
+        body = (HANDLEIDINGEN_DIR / f"{slug}.md").read_text(encoding="utf-8")
+        body = re.sub(r"^# ", "## ", body, count=1, flags=re.M)
+        body = re.sub(r'\n?--8<-- "_snippets/url-modes\.md"\n', "\n", body)
+        sections.append(body.strip())
+
+    return preface + "\n\n" + "\n\n---\n\n".join(sections) + "\n"
+
+
 def render_security() -> str:
     """Kopieer SECURITY.md naar docs/security.md met front matter."""
     security_path = ROOT / "SECURITY.md"
@@ -1235,6 +1271,7 @@ def main() -> None:
         DOCS_DIR / "use-cases" / "index.md": render_use_cases_index(),
         DOCS_DIR / "adr" / "index.md": render_adr_index(),
         DOCS_DIR / "security.md": render_security(),
+        DOCS_DIR / "handleidingen" / "00-handboek.md": render_handboek(),
         DOCS_DIR / "tags.md": render_tags_page(),
         DOCS_DIR / "assets" / "extra.css": render_extra_css(),
         DOCS_DIR / "assets" / "favicon.svg": render_favicon_svg(),

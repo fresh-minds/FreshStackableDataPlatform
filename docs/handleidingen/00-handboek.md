@@ -106,8 +106,6 @@ Werkt iets niet? In deze volgorde:
 
 ---
 
-
-
 ## Handleiding — WIA-beoordelaar
 
 > Rol-key: `wia_beoordelaar` · Domein: AG / WIA · Risiconiveau toegang: hoog (PII + medisch)
@@ -118,6 +116,7 @@ dossiers te raadplegen, voorraad en doorlooptijden in jouw regio te bewaken
 en sturingsinformatie op te vragen.
 
 ---
+
 
 ## 1. Wat doet jouw rol?
 
@@ -371,7 +370,6 @@ massaal data lezen valt op.
 
 ---
 
-
 ## Handleiding — WW-handhaver
 
 > Rol-key: `ww_handhaver` · Domein: WW / Handhaving · Risiconiveau toegang: hoog (PII + bankrekening)
@@ -382,6 +380,7 @@ financiële kolommen die voor andere rollen gemaskeerd zijn — zoals
 bankrekening-/IBAN-velden voor onderzoeksdoeleinden.
 
 ---
+
 
 ## 1. Wat doet jouw rol?
 
@@ -580,7 +579,6 @@ Het model levert een score en een korte uitleg (top-drivers). Volg deze regels:
 
 ---
 
-
 ## Handleiding — Wajong-arbeidsdeskundige
 
 > Rol-key: `wajong_arbeidsdeskundige` · Domein: AG / Wajong · Risiconiveau toegang: zeer hoog (Sensitive Vault, art. 9 AVG)
@@ -591,6 +589,7 @@ Jouw rol is bijzonder: je hebt als enige business-rol toegang tot de
 een **vier-ogen-principe**.
 
 ---
+
 
 ## 1. Wat doet jouw rol?
 
@@ -816,7 +815,6 @@ voor besluitvormingsdata: 7 jaar.
 
 ---
 
-
 ## Handleiding — CRM-medewerker
 
 > Rol-key: `crm_medewerker` · Domein: Klantcontact · Risiconiveau toegang: middel (PII gemaskeerd, geen medisch)
@@ -827,6 +825,7 @@ Werkmap. Je ziet **gemaskeerde BSN's** en **geen medische gegevens** —
 beide bewust beperkt om dataminimalisatie te respecteren.
 
 ---
+
 
 ## 1. Wat doet jouw rol?
 
@@ -987,7 +986,6 @@ Stel een cliënt vraagt: "Wat hebben jullie over mij?" — Beantwoord:
 
 ---
 
-
 ## Handleiding — FEZ-analist
 
 > Rol-key: `fez_analist` · Domein: Financiën / Beleid · Risiconiveau toegang: laag (alleen aggregaten, geen PII)
@@ -997,6 +995,7 @@ aan schadelast, prognoses en beleidsanalyses. Je werkt op **geaggregeerde
 data**: geen ruwe BSN, geen individuele uitkeringsbedragen.
 
 ---
+
 
 ## 1. Wat doet jouw rol?
 
@@ -1152,7 +1151,6 @@ WHERE peilkwartaal = '2026-Q1';
 
 ---
 
-
 ## Handleiding — SMZ-planner
 
 > Rol-key: `smz_planner` · Domein: Sociaal-medische zaken · Risiconiveau toegang: laag (geen cliënt-PII)
@@ -1163,6 +1161,7 @@ op **planningsdata zonder cliënt-PII** — je ziet wel beoordelaar-roosters
 en case-counts, maar geen individuele dossiers.
 
 ---
+
 
 ## 1. Wat doet jouw rol?
 
@@ -1310,7 +1309,6 @@ teamleider — geen BSN's, alleen aggregaten.
 
 ---
 
-
 ## Handleiding — Proactief dienstverlener
 
 > Rol-key: `proactief_dienstverlener` · Domein: Toeslagenwet (proactief) · Risiconiveau toegang: middel (PII, geen medisch)
@@ -1321,6 +1319,7 @@ voorspelmodellen om cliënten te identificeren die mogelijk recht hebben
 maar niet hebben aangevraagd. **Opt-out van de cliënt is leidend.**
 
 ---
+
 
 ## 1. Wat doet jouw rol?
 
@@ -1476,7 +1475,6 @@ ORDER  BY conversie_pct DESC;
 
 ---
 
-
 ## Handleiding — Researcher
 
 > Rol-key: `researcher` · Domein: Statistisch onderzoek (sandbox) · Risiconiveau toegang: laag (alleen sandbox, gepseudonimiseerd)
@@ -1486,6 +1484,7 @@ op UWV-data. Je werkt **uitsluitend in de sandbox-zone** met
 gepseudonimiseerde panels — geen productie-PII, geen rauwe BSN's.
 
 ---
+
 
 ## 1. Wat doet jouw rol?
 
@@ -1655,7 +1654,6 @@ SELECT COUNT(*) FROM gematched;
 
 ---
 
-
 ## Handleiding — Data-steward
 
 > Rol-key: `data_steward` · Domein: Datakwaliteit & governance · Risiconiveau toegang: hoog (PII voor DQ-controle)
@@ -1666,6 +1664,7 @@ gebruiken). Je zorgt voor kwaliteit, lineage, eigenaarschap en juiste
 classificatie. Je ziet PII voor controledoeleinden, **niet** medische data.
 
 ---
+
 
 ## 1. Wat doet jouw rol?
 
@@ -1854,7 +1853,6 @@ Zie [`docs/runbook.md` § 10](../runbook.md) voor de volledige procedure.
 
 ---
 
-
 ## Handleiding — Data-engineer
 
 > Rol-key: `data_engineer` · Domein: Data-pipelines & ingestion · Risiconiveau toegang: hoog (PII in bronze, JIT)
@@ -1865,6 +1863,7 @@ debug-doeleinden — niet voor permanent gebruik. Je bouwt NiFi-flows,
 Spark-jobs, dbt-modellen en Airflow-DAGs.
 
 ---
+
 
 ## 1. Wat doet jouw rol?
 
@@ -1996,7 +1995,7 @@ Run: `dbt run --select mart_xyz_daily && dbt test --select mart_xyz_daily`.
 ### 4.4 Workflow D — Pipeline-falen patchen
 
 ```bash
-## Lokaal testen
+# Lokaal testen
 make doctor                       # cluster-health
 dbt parse --target dev
 dbt build --select +mart_failed   # bouw upstream tot en met deze
@@ -2078,7 +2077,6 @@ ruwe IBAN binnenkomt vanuit bronze.
 
 ---
 
-
 ## Handleiding — Platform-admin
 
 > Rol-key: `platform_admin` · Domein: Cluster + security · Risiconiveau toegang: maximaal (break-glass)
@@ -2090,6 +2088,7 @@ en governance van het platform zelf. **Elke break-glass-actie wordt gelogd
 en achteraf gereviewd.**
 
 ---
+
 
 ## 1. Wat doet jouw rol?
 
@@ -2158,7 +2157,7 @@ De data-steward valideert de volgende ochtend dat deze comments er zijn.
 ### 4.1 Workflow A — Cluster-health checken
 
 ```bash
-## Snelste overview
+# Snelste overview
 make doctor
 
 # Per Stackable-laag
@@ -2324,7 +2323,6 @@ In volgorde van prioriteit:
 
 ---
 
-
 ## Handleiding — Smoketest (systeemrol)
 
 > Rol-key: `smoketest` · Type: **service-account, geen mens** · Risiconiveau toegang: middel
@@ -2335,6 +2333,7 @@ Deze handleiding is voor de **platform-admins en data-engineers** die
 deze rol configureren en bewaken.
 
 ---
+
 
 ## 1. Waar wordt deze rol gebruikt?
 
@@ -2386,7 +2385,7 @@ Geen password-flow. Het service-account gebruikt:
 ### 3.1 dbt-runs
 
 ```bash
-## In Airflow-DAG of CI
+# In Airflow-DAG of CI
 dbt run --target prod --profiles-dir /etc/dbt/profiles
 dbt test --target prod
 ```
@@ -2493,5 +2492,3 @@ Als CI-runs failen met `401 Unauthorized` voor `smoketest`:
 
 **Vorige:** [11-platform-admin.md](11-platform-admin.md) ·
 **Index:** [README.md](README.md)
-
----
