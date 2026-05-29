@@ -1,4 +1,4 @@
-# ADR-0008: Microsoft Entra ID via Keycloak-brokering (i.p.v. parallelle IDPs)
+# ADR-0011: Microsoft Entra ID via Keycloak-brokering (i.p.v. parallelle IDPs)
 
 | Status | **Geaccepteerd** |
 |---|---|

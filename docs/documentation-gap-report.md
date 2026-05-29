@@ -1,14 +1,23 @@
 # Documentation gap report — UDP_Stackable
 
-Audit datum: 2026-05-05. Scope: alle bestanden onder `UDP_Stackable/`,
-exclusief `dbt_packages/`, `node_modules/`, `dist/`, `.git/`.
+Audit datum: 2026-05-05. Re-audit: 2026-05-29. Scope: alle bestanden onder
+`UDP_Stackable/`, exclusief `dbt_packages/`, `node_modules/`, `dist/`, `.git/`.
 
 > **Update 2026-05-05 (zelfde sessie):** items A.1, A.2, A.3, A.4, A.6 en B.1
 > zijn opgelost. Zie ✅-markeringen hieronder.
+>
+> **Re-audit 2026-05-29.** De repo is gegroeid van 16 naar **21 genummerde
+> componenten** (`00`–`21`, met gaten op 04/06/07 en drie `12-*`-varianten).
+> In deze pass opgelost: alle 21 componenten hebben nu een README
+> (12-databricks + 12-powerbi toegevoegd); de dubbele **ADR-0008** is opgelost
+> (Entra-broker → **ADR-0011**); NiFi/Kafka/ZooKeeper zijn overal als
+> *template / operator-uit* gemarkeerd; gebroken links in `compliance-mapping.md`
+> (`ci/github-actions/*`, verwijderde NiFi/Kafka-paden, hernoemde DAG's) hersteld;
+> en `spark-jobs/README.md` (B.6) bijgewerkt.
 
-Het platform is over het algemeen **goed gedocumenteerd**: 16/16 platform-
-componenten hebben een README, 6 ADR's leggen kernkeuzes vast, en alle
-10 use-cases hebben een spec. Onderstaande lijst is wat (nog) ontbreekt of
+Het platform is over het algemeen **goed gedocumenteerd**: 21/21 platform-
+componenten hebben een README, 11 ADR's leggen kernkeuzes vast, en alle
+12 use-cases hebben een spec. Onderstaande lijst is wat (nog) ontbreekt of
 afwijkt van wat je elders in de repo wel hebt staan.
 
 ---
@@ -21,7 +30,7 @@ buurman dat wel heeft. Voor een referentie-implementatie waar lezers vaak
 
 | # | Pad | Wat ontbreekt | Prio |
 |---|---|---|---|
-| A.1 ✅ | `platform/README.md` | ~~Index-README voor de 16 genummerde componenten (00–15).~~ Toegevoegd. | 🟠 hoog |
+| A.1 ✅ | `platform/README.md` | ~~Index-README voor de genummerde componenten.~~ Toegevoegd; bijgewerkt 2026-05-29 naar alle 21 (`00`–`21`). | 🟠 hoog |
 | A.2 ✅ | `docs/README.md` | ~~Geen index voor `docs/`.~~ Toegevoegd. | 🟠 hoog |
 | A.3 ✅ | `scripts/README.md` | ~~12 scripts zonder overzicht~~ — overzicht-tabellen + happy-path toegevoegd. | 🟠 hoog |
 | A.4 ✅ | `tests/README.md` | ~~Drie sub-mappen zonder uitleg~~ — smoke/integration/e2e gedocumenteerd, conventies + CI-link toegevoegd. | 🟠 hoog |
@@ -69,10 +78,11 @@ in elke `_*.yml`). Onderstaande items vormen de openstaande gaten.
 
 Voor de volledigheid: deze onderdelen zijn **al goed**:
 
-- 16/16 platform-componenten hebben een README met consistente structuur.
-- 6 ADR's voor de kernkeuzes (Stackable, Iceberg-vs-Delta, OPA-authz,
-  OpenMetadata-catalog, dbt-trino-transform, Delta-keuze).
-- 10 use-case-specs onder `docs/use-cases/`, alle 10 voorzien van CGM-
+- 21/21 platform-componenten hebben een README met consistente structuur.
+- 11 ADR's voor de kernkeuzes (o.a. Stackable, Iceberg-vs-Delta, OPA-authz,
+  OpenMetadata-catalog, dbt-trino-transform, Delta-keuze, NetworkPolicies,
+  Entra-brokering).
+- 12 use-case-specs onder `docs/use-cases/`, alle voorzien van CGM-
   entiteiten en compliance-koppeling.
 - 13 handleidingen onder `docs/handleidingen/` (per persona) inclusief
   README-index.
