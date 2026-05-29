@@ -82,7 +82,10 @@ voor de index.
 ## Conventies
 
 - **Taal:** Nederlands voor inhoudelijke content; Engels voor technische
-  identifiers (paden, kolomnamen, tool-namen).
+  identifiers (paden, kolomnamen, tool-namen). **Uitzondering:** README's van
+  geïntegreerde third-party tools (`platform/17-multica`,
+  `platform/19-nanitics-observatory`, `platform/20-multica-daemon`,
+  `platform/21-nao`) mogen Engels blijven, in lijn met hun upstream-docs.
 - **ADR-format:** numbered, immutable. Een nieuwe beslissing krijgt een
   nieuw ADR; de oude wordt niet bewerkt maar als "superseded by" gemarkeerd.
 - **Use-case-format:** scope, CGM-entiteiten, doelbinding, legal_basis,
@@ -90,6 +93,25 @@ voor de index.
 - **Compliance-meta** in dbt-modellen sluit 1-op-1 aan op
   [`compliance-mapping.md`](compliance-mapping.md). Zie
   [`../dbt/README.md#compliance-velden-in-meta`](../dbt/README.md).
+
+### Gegenereerde pagina's — niet handmatig bewerken
+
+Een aantal pagina's wordt door [`scripts/docs_gen.py`](../scripts/docs_gen.py)
+gegenereerd uit [`portal/src/data/components.ts`](../portal/src/data/components.ts)
+en de losse bron-bestanden. Handmatige edits verdwijnen bij de volgende
+CI-build (`docs_gen.py --check` faalt op drift). Bewerk de **bron**, niet de
+pagina:
+
+| Gegenereerde pagina('s) | Bron |
+|---|---|
+| `index.md`, `architectuur/*.md`, `rollen/index.md`, `adr/index.md`, `use-cases/index.md` | `components.ts` + templates in `docs_gen.py` |
+| `security.md` | repo-root `SECURITY.md` |
+| `handleidingen/00-handboek.md` (rol-secties) | de losse `handleidingen/NN-*.md` (preface blijft handmatig) |
+| `tags.md` | `material/tags`-plugin (build-time) |
+
+De meeste gegenereerde `.md`'s dragen bovenaan een
+`<!-- Auto-generated … -->`-banner. Draai `python scripts/docs_gen.py` na een
+bronwijziging en commit de output mee.
 
 ## Bijdragen
 

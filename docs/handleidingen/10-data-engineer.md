@@ -131,7 +131,7 @@ Run: `dbt run --select mart_xyz_daily && dbt test --select mart_xyz_daily`.
 1. `kubectl get sparkapp -n uwv-platform`
 2. `kubectl logs -n uwv-platform <driver-pod>`
 3. Spark UI port-forwarden:
-   ```
+   ```bash
    kubectl port-forward -n uwv-platform svc/spark-streaming-ui 4040:4040
    ```
    Open http://localhost:4040
