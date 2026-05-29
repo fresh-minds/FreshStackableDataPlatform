@@ -129,7 +129,6 @@ Coördinatie van coding agents (Multica) plus de in-cluster agent-runtime (Nanit
 |---|---|---|
 | [Multica](componenten.md#multica) | Coördinatie van coding agents (Claude Code, Codex, Copilot CLI, …) — taken, voortgang, skills. | Taken toewijzen aan coding agents; voortgang volgen. Agents draaien op je laptop. |
 | [Nanitics Observatory](componenten.md#nanitics) | In-cluster agent-runtime + trace-viewer. Watcher monitort het platform en filed issues naar Multica. | Bekijk watcher-runs (span tree, LLM-calls, tool-calls) en triggert handmatige investigations. |
-| [nao](componenten.md#nao) | Open-source analytics agent — natuurlijke taal → SQL op Trino, met chat-UI en visualisaties. | Eindgebruikers stellen vragen in gewone taal en zien direct de SQL + het antwoord, met OpenMetadata-context. |
 
 
 ## Verder lezen

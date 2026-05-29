@@ -32,6 +32,9 @@ exclude_docs: |
   /README.md
   /README.md.bak
   /_snippets/*
+  # agents/ hoort bij de nog-niet-afgeronde AI-agents-feature (eigen branch);
+  # uitgesloten tot die feature + nav-sectie samen landen.
+  /agents/*
 
 # Tekstinhoud is Nederlands; technische identifiers (paden, kolomnamen,
 # tool-namen) blijven Engels (zie docs/README.md § Conventies).
@@ -191,8 +194,6 @@ nav:
       - UC-12 · FOCUS FinOps: use-cases/uc12-focus-finops.md
       - "UC-12 · FOCUS FinOps — Power BI variant": use-cases/uc12-focus-finops-powerbi.md
       - "Power BI in-portal embed (AKS + Entra)": use-cases/powerbi-embed-aks-entra.md
-  - AI-agenten:
-      - Overzicht: agents/index.md
   - Beslissingen:
       - Overzicht: adr/index.md
       - ADR-0001 · Stackable als basis: adr/0001-stackable-as-base.md

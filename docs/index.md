@@ -32,7 +32,7 @@ met NORA, AVG, BIO/BIO2, NIS2 en de AI Act.
 
     ---
 
-    20 componenten over 9 lagen — van ingestie
+    19 componenten over 9 lagen — van ingestie
     tot consumptie, met identity, observability en governance als
     cross-cutting lanen.
 
