@@ -38,8 +38,9 @@ platform:
 # DNS-suffix voor Listener-operator + ingresses.
 #
 # Mode-aware (zie scripts/lib/mode.sh — DEPLOYMENT_MODE / --mode):
-#   k3d  -> uwv-platform.local  (port :8443 via serverlb/portmap)
-#   aks  -> eu-sovereigndataplatform.com  (port 443, public DNS)
+#   k3d     -> uwv-platform.local        (port :8443 via serverlb/portmap)
+#   aks     -> eu-sovereigndataplatform.com  (port 443, public DNS)
+#   stackit -> freshstackable.com        (port 443, yawol LB + Floating IP)
 #
 # Overridable per invocation via PLATFORM_DOMAIN env var. Het veld `suffix`
 # hieronder is de lokale default (k3d); voor AKS wordt het overschreven.
@@ -48,9 +49,9 @@ platform:
 dns:
   suffix: uwv-platform.local
   modes:
-    k3d:  uwv-platform.local
-    kind: uwv-platform.local
-    aks:  eu-sovereigndataplatform.com
+    k3d:     uwv-platform.local
+    aks:     eu-sovereigndataplatform.com
+    stackit: freshstackable.com
 
 # Persistentie-pads in MinIO buckets.
 buckets:

@@ -5,10 +5,25 @@ PySpark-jobs voor het UWV-platform.
 | Bestand | Doel |
 |---|---|
 | [`lib/lakehouse_io.py`](lib/lakehouse_io.py) | Format-agnostische helper. Leest `TABLE_FORMAT` env; bouwt SparkSession met Hive Metastore + S3A + Delta/Iceberg extensions. |
-| [`streaming_files_to_lakehouse.py`](streaming_files_to_lakehouse.py) | File-source streaming: leest JSONL uit `s3a://uwv-raw/<domain>/<entity>/dt=…/` en schrijft per stream naar `bronze.uwv.<domain>_<entity>` via `foreachBatch`. |
-| `batch_polisadm_load.py` | TBD fase 5 — batch-ingest van staging-bestanden. |
-| `ml_wajong_features.py` | TBD fase 9+ — feature engineering UC-02 placeholder. |
-| `lakehouse_maintenance.py` | TBD fase 6 — Delta `OPTIMIZE`/`VACUUM` (Iceberg `expire_snapshots`). |
+| [`streaming_files_to_lakehouse.py`](streaming_files_to_lakehouse.py) | File-source streaming: leest JSONL uit `s3a://uwv-raw/<domain>/<entity>/` en schrijft per stream naar `bronze.<domain>.<entity>` via `foreachBatch`. |
+| [`seed_bronze_wia.py`](seed_bronze_wia.py) | Vult `bronze.uwv.wia_aanvraag` met N synthetische rijen (start van de WIA-demo). |
+| [`batch_silver_wia.py`](batch_silver_wia.py) | Batch: `bronze.uwv.wia_aanvraag` → `silver.wia_spark.aanvraag`. |
+| [`batch_gold_wia.py`](batch_gold_wia.py) | Batch: `silver.wia_spark.aanvraag` → `gold.uc01_wia_spark.funnel_daily`. |
+
+De drie `*_wia`-jobs vormen samen de WIA Spark-demo (seed → silver → gold) en
+draaien als `SparkApplication`s via:
+
+```bash
+make wia-spark-demo
+```
+
+> **Lakehouse-onderhoud** (Delta `OPTIMIZE`/`VACUUM`, Iceberg `expire_snapshots`)
+> draait als Airflow-DAG —
+> [`platform/11-airflow/dags/lakehouse_maintenance.py`](../platform/11-airflow/dags/lakehouse_maintenance.py),
+> niet als losse Spark-job.
+>
+> **Gepland** (nog niet aanwezig): batch-ingest van de polisadministratie
+> (fase 5) en feature-engineering voor de Wajong-AI-use-case UC-02 (fase 9+).
 
 ## Deployment
 

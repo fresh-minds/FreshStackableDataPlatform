@@ -44,9 +44,10 @@ print-config: ## Print de actieve platform-configuratie
 .PHONY: cluster
 cluster: ## Maak lokale cluster aan (k3d, idempotent). Voor aks: gebruik 'make aks-up'.
 	@case "$(MODE)" in \
-	  k3d)  bash scripts/cluster.sh ;; \
-	  aks)  echo "MODE=aks: gebruik 'make aks-up' om een AKS cluster te provisionen"; exit 1 ;; \
-	  *)    echo "Onbekende MODE='$(MODE)' (verwacht k3d, aks)"; exit 1 ;; \
+	  k3d)     bash scripts/cluster.sh ;; \
+	  aks)     echo "MODE=aks: gebruik 'make aks-up' om een AKS cluster te provisionen"; exit 1 ;; \
+	  stackit) echo "MODE=stackit: gebruik 'make stackit-up' om een SKE cluster te provisionen"; exit 1 ;; \
+	  *)       echo "Onbekende MODE='$(MODE)' (verwacht k3d, aks, stackit)"; exit 1 ;; \
 	esac
 
 .PHONY: bootstrap
