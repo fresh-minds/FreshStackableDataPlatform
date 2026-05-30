@@ -78,5 +78,5 @@ vraag waar de eerste integration-tests aan moeten voldoen.
 
 ## CI
 
-Smoke draait op iedere PR via [`ci/github-actions/`](../ci/github-actions/)
-(in opzet — zie [`ci/`](../ci/)).
+Smoke draait op iedere PR via de [`.github/workflows/`](../.github/workflows/)
+GitHub Actions; de helper-scripts staan in [`ci/scripts/`](../ci/scripts/).

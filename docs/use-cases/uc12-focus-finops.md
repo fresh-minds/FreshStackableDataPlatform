@@ -29,7 +29,7 @@ MinIO  s3://uwv-staging/incoming/focus/<ts>-<file>.csv
    │  (handmatige trigger: Airflow UI of REST API)
    ▼
 ingest_csv_focus DAG (auto-generated door csv_ingest_factory)
-   │  csv_to_bronze.py — pyarrow type-cast + validatie tegen sources/focus.yml
+   │  csv_to_bronze.py — pyarrow type-cast + validatie tegen sources/focus_billing.yml
    ▼
 bronze.uwv.focus_billing  (Delta, partitioned by event_date)
    │  Airflow Dataset trigger
@@ -57,7 +57,7 @@ Superset dashboard "uc12-focus-finops"
 
 Native FOCUS-kolommen (PascalCase) + 3 audit-kolommen (`ingestion_ts`, `source_file`, `event_date`). Partitionering op `event_date` = upload-datum. Delta-formaat (Iceberg via `TABLE_FORMAT=iceberg`).
 
-Schema-definitie: [platform/11-airflow/sources/focus.yml](../../platform/11-airflow/sources/focus.yml).
+Schema-definitie: [platform/11-airflow/sources/focus_billing.yml](../../platform/11-airflow/sources/focus_billing.yml).
 
 ### Silver — `silver.finops.stg_focus_billing` (view)
 
@@ -106,7 +106,7 @@ Config: [platform/12-superset/dashboards-init-job.yaml](../../platform/12-supers
 - Keycloak-account heeft user-attribute `policy: csv-uploader` (de `csv-uploader`
   MinIO-policy dekt zowel `uploads/*` als legacy `incoming/*`; zie
   [infrastructure/helm/minio/values.yaml](../../infrastructure/helm/minio/values.yaml)).
-- CSV-header **moet exact** de 50 kolomnamen uit [sources/focus.yml](../../platform/11-airflow/sources/focus.yml) bevatten — `csv_to_bronze.py` faalt anders met `ERROR: CSV mist kolommen: [...]`.
+- CSV-header **moet exact** de 50 kolomnamen uit [sources/focus_billing.yml](../../platform/11-airflow/sources/focus_billing.yml) bevatten — `csv_to_bronze.py` faalt anders met `ERROR: CSV mist kolommen: [...]`.
 - Timestamps in ISO 8601 (`2026-05-01T00:00:00Z` of `2026-05-01T00:00:00.000Z`).
 - `BillingCurrency` is per upload homogeen verondersteld (MVP); meertonen-uploads splits je apart.
 
@@ -151,7 +151,7 @@ Aanpassingen via flags: `--months 6 --seed 99 --end-year 2026 --end-month 4`.
 ## 6. Bestandsindex
 
 **Source-registry**
-- [platform/11-airflow/sources/focus.yml](../../platform/11-airflow/sources/focus.yml) — 50-kolom FOCUS-schema, bronze/silver/governance specs
+- [platform/11-airflow/sources/focus_billing.yml](../../platform/11-airflow/sources/focus_billing.yml) — 50-kolom FOCUS-schema, bronze/silver/governance specs
 
 **Ingest**
 - [platform/11-airflow/jobs/csv_to_bronze.py](../../platform/11-airflow/jobs/csv_to_bronze.py) — bevat de `decimal`/`timestamp` ondersteuning die FOCUS nodig heeft

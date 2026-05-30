@@ -2,8 +2,9 @@
 
 Status: **flow-design beschreven; geen geautomatiseerde import in fase 4.**
 
-In de referentie-implementatie wordt de `uwv.<domain>.<event>` Kafka-pijp
-voorlopig gevuld door [`data-generation/load_to_kafka.py`](../../../data-generation/load_to_kafka.py).
+In de referentie-implementatie wordt de raw-zone gevuld door
+[`data-generation/load_to_s3.py`](../../../data-generation/load_to_s3.py)
+(S3-pad; NiFi/Kafka-operators staan uit in deze release).
 NiFi-flows volgen in fase 5+ — dit document legt vast hoe ze ontworpen zijn,
 zodat de REST-API-deploy direct kan starten. **NiFi heeft géén publieke
 Ingress meer** — flows zijn as-code (process-group JSON in deze repo) en

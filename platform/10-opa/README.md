@@ -12,7 +12,7 @@ Open Policy Agent — authorisatielaag voor Trino (en in toekomst Druid/Kafka).
 In fase 3 staat **één** policy in de bundle:
 
 - [`policies/trino-base.rego`](policies/trino-base.rego) — allow-all voor authenticated users (dev bootstrap, ticket `UWV-PLATFORM-OPA-001`).
-- [`policies/trino-base_test.rego`](policies/trino-base_test.rego) — `opa test` coverage.
+- [`trino-base_test.rego`](../../opa-policies-src/trino/trino-base_test.rego) — `opa test` coverage (bron in `opa-policies-src/trino/`; niet meegekopieerd naar de deployed `policies/`-map).
 
 In fase 9 wordt deze vervangen door de canonical bundle uit `opa-policies-src/trino/`:
 - `trino-base.rego` (default-deny)

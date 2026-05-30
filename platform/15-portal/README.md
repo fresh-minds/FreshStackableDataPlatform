@@ -9,7 +9,7 @@ De `/learn/`-routes vormen het certificeringsplatform met 33 modules
 (11 rollen × 3 levels) en SVG-certificaten. Alles is statisch behalve:
 
 - voortgang sync via `/api/learn/progress` → Keycloak user-attribute
-  `udp_progress` (Academy-backend deployment in [academy-backend.yaml](academy-backend.yaml));
+  `udp_progress` (Academy-backend image: [`portal/Dockerfile.academy`](../../portal/Dockerfile.academy); gedeployed als onderdeel van de portal-backend);
 - auto-checks via `/api/learn/check/<id>`.
 
 Zonder de backend werkt alles op localStorage; voortgang is dan per browser.

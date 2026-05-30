@@ -55,7 +55,7 @@ TLS-endpoint (zelf-signed CA via cert-manager). Een initContainer mountt
 [`uwv-ca-bundle`](../../scripts/bootstrap.sh) (kopie uit `uwv-platform` NS) en
 importeert `ca.crt` in een fresh JKS truststore op `/shared-truststore/cacerts`,
 die de OM-container via `JAVA_TOOL_OPTIONS` activeert. Op AKS is dit niet nodig
-(zie [`infrastructure/azure/helm-overrides/openmetadata-values-aks.yaml`](../../infrastructure/azure/helm-overrides/openmetadata-values-aks.yaml) — de CA is van een echte CA).
+(zie [`infrastructure/helm/openmetadata/values-aks.yaml`](../../infrastructure/helm/openmetadata/values-aks.yaml) — de CA is van een echte CA).
 
 ### Chart-quirks die we werken om
 

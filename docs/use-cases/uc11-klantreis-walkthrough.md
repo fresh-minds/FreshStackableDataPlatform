@@ -201,15 +201,18 @@ Geen nieuwe generator voor UC-11; we hergebruiken de bestaande:
 | wajong | [wajong.py](../../data-generation/generators/wajong.py) | `uwv.wajong.dossier` |
 | crm | [crm.py](../../data-generation/generators/crm.py) | `uwv.crm.contact` |
 
-Loader: [data-generation/load_to_kafka.py](../../data-generation/load_to_kafka.py).
+Loader: [data-generation/load_to_s3.py](../../data-generation/load_to_s3.py).
 Aanroepen via `make seed` (zie [scripts/seed.sh](../../scripts/seed.sh)).
 
-Live verkennen: `kubectl -n uwv-platform port-forward svc/uwv-nifi-node-default 8443:8443` en open `https://localhost:8443/` → flow per topic.
+> **Let op.** NiFi/Kafka-operators staan **uit** in deze release; de loader
+> schrijft JSONL direct naar de S3 raw-zone (`s3a://uwv-raw/`). De
+> NiFi-flow-stappen hieronder beschrijven het template-pad (zie
+> [`nifi-flows/templates/`](../../nifi-flows/templates/)), niet de actieve route.
 
-### 3.2 Kafka → bronze Delta — Spark Structured Streaming
+### 3.2 S3 raw → bronze Delta — Spark Structured Streaming
 
-[spark-jobs/streaming_kafka_to_lakehouse.py](../../spark-jobs/streaming_kafka_to_lakehouse.py)
-schrijft elke topic in een Delta-tabel onder `bronze.uwv.*`.
+[spark-jobs/streaming_files_to_lakehouse.py](../../spark-jobs/streaming_files_to_lakehouse.py)
+schrijft elke domein/entity-stream in een Delta-tabel onder `bronze.uwv.*`.
 
 Live verkennen: https://minio-console.uwv-platform.local:8443 →
 bucket `uwv-bronze` → onder `<domain>_<event>/` zie je Delta `_delta_log/`

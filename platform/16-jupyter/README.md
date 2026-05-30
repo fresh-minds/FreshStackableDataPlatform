@@ -15,7 +15,7 @@ na `make deploy-platform`.
 | Service | `jupyter` (extern, port 80) + `hub` (intern, port 8081) | [`service.yaml`](service.yaml) |
 | Ingress | `jupyter.uwv-platform.local` met WS-proxy | [`ingress.yaml`](ingress.yaml) |
 | Secret | OIDC client-secret + configproxy-token | [`secret.yaml`](secret.yaml) |
-| NetworkPolicy | Wat de Hub en singleuser-pods mogen | [`networkpolicy.yaml`](networkpolicy.yaml) |
+| NetworkPolicy | _Bewust weggelaten op deze laag_ (zie § hieronder + `kustomization.yaml`) — k3s' ingebouwde policy-controller dekt dit niet af. |
 | Starter notebooks | Pre-loaded onboarding-notebooks (welcome / trino / delta / minio / OM / git) | [`starter-notebooks/`](starter-notebooks/) |
 
 ## Architectuur
