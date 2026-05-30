@@ -1,0 +1,125 @@
+# Multica autopilots — version-controlled record.
+#
+# Multica autopilots are configured in the Multica UI (Settings → Autopilots).
+# This file is the SOURCE OF TRUTH to reconcile that config against: it lists
+# every coding agent in this directory, how its task is created, and the
+# labels it should carry. Apply by hand in the UI (or via the `multica` CLI if
+# your version supports it).
+#
+# Keep "auto-approve" OFF everywhere — every task still requires gate 1 (a
+# human adds `approved`) before the agent runs, then gate 2 (PR review). See
+# README.md in this directory.
+#
+# trigger:
+#   autopilot → Multica creates the task on `schedule` (cron, UTC)
+#   manual    → a human creates the task (the agent never self-triggers)
+#   event     → created in response to a repo/observer event (see `on:`)
+
+defaults:
+  requires_approval: true # gate 1 — never auto-approve
+  base_branch: main
+  repo: fresh-minds/FreshStackableDataPlatform
+
+autopilots:
+  # --- Tier 1 — start here --------------------------------------------------
+  - slug: compliance-mapping-auditor
+    workspace: platform-ops
+    runtime: claude-code
+    trigger: autopilot
+    schedule: "0 6 * * 1" # Mon 06:00
+    labels: [autopilot, area:compliance, agent-pr]
+  - slug: dbt-test-generator
+    workspace: data-products
+    runtime: claude-code
+    trigger: autopilot
+    schedule: "0 6 * * 2" # Tue 06:00 — rotate one domain per run
+    labels: [autopilot, area:dbt, agent-pr]
+  - slug: opa-policy-author
+    workspace: platform-ops
+    runtime: claude-code
+    trigger: manual # access rules are deliberate, human-authored
+    labels: [area:opa, area:governance, agent-pr]
+  - slug: openmetadata-description-filler
+    workspace: data-products
+    runtime: claude-code
+    trigger: autopilot
+    schedule: "0 2 * * *" # nightly 02:00
+    labels: [autopilot, area:governance, agent-pr]
+
+  # --- Tier 2 — use-case agents --------------------------------------------
+  - slug: dpia-iama-drafter
+    workspace: platform-ops
+    runtime: claude-code
+    trigger: manual
+    labels: [area:compliance, uc:02, ai-act:high-risk, agent-pr]
+  - slug: bias-fairness-reviewer
+    workspace: data-products
+    runtime: claude-code
+    trigger: event
+    on: "a risk-model task is approved (e.g. label uc:03)"
+    labels: [area:governance, uc:03, ai-act:high-risk, agent-pr]
+  - slug: client-360-view-builder
+    workspace: data-products
+    runtime: claude-code
+    trigger: manual
+    labels: [area:dbt, uc:05, agent-pr]
+  - slug: intervention-effectiveness-analyst
+    workspace: data-products
+    runtime: claude-code
+    trigger: manual
+    labels: [area:dbt, uc:09, agent-pr]
+  - slug: canonical-schema-drafter
+    workspace: data-products
+    runtime: claude-code
+    trigger: event
+    on: "a new bronze source is detected"
+    labels: [area:dbt, uc:10, agent-pr]
+
+  # --- Tier 3 — platform care ----------------------------------------------
+  - slug: adr-drafter
+    workspace: platform-ops
+    runtime: claude-code
+    trigger: event
+    on: "change to infrastructure/stackablectl/release.yaml or platform-config.yaml"
+    labels: [area:architecture, agent-pr]
+  - slug: mode-drift-detector
+    workspace: platform-ops
+    runtime: claude-code
+    trigger: autopilot
+    schedule: "0 6 * * 3" # Wed 06:00
+    labels: [autopilot, area:architecture, agent-pr]
+  - slug: smoke-test-maintainer
+    workspace: platform-ops
+    runtime: claude-code
+    trigger: event
+    on: "a new platform/NN-* directory is added"
+    labels: [area:tests, agent-pr]
+  - slug: doc-code-drift-watcher
+    workspace: platform-ops
+    runtime: claude-code
+    trigger: autopilot
+    schedule: "0 6 * * 4" # Thu 06:00
+    labels: [autopilot, area:docs, agent-pr]
+  - slug: helm-values-pruner
+    workspace: platform-ops
+    runtime: claude-code
+    trigger: autopilot
+    schedule: "0 6 1 * *" # monthly, 1st 06:00
+    labels: [autopilot, area:helm, agent-pr]
+  - slug: retention-bewaartermijn-enforcer
+    workspace: platform-ops
+    runtime: claude-code
+    trigger: autopilot
+    schedule: "0 6 * * 5" # Fri 06:00
+    labels: [autopilot, area:retention, area:governance, agent-pr]
+  - slug: pseudonymization-pr-bot
+    workspace: platform-ops
+    runtime: claude-code
+    trigger: event
+    on: "a new sensitive dataset is detected"
+    labels: [area:sensitive, area:governance, ai-act:high-risk, agent-pr]
+  - slug: use-case-scaffolder
+    workspace: data-products
+    runtime: claude-code
+    trigger: manual # "scaffold UC-NN"
+    labels: [area:dbt, agent-pr]

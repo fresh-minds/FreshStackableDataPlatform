@@ -1,0 +1,16 @@
+# Code owners — approval gate 2 for AI-agent (and human) pull requests.
+#
+# Every change to this repository requires review from the platform owner
+# before it can merge to `main`. Combined with branch protection
+# ("Require review from Code Owners" + "Do not allow bypassing"), this
+# guarantees no Multica coding agent — and no human — can self-merge.
+#
+#   gate 1 = approve + assign the task on the Multica board
+#   gate 2 = approve the PR here
+#
+# See platform/17-multica/agents/README.md for the full flow.
+#
+# Owner confirmed: @karelgo (platform owner). The repo lives under the
+# fresh-minds org, but the code owner is this user account. Apply the matching
+# branch protection with: scripts/setup-agent-github.sh
+* @karelgo

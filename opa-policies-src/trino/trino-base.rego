@@ -50,6 +50,23 @@ user_roles := ["smoketest"] if {
 	count(object.get(input.context.identity, "groups", [])) == 0
 }
 
+# Read-only service identity for the Nanitics observer agents
+# (platform/19-nanitics-observatory). Static-auth user → nanitics_observer
+# role. Mirrors the smoketest binding above.
+user_roles := ["nanitics_observer"] if {
+	input.context.identity.user == "nanitics-observer"
+	count(object.get(input.context.identity, "groups", [])) == 0
+}
+
+# Read-only service identity for the nao analytics agent (platform/21-nao).
+# OAuth2 service-account token from Keycloak carries
+# preferred_username=nao-agent → nao_agent role. Distinct principal from
+# nanitics-observer for clean audit attribution. Mirrors the bindings above.
+user_roles := ["nao_agent"] if {
+	input.context.identity.user == "nao-agent"
+	count(object.get(input.context.identity, "groups", [])) == 0
+}
+
 default user_roles := []
 
 # Purpose komt via Trino's `extraCredentials` (HTTP-header X-Trino-Extra-Credential).

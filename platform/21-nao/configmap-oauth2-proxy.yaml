@@ -1,0 +1,80 @@
+# oauth2-proxy config voor nao.
+#
+# Patroon volgt platform/17-multica/configmap-oauth2-proxy.yaml — split
+# OIDC-discovery (issuer extern voor browser-redirect, token-endpoints
+# intern via cluster-DNS) lost het k3d-probleem op dat
+# 'keycloak.uwv-platform.local' alleen via /etc/hosts op de host
+# resolveert.
+#
+# Verschil met 17-multica: nao heeft maar ÉÉN upstream — geen
+# longest-prefix-routing tussen frontend/backend, het hele app draait in
+# één Bun proces. Daarom één regel in `upstreams`.
+#
+# Auth-model: nao OSS heeft GEEN native OIDC; alleen better-auth met
+# Google/GitHub. SSO via oauth2-proxy gates dus de hele UI; intern werkt
+# nao als single-tenant. Voor multi-user identiteit zou nao Enterprise
+# (license-gated SAML/OIDC) nodig zijn — zie spike-bevindingen.
+#
+# Geen skip_auth_routes — nao heeft geen aparte webhook of daemon-API die
+# zonder Keycloak-cookie bereikt moet worden.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nao-oauth2-proxy-config
+  namespace: uwv-platform
+data:
+  oauth2-proxy.cfg: |
+    # Provider
+    provider                = "keycloak-oidc"
+    client_id               = "nao"
+    oidc_issuer_url         = "https://keycloak.uwv-platform.local:8443/realms/uwv"
+
+    # Split discovery
+    skip_oidc_discovery     = true
+    login_url               = "https://keycloak.uwv-platform.local:8443/realms/uwv/protocol/openid-connect/auth"
+    redeem_url              = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/token"
+    profile_url             = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/userinfo"
+    validate_url            = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/userinfo"
+    oidc_jwks_url           = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/certs"
+
+    # Sessiebeleid — SameSite=none + Secure zodat de cookie ook in cross-
+    # origin iframe-context (portal embed-shell op platform.uwv-platform.local)
+    # wordt meegestuurd.
+    cookie_name             = "_uwv_nao"
+    cookie_secure           = true
+    cookie_httponly         = true
+    cookie_samesite         = "none"
+    cookie_expire           = "8h"
+    cookie_refresh          = "30m"
+    cookie_domains          = ["nao.uwv-platform.local"]
+    whitelist_domains       = [".uwv-platform.local", ".uwv-platform.local:8443", "platform.uwv-platform.local:8443"]
+
+    # Listen — ingress wijst hierheen
+    http_address            = "0.0.0.0:4180"
+
+    # Single upstream (de Bun backend serveert ook de gebouwde React-frontend).
+    upstreams = [
+      "http://nao.uwv-platform.svc.cluster.local/",
+    ]
+
+    redirect_url            = "https://nao.uwv-platform.local:8443/oauth2/callback"
+
+    # Identity headers — nao OSS gebruikt eigen sessie; deze headers
+    # zijn alleen handig voor debugging en eventuele toekomstige bridge.
+    pass_user_headers       = true
+    pass_access_token       = false
+    set_xauthrequest        = true
+    set_authorization_header = false
+
+    email_domains           = ["*"]
+    skip_provider_button    = true
+
+    scope                   = "openid roles"
+    insecure_oidc_allow_unverified_email = true
+    oidc_groups_claim       = "roles"
+
+    # Logging
+    standard_logging        = true
+    request_logging         = true
+    auth_logging            = true
+    silence_ping_logging    = true

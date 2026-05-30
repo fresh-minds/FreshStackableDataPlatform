@@ -5,6 +5,7 @@
 # Steps:
 #   1) Locate the nanitics SDK repo (env var NANITICS_REPO or the default).
 #   2) Sync observatory/dist-embed into ./app/observatory-ui (so Docker can COPY it).
+#   2b) Stage the repo's docs/ (markdown) into ./app/docs-bundle for doc-rag.
 #   3) docker build with ./app/ as the build context.
 #   4) k3d image import into the uwv-platform cluster (no registry needed).
 #
@@ -40,6 +41,21 @@ if command -v rsync >/dev/null 2>&1; then
 else
   rm -rf "${TARGET}"
   cp -R "${DIST_EMBED}" "${TARGET}"
+fi
+
+# 2b) Stage the docs corpus for the doc-rag agent (markdown only). The repo
+#     docs/ tree lives two levels up from this script.
+REPO_DOCS="$(cd "${SCRIPT_DIR}/../.." && pwd)/docs"
+DOCS_TARGET="${APP_DIR}/docs-bundle"
+echo "==> Staging docs -> ${DOCS_TARGET}"
+mkdir -p "${DOCS_TARGET}"
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a --delete --prune-empty-dirs \
+    --include='*/' --include='*.md' --exclude='*' \
+    "${REPO_DOCS}/" "${DOCS_TARGET}/"
+else
+  rm -rf "${DOCS_TARGET}"; mkdir -p "${DOCS_TARGET}"
+  (cd "${REPO_DOCS}" && find . -name '*.md' -print0 | cpio -0 -pdm "${DOCS_TARGET}")
 fi
 
 # 3) Build.

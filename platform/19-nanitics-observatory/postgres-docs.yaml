@@ -1,0 +1,94 @@
+# Dedicated pgvector Postgres for the doc-rag agent's semantic index.
+#
+# Same rationale as Multica's own Postgres (platform/17-multica/postgres.yaml):
+#   - doc-rag needs the pgvector extension; the official image is
+#     pgvector/pgvector:pg17. The cluster's other Postgres instances (Hive
+#     Metastore, OpenMetadata, Keycloak, Airflow, Superset) don't bundle it.
+#   - Doc embeddings are their own data domain — don't co-tenant them with
+#     Multica's agent/issue/chat data or any catalog backend.
+#
+# Single replica, scaled-down. The password is provisioned out-of-band
+# (see secret-docs-postgres.yaml) — NOT managed by kustomize.
+apiVersion: v1
+kind: Service
+metadata:
+  name: nanitics-docs-postgres
+  namespace: uwv-platform
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: nanitics-docs-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nanitics-docs-postgres
+  namespace: uwv-platform
+spec:
+  serviceName: nanitics-docs-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nanitics-docs-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nanitics-docs-postgres
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg17
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: docrag
+            - name: POSTGRES_USER
+              value: docrag
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nanitics-docs-postgres
+                  key: DOCS_PG_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "docrag", "-d", "docrag"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "docrag", "-d", "docrag"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

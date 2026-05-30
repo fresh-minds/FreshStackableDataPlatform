@@ -30,7 +30,7 @@ type CmdkType =
 
 type ServiceSlug =
   | 'airflow' | 'dbt' | 'grafana' | 'hive' | 'jupyter' | 'kafka'
-  | 'keycloak' | 'minio' | 'multica' | 'nifi' | 'opa' | 'openmetadata'
+  | 'keycloak' | 'minio' | 'multica' | 'nao' | 'nifi' | 'opa' | 'openmetadata'
   | 'opensearch' | 'powerbi' | 'prometheus' | 'spark' | 'superset' | 'trino';
 
 interface CmdkItem {
@@ -48,7 +48,7 @@ const VALID_TYPES: ReadonlySet<string> = new Set<CmdkType>([
 ]);
 const VALID_SERVICES: ReadonlySet<string> = new Set<ServiceSlug>([
   'airflow', 'dbt', 'grafana', 'hive', 'jupyter', 'kafka',
-  'keycloak', 'minio', 'multica', 'nifi', 'opa', 'openmetadata',
+  'keycloak', 'minio', 'multica', 'nao', 'nifi', 'opa', 'openmetadata',
   'opensearch', 'prometheus', 'spark', 'superset', 'trino',
 ]);
 

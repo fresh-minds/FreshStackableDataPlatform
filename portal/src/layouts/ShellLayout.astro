@@ -152,6 +152,7 @@ const RAIL_MAIN = [
     children: [
       { id: 'multica',  label: 'Multica',  href: '/embed/multica/' },
       { id: 'nanitics', label: 'Nanitics', href: '/embed/nanitics/' },
+      { id: 'nao',      label: 'nao',      href: '/embed/nao/' },
     ],
   },
 ] as const;
@@ -209,6 +210,7 @@ const userInitial = (userName.trim().charAt(0) || '?').toUpperCase();
           'jupyter': 'jupyter',
           'minio-console': 'minio',
           'multica': 'multica',
+          'nao': 'nao',
           'nanitics': 'nanitics',
           'opensearch': 'opensearch',
           'spark': 'spark'
@@ -285,7 +287,7 @@ const userInitial = (userName.trim().charAt(0) || '?').toUpperCase();
         if (!targetTld) return;
 
         // Subdomains that DON'T have a public cloud counterpart.
-        var KEEP_LOCAL = ['multica', 'nanitics'];
+        var KEEP_LOCAL = ['multica', 'nanitics', 'nao'];
 
         function rewriteHref(href) {
           var m = href.match(/:\/\/([a-z0-9-]+)\.uwv-platform\.local(:8443)?/);

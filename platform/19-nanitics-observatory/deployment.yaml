@@ -57,6 +57,12 @@ spec:
             - secretRef:
                 name: nanitics-opensearch
                 optional: true
+            # doc-rag pgvector Postgres password (DOCS_PG_PASSWORD). Optional —
+            # without it, doc-rag falls back to lexical search. See
+            # secret-docs-postgres.yaml.
+            - secretRef:
+                name: nanitics-docs-postgres
+                optional: true
           readinessProbe:
             httpGet:
               path: /health

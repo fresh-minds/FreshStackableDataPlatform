@@ -14,6 +14,11 @@ resources:
   - service.yaml
   - ingress.yaml
   - cronjob-watcher.yaml
+  - cronjobs-observers.yaml
+  # doc-rag pgvector store. The indexer (job-docs-indexer.yaml) and the
+  # password Secret (secret-docs-postgres.yaml) are applied out-of-band —
+  # a Job's pod template is immutable and Secrets must not be clobbered.
+  - postgres-docs.yaml
 
 commonLabels:
   app.kubernetes.io/part-of: uwv-platform

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nao
+  namespace: uwv-platform
+spec:
+  selector:
+    app.kubernetes.io/name: nao
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5005

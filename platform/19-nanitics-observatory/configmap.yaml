@@ -51,7 +51,7 @@ data:
   # files into; must exist on Multica AND be visible to the user that
   # owns MULTICA_API_TOKEN.
   MULTICA_API_URL: "http://multica-backend.uwv-platform:80"
-  MULTICA_WORKSPACE: "testing"
+  MULTICA_WORKSPACE: "platform-ops"
   # Dry-run mode logs the payload and returns a synthetic task_id instead
   # of POSTing to Multica. Flip to 'true' to A/B a prompt change without
   # spamming the issue queue.
@@ -61,3 +61,61 @@ data:
   WATCHER_HTTP_TIMEOUT: "10"
   WATCHER_MAX_OPENSEARCH_HITS: "25"
   WATCHER_MAX_K8S_EVENTS: "50"
+
+  # --- Observer agents (data-plane + governance) ------------------------
+  # The observers (funnel-anomaly, dq-sentinel, cost-anomaly, journey-miner,
+  # damage-forecaster, access-triage — see app/observers.py) read READ-ONLY
+  # data-plane signals and file Multica tasks, same as the watcher. No write
+  # verbs anywhere; query_trino refuses anything that isn't SELECT/SHOW/etc.
+  #
+  # Trino: point at the coordinator and a READ-ONLY service user. OPA MUST
+  # grant this user SELECT on the catalogs/schemas the observers read
+  # (silver.* and gold.*) and MUST NOT grant sensitive.* — keep the
+  # observers blind to art.9 data. Password (if any) goes in a Secret, see
+  # secret.yaml note + TRINO_PASSWORD below.
+  TRINO_HOST: "trino-coordinator.uwv-data.svc.cluster.local"
+  TRINO_PORT: "8443"
+  TRINO_HTTP_SCHEME: "https"
+  TRINO_USER: "nanitics-observer"
+  TRINO_CATALOG: "gold"
+  TRINO_SCHEMA: "information_schema"
+  # k3d uses a self-signed CA inside the cluster; flip to "true" on
+  # aks/stackit where Trino presents a Let's Encrypt cert.
+  TRINO_VERIFY_TLS: "false"
+  TRINO_MAX_ROWS: "200"
+  # Doelbinding purpose sent to OPA as the X-Trino-Extra-Credential header.
+  # Empty = fail closed on gated resources. One pod = one purpose, so set it
+  # to the purpose of the observer(s) you enable: 'sturingsinfo' (funnel/cost/
+  # journey + uc01), 'kwaliteitscontrole' (dq-sentinel/uc07), 'beleid' (uc06).
+  # uc11/uc12 are unmapped and read regardless. See README "Observer agents".
+  TRINO_PURPOSE: "sturingsinfo"
+
+  # OpenMetadata catalog REST surface (DQ results, profiler, lineage, tags).
+  # Read-only GETs only. A bot JWT (OPENMETADATA_JWT_TOKEN) can be supplied
+  # via a Secret if the OM instance requires auth; unset = unauthenticated.
+  OPENMETADATA_URL: "http://openmetadata.uwv-meta.svc.cluster.local:8585/api"
+
+  PLATFORM_HTTP_TIMEOUT: "15"
+
+  # --- Doc-RAG agent ----------------------------------------------------
+  # doc-rag answers questions from the docs corpus baked into the image at
+  # /srv/docs-bundle (staged by build-and-load.sh from docs/).
+  #
+  # Backend: 'pgvector' (semantic, default) or 'lexical' (keyword, no infra).
+  # pgvector needs the nanitics-docs-postgres StatefulSet, an embedding model
+  # deployed in Foundry, and the indexer Job to have run. If anything is
+  # missing or errors, search_docs transparently falls back to lexical.
+  DOCS_DIR: "/srv/docs-bundle"
+  DOCS_BACKEND: "pgvector"
+  # Embedding model deployment in Azure AI Foundry. EMBEDDING_DIM MUST match
+  # the model (text-embedding-3-small=1536, text-embedding-3-large=3072).
+  # Reuses AZURE_AI_FOUNDRY_ENDPOINT + the Foundry key — no new credential.
+  EMBEDDING_MODEL: "text-embedding-3-small"
+  EMBEDDING_DIM: "1536"
+  # pgvector store. Password lives in the nanitics-docs-postgres Secret.
+  DOCS_PG_HOST: "nanitics-docs-postgres.uwv-platform.svc.cluster.local"
+  DOCS_PG_PORT: "5432"
+  DOCS_PG_DB: "docrag"
+  DOCS_PG_USER: "docrag"
+  DOCS_CHUNK_CHARS: "1200"
+  DOCS_CHUNK_OVERLAP: "150"

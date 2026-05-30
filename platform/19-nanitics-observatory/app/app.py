@@ -63,6 +63,8 @@ from nanitics import (
 from nanitics.observatory import create_observatory_router
 
 from watcher import WATCHER_DEFAULT_TASK, WATCHER_SYSTEM_PROMPT, WATCHER_TOOLS
+from observers import OBSERVERS
+from docs_tools import DOC_RAG_TOOLS
 
 LOG = logging.getLogger("nanitics-observatory-uwv")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
@@ -328,6 +330,36 @@ async def _run_watcher(emitter: Any, task: str) -> str:
     return (await agent.run(task)).output
 
 
+DOC_RAG_SYSTEM_PROMPT = """\
+You are the documentation assistant for the UWV data platform. Answer
+questions about the platform's architecture, ADRs, use-cases, compliance and
+runbooks USING ONLY the documentation you retrieve.
+
+FLOW:
+  1. Call search_docs with the key terms of the question.
+  2. Call read_doc on the most relevant result(s) to get the real text.
+  3. Answer concisely and CITE the doc path(s) you used (e.g.
+     `docs/architectuur/auth.md`). Quote sparingly.
+
+RULES:
+  - Ground every claim in retrieved docs. If the docs do not cover it, say
+    "I couldn't find that in the platform docs" — do NOT guess.
+  - You are read-only: you explain, you never change anything.
+  - Prefer the most specific doc (a UC or ADR) over a general overview.
+"""
+
+
+async def _run_doc_rag(emitter: Any, task: str) -> str:
+    agent = ReActAgent(
+        name="uwv-doc-rag",
+        llm_client=_make_llm_client(),
+        emitter=emitter,
+        tools=[describe_platform, *DOC_RAG_TOOLS],
+        system_prompt=DOC_RAG_SYSTEM_PROMPT,
+    )
+    return (await agent.run(task)).output
+
+
 AGENTS: dict[str, dict[str, Any]] = {
     "react": {
         "label": "ReAct",
@@ -372,7 +404,53 @@ AGENTS: dict[str, dict[str, Any]] = {
         "default_task": WATCHER_DEFAULT_TASK,
         "run": _run_watcher,
     },
+    "doc-rag": {
+        "label": "Docs Q&A (RAG)",
+        "description": (
+            "Answers questions about the platform's architecture, ADRs, "
+            "use-cases and compliance by retrieving and citing the docs. "
+            "Read-only; cites sources; says so when the docs don't cover it."
+        ),
+        "default_task": (
+            "How does doelbinding (purpose limitation) work on this platform, "
+            "and where is it enforced?"
+        ),
+        "run": _run_doc_rag,
+    },
 }
+
+
+# ---------------------------------------------------------------------------
+# Observer agents (data-plane + governance) — registered from observers.py.
+#
+# Each files Multica tasks WITHOUT the 'approved' label, exactly like the
+# watcher: detection only, two human gates downstream. They share the
+# watcher's Multica-filing tools and add read-only data-plane tools (Trino,
+# OpenMetadata). See observers.py and the README "Observer agents" section.
+# ---------------------------------------------------------------------------
+
+
+def _make_observer_runner(observer: Any):  # type: ignore[no-untyped-def]
+    async def _run(emitter: Any, task: str) -> str:
+        agent = ReActAgent(
+            name=f"uwv-{observer.slug}",
+            llm_client=_make_llm_client(),
+            emitter=emitter,
+            tools=[describe_platform, *observer.tools],
+            system_prompt=observer.system_prompt,
+        )
+        return (await agent.run(task)).output
+
+    return _run
+
+
+for _observer in OBSERVERS:
+    AGENTS[_observer.slug] = {
+        "label": _observer.label,
+        "description": _observer.description,
+        "default_task": _observer.default_task,
+        "run": _make_observer_runner(_observer),
+    }
 
 
 # ---------------------------------------------------------------------------

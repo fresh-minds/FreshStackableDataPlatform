@@ -1,0 +1,95 @@
+# Dedicated Postgres for nao state (better-auth sessions, chat history,
+# admin-managed DB/LLM connections).
+#
+# Why not share an existing Postgres?
+#   - Drizzle migrations are bundled with the nao image and run automatically
+#     on startup; mixing with Hive Metastore or OpenMetadata schemas adds
+#     blast-radius for no gain.
+#   - nao only needs vanilla Postgres 16+ — no pgvector, no extensions.
+#
+# Single replica, scaled-down profile (matches platform-config.yaml).
+# Production: swap for CloudNativePG or a managed Postgres in AKS/StackIT.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nao-postgres
+  namespace: uwv-platform
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: nao-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nao-postgres
+  namespace: uwv-platform
+spec:
+  serviceName: nao-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nao-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nao-postgres
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: nao
+            - name: POSTGRES_USER
+              value: nao
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nao-postgres
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "nao", "-d", "nao"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "nao", "-d", "nao"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi

@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nao-oauth2-proxy-config
+  namespace: uwv-platform
+data:
+  oauth2-proxy.cfg: |
+    provider                = "keycloak-oidc"
+    client_id               = "nao"
+    oidc_issuer_url         = "https://keycloak.freshstackable.com/realms/uwv"
+
+    skip_oidc_discovery     = true
+    login_url               = "https://keycloak.freshstackable.com/realms/uwv/protocol/openid-connect/auth"
+    redeem_url              = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/token"
+    profile_url             = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/userinfo"
+    validate_url            = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/userinfo"
+    oidc_jwks_url           = "http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/certs"
+
+    cookie_name             = "_uwv_nao"
+    cookie_secure           = true
+    cookie_httponly         = true
+    cookie_samesite         = "lax"
+    cookie_expire           = "8h"
+    cookie_refresh          = "30m"
+    cookie_domains          = ["nao.freshstackable.com"]
+    whitelist_domains       = [".freshstackable.com"]
+
+    http_address            = "0.0.0.0:4180"
+
+    upstreams = [
+      "http://nao.uwv-platform.svc.cluster.local/",
+    ]
+
+    redirect_url            = "https://nao.freshstackable.com/oauth2/callback"
+
+    pass_user_headers       = true
+    pass_access_token       = false
+    set_xauthrequest        = true
+    set_authorization_header = false
+
+    email_domains           = ["*"]
+    skip_provider_button    = true
+
+    scope                   = "openid roles"
+    insecure_oidc_allow_unverified_email = true
+    oidc_groups_claim       = "roles"
+
+    standard_logging        = true
+    request_logging         = true
+    auth_logging            = true
+    silence_ping_logging    = true

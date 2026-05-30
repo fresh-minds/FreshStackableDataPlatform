@@ -1,0 +1,32 @@
+# AKS overlay for platform/21-nao.
+# Hostnames + cert-manager issuer flipped to letsencrypt-prod for a real
+# public cert. Same pattern as platform-overlays/aks/17-multica/.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/21-nao
+patches:
+  - target:
+      kind: Ingress
+      name: nao
+    patch: |-
+      - op: replace
+        path: /metadata/annotations/cert-manager.io~1cluster-issuer
+        value: letsencrypt-prod
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: nao.eu-sovereigndataplatform.com
+      - op: replace
+        path: /spec/rules/0/host
+        value: nao.eu-sovereigndataplatform.com
+  - path: configmap-oauth2-proxy-aks.yaml
+    target:
+      kind: ConfigMap
+      name: nao-oauth2-proxy-config
+  - target:
+      kind: ConfigMap
+      name: nao
+    patch: |-
+      - op: replace
+        path: /data/BETTER_AUTH_URL
+        value: https://nao.eu-sovereigndataplatform.com

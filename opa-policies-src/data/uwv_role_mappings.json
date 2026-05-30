@@ -20,6 +20,40 @@
         "regio_filter": false,
         "break_glass": false
       },
+      "nanitics_observer": {
+        "_role_purpose": "Read-only Nanitics observer service-identiteit (funnel/dq/cost/journey/damage). Alleen aggregaten; geen PII, geen medisch, geen sensitive-catalog.",
+        "catalogs": [
+          "silver",
+          "gold"
+        ],
+        "schemas": null,
+        "purposes": [
+          "sturingsinfo",
+          "kwaliteitscontrole",
+          "beleid"
+        ],
+        "can_see_pii": false,
+        "can_see_medical": false,
+        "can_see_bankrekening": false,
+        "regio_filter": false,
+        "break_glass": false
+      },
+      "nao_agent": {
+        "_role_purpose": "Read-only nao analytics-agent service-identiteit (platform/21-nao). Natuurlijke-taal-naar-SQL op gold/silver. Staand analytisch mandaat (purposes=['*'] \u2192 doelbinding-bypass) zodat de agent alle use-case-marts kan lezen; de harde beperkingen blijven: read-only (geen write), geen PII/medisch/bankrekening (column-masks), alleen silver+gold (geen bronze/sensitive). Eigen principal voor schone audit-attributie, los van nanitics_observer.",
+        "catalogs": [
+          "silver",
+          "gold"
+        ],
+        "schemas": null,
+        "purposes": [
+          "*"
+        ],
+        "can_see_pii": false,
+        "can_see_medical": false,
+        "can_see_bankrekening": false,
+        "regio_filter": false,
+        "break_glass": false
+      },
       "data_steward": {
         "_role_purpose": "Datakwaliteit, profiler, lineage. Ziet PII voor DQ-controle, niet medisch.",
         "catalogs": [

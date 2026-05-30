@@ -1,0 +1,45 @@
+# Single host — alles via de nao-oauth2-proxy Service. oauth2-proxy gates
+# de HELE UI (geen skip_auth_routes) en proxiet door naar de nao-pod.
+#
+# Browser → nao.uwv-platform.local:8443
+#   ingress → nao-oauth2-proxy:80 (oauth2-proxy:4180)
+#     /  → Keycloak SSO check → nao (Bun chat-server + Python sidecar)
+#
+# SSE-streams van de agent-loop blijven open via generous read-timeout.
+# nao zet zelf X-Frame-Options DENY in development — daarom strippen
+# wij die in de configuration-snippet zodat het portal embed-shell
+# de UI in een iframe kan tonen.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nao
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+    nginx.ingress.kubernetes.io/proxy-body-size: "25m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # Iframe-allow voor portal embed-shell (cross-origin). Strip
+    # X-Frame-Options EN nao's eigen CSP — die kan `frame-ancestors`
+    # restrictiever zetten en zou onze permissive header vetoën.
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_hide_header X-Frame-Options;
+      proxy_hide_header Content-Security-Policy;
+      add_header Content-Security-Policy "frame-ancestors 'self' https://platform.uwv-platform.local:8443 https://platform.eu-sovereigndataplatform.com https://platform.freshstackable.com" always;
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["nao.uwv-platform.local"]
+      secretName: nao-tls
+  rules:
+    - host: nao.uwv-platform.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nao-oauth2-proxy
+                port:
+                  number: 80

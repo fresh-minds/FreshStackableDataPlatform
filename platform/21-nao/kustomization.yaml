@@ -1,0 +1,73 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: uwv-platform
+
+# Note on secrets:
+#   secrets.template.yaml is a TEMPLATE showing the expected keys. It is
+#   deliberately NOT listed below — same pattern as 17-multica and
+#   19-nanitics-observatory. Apply real values out-of-band:
+#
+#     kubectl -n uwv-platform create secret generic nao-postgres \
+#       --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24)" \
+#       --dry-run=client -o yaml | kubectl apply -f -
+#
+#     kubectl -n uwv-platform create secret generic nao \
+#       --from-literal=BETTER_AUTH_SECRET="$(openssl rand -hex 32)" \
+#       --from-literal=DB_URI="postgres://nao:<pg_pw>@nao-postgres:5432/nao" \
+#       --from-literal=ANTHROPIC_API_KEY="<your-key>" \
+#       --dry-run=client -o yaml | kubectl apply -f -
+#
+# Listing them here would overwrite the real keys with the placeholders on
+# every `kubectl apply -k .`.
+
+resources:
+  - postgres.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - configmap-oauth2-proxy.yaml
+  - secret-oauth2-proxy.yaml
+  - oauth2-proxy.yaml
+  - ingress.yaml
+
+# Generate the nao project SEED context (nao_config.yaml + RULES.md) into a
+# ConfigMap mounted read-only at /seed. The init container copies it into the
+# writable /app/context emptyDir and runs `nao sync`. Kustomize appends a
+# content-hash to the generated name, so editing context/ files rolls the pod.
+configMapGenerator:
+  - name: nao-context-seed
+    files:
+      - context/nao_config.yaml
+      - context/RULES.md
+
+# ---- Image pinning ----
+#
+# INTERIM (2026-05-28): we run a patch-on-top fork that layers
+# getnao/nao#859 (Trino TLS support) on the upstream OSS image. The fork
+# Dockerfile + patched trino.py live in ~/Documents/programming/sandbox/nao-interim/
+# (build context); the resulting image is k3d-imported, not pushed to a
+# public registry yet.
+#
+# Reproduction (Karel's laptop):
+#   cd ~/Documents/programming/sandbox/nao-interim
+#   docker build -t karelgo/nao:trino-tls-857 .
+#   k3d image import karelgo/nao:trino-tls-857 -c uwv-platform
+#
+# When getnao/nao#859 merges and a tagged release is published, revert
+# this block to `getnao/nao:<tag>` (or a digest) and drop the
+# nao-interim/ build context.
+#
+# AKS/StackIT note: the interim image is local-only. Those overlays
+# cannot pull `karelgo/nao:trino-tls-857`. Until upstream merges, the
+# AKS/StackIT overlays will deploy a non-functional nao (UI up, SQL
+# broken). Either wait for #859, or push the patched image to a
+# registry the AKS/StackIT clusters can reach.
+images:
+  - name: getnao/nao
+    newName: karelgo/nao
+    newTag: "trino-tls-jwt-857"
+
+commonLabels:
+  app.kubernetes.io/part-of: uwv-platform
+  app.kubernetes.io/component: nao

@@ -63,9 +63,10 @@ const SECTION_BY_ID: Record<string,
   // Dashboarding (BI / consumption-laag)
   powerbi:      'dashboarding',
   superset:     'dashboarding',
-  // AI (coding-agents + watcher-runtime)
+  // AI (coding-agents + watcher-runtime + analytics-agent)
   multica:      'ai',
   nanitics:     'ai',
+  nao:          'ai',
   // keycloak / opa → default 'workspace'
 };
 const activeSection = SECTION_BY_ID[component.id] ?? 'workspace';
@@ -85,7 +86,8 @@ function trackTypeFor(id: string): string {
     case 'jupyter':       return 'notebook';
     case 'trino':
     case 'prometheus':
-    case 'opa':           return 'query';
+    case 'opa':
+    case 'nao':           return 'query';
     case 'spark':
     case 'kafka':
     case 'nifi':
@@ -265,7 +267,7 @@ const trackHref = deepLink
       if (host === t || host.endsWith('.' + t)) { targetTld = t; break; }
     }
     if (!targetTld) return;
-    const KEEP_LOCAL = ['multica', 'nanitics'];
+    const KEEP_LOCAL = ['multica', 'nanitics', 'nao'];
 
     function rewriteHref(href: string): string {
       const m = href.match(/:\/\/([a-z0-9-]+)\.uwv-platform\.local(:8443)?/);
@@ -301,10 +303,13 @@ const trackHref = deepLink
 
   // ─── Iframe load / failure UX ───
   // Cross-origin iframes geven ons geen toegang tot contentDocument, maar
-  // 'load' vuurt wel zodra de browser response heeft ontvangen.
-  //   - load event binnen 8s → spinner weg
+  // 'load' vuurt wel zodra de browser response heeft ontvangen — ook na
+  // intermediate SSO-redirects (multica → keycloak → callback → /).
+  //   - load event binnen 15s → spinner weg
   //   - timeout zonder load → toon "blocked"-fallback met
   //     "open in nieuw tabblad"-knop
+  //   - load event NA timeout → fallback weer verbergen (self-healing,
+  //     dekt cold-start van Next.js / langzame SSO-chain).
   const frame = document.getElementById('embed-frame') as HTMLIFrameElement | null;
   const loading = document.getElementById('embed-loading');
   const blocked = document.getElementById('embed-blocked');
@@ -313,13 +318,15 @@ const trackHref = deepLink
       if (loading) loading.hidden = true;
       if (blocked) blocked.hidden = false;
       if (frame) frame.style.opacity = '0.05';
-    }, 8000);
+    }, 15000);
     frame.addEventListener('load', () => {
       if (timeoutId !== undefined) {
         window.clearTimeout(timeoutId);
         timeoutId = undefined;
       }
       if (loading) loading.hidden = true;
+      if (blocked) blocked.hidden = true;
+      if (frame) frame.style.opacity = '';
     });
   }
 </script>

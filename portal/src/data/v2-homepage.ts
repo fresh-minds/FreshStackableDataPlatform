@@ -13,13 +13,14 @@
 
 // Item type drives the colour-tint behind the brand icon and the chip label.
 export type ItemType =
-  | 'dashboard' | 'dag' | 'table' | 'notebook' | 'query' | 'pipeline';
+  | 'dashboard' | 'dag' | 'table' | 'notebook' | 'query' | 'pipeline' | 'agent';
 
 // Service slug — must match a filename in portal/public/icons/brand/.
 export type ServiceSlug =
   | 'airflow' | 'dbt' | 'grafana' | 'hive' | 'jupyter' | 'kafka'
-  | 'keycloak' | 'minio' | 'multica' | 'nifi' | 'opa' | 'openmetadata'
-  | 'opensearch' | 'powerbi' | 'prometheus' | 'spark' | 'superset' | 'trino';
+  | 'keycloak' | 'minio' | 'multica' | 'nanitics' | 'nao' | 'nifi'
+  | 'opa' | 'openmetadata' | 'opensearch' | 'powerbi' | 'prometheus'
+  | 'spark' | 'superset' | 'trino';
 
 export interface ExploreItem {
   type: ItemType;
@@ -70,6 +71,15 @@ export const EXPLORE: ExploreCategory[] = [
       { type: 'table', service: 'minio',        title: 'MinIO',        subtitle: 'Object storage',    href: '/embed/minio/' },
       { type: 'table', service: 'hive',         title: 'Hive',         subtitle: 'Metastore',         href: '/embed/hive/' },
       { type: 'query', service: 'opa',          title: 'OPA',          subtitle: 'Policy engine',     href: '/embed/opa/' },
+    ],
+  },
+  {
+    title: 'AI & Agents',
+    sub:   'Coding agents, analytics-AI, observatory',
+    items: [
+      { type: 'agent', service: 'multica',  title: 'Multica',  subtitle: 'Coding agents (dev-loop)',     href: '/embed/multica/' },
+      { type: 'agent', service: 'nao',      title: 'nao',      subtitle: 'Natural-language → SQL chat',  href: '/embed/nao/' },
+      { type: 'agent', service: 'nanitics', title: 'Nanitics', subtitle: 'Agent observability + traces', href: '/embed/nanitics/' },
     ],
   },
   {

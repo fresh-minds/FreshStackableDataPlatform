@@ -129,6 +129,21 @@
           "uc06_lastprognose"
         ]
       },
+      "nao_agent": {
+        "break_glass": false,
+        "can_see_bankrekening": false,
+        "can_see_medical": false,
+        "can_see_pii": false,
+        "catalogs": [
+          "silver",
+          "gold"
+        ],
+        "purposes": [
+          "*"
+        ],
+        "regio_filter": false,
+        "schemas": null
+      },
       "platform_admin": {
         "break_glass": true,
         "can_see_bankrekening": true,

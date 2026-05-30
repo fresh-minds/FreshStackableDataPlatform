@@ -1,0 +1,54 @@
+# nao project context for the UWV reference data platform.
+#
+# This file is the SEED context: the kustomize configMapGenerator packs it
+# (+ RULES.md) into the `nao-context-seed` ConfigMap, mounted read-only at
+# /seed. The init container copies it into the writable /app/context
+# emptyDir, drops in a fresh Trino JWT, and runs `nao sync` to populate
+# table/column metadata before the chat server starts.
+#
+# Schema = nao_core.config.NaoConfig (Pydantic v2).
+
+project_name: uwv-udp
+
+databases:
+  # Stackable Trino on this cluster, reached over HTTPS via the TLS+JWT
+  # connector from getnao/nao#859 (interim fork image karelgo/nao).
+  #
+  # Auth: Trino is OAuth2-only. The init/sidecar fetch a Keycloak
+  # client_credentials token for the `nao-trino` service account; that
+  # token carries preferred_username=nao-agent, which Trino maps to the
+  # read-only `nao_agent` OPA role (silver+gold, no PII/medical/sensitive,
+  # no writes — see opa-policies-src). The token is written to
+  # jwt_token_file and re-read on every connection, so the refresh sidecar
+  # can rotate it without restarting nao.
+  - name: trino-uwv
+    type: trino
+    host: uwv-trino-coordinator.uwv-platform.svc.cluster.local
+    port: 8443
+    http_scheme: https
+    verify: false # in-cluster; CA-bundle mount is a hardening follow-up
+    catalog: gold
+    user: nao-agent # must match the token's preferred_username (OPA principal)
+    jwt_token_file: /var/run/nao/trino-token
+    templates:
+      - columns
+      - preview
+    profiling:
+      refresh_policy: "interval"
+      interval_days: 1
+    include: []
+    exclude: []
+
+# Repos hint nao at where SQL/dbt models live so the agent can read them
+# as context. Pointed at this same repo's dbt project.
+repos:
+  - name: dbt
+    url: https://github.com/karelgoense/UDP_Stackable.git
+    branch: null
+
+# LLM provider, Slack and Notion integrations are configured at runtime
+# via the admin UI (stored in Postgres by nao); the Azure AI Foundry key
+# is staged in Secret/nao.
+notion: null
+llm: null
+slack: null

@@ -762,6 +762,102 @@
       ]
     },
     {
+      "clientId": "nao",
+      "name": "UWV Platform — nao",
+      "description": "OIDC-client voor de oauth2-proxy voor https://nao.uwv-platform.local — gates de nao analytics-agent chat UI. nao OSS heeft geen native OIDC; oauth2-proxy is de edge-SSO.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-nao-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://nao.uwv-platform.local:8443/oauth2/callback",
+        "https://nao.uwv-platform.local/oauth2/callback"
+      ],
+      "webOrigins": [
+        "https://nao.uwv-platform.local:8443",
+        "https://nao.uwv-platform.local"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "https://nao.uwv-platform.local:8443/*##https://nao.uwv-platform.local/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "username-as-email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "username",
+            "claim.name": "email",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "audience-nao",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "nao",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "nao-trino",
+      "name": "UWV Platform — nao Trino service-account",
+      "description": "Confidential service-account client. client_credentials-token draagt preferred_username=nao-agent (hardcoded mapper) zodat Trino's OAuth2-authenticator de principal mapt op de read-only nao_agent OPA-rol (silver+gold, geen PII/medisch/sensitive, geen writes). Gebruikt door platform/21-nao init+sidecar om de lakehouse te bevragen.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-nao-trino-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "attributes": {
+        "access.token.lifespan": "3600"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "protocolMappers": [
+        {
+          "name": "preferred_username-nao-agent",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "preferred_username",
+            "claim.value": "nao-agent",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "access.tokenResponse.claim": "false"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "grafana",
       "name": "Grafana",
       "description": "OIDC-client voor Grafana auth.generic_oauth — vervangt de lokale login op /login. Redirect-URIs dekken alle drie de modes (k3d/aks/stackit) zodat dezelfde realm bruikbaar is per omgeving.",

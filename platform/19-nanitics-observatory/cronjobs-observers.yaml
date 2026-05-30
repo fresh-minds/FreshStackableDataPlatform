@@ -1,0 +1,342 @@
+# Scheduled runs for the data-plane / governance observer agents.
+#
+# ALL of these ship SUSPENDED (suspend: true). Unlike the watcher (which
+# was verified end-to-end before its cron was enabled), these are new and
+# every tick costs a real Azure AI Foundry call AND can file a Multica
+# task. Enable one only after you've inspected its dry-run / manual output:
+#
+#   # manual one-shot (works even while suspended):
+#   kubectl -n uwv-platform create job --from=cronjob/nanitics-funnel-anomaly-cron \
+#     funnel-manual-$(date +%s)
+#   kubectl -n uwv-platform logs -l job-name=funnel-manual-... --tail=200
+#
+#   # enable the schedule once happy:
+#   kubectl -n uwv-platform patch cronjob nanitics-funnel-anomaly-cron \
+#     -p '{"spec":{"suspend":false}}'
+#
+# Each CronJob POSTs a prompt (from its ConfigMap) to /run/<slug> on the
+# observatory Service. concurrencyPolicy=Forbid + the cadence are the rate
+# limiter. The access-triage agent is intentionally NOT scheduled here — it
+# is event/manual (triggered when an access request is raised).
+#
+# Slugs and cadence:
+#   funnel-anomaly    (UC-01)  daily   06:00
+#   dq-sentinel       (UC-07)  every 6h
+#   cost-anomaly      (UC-12)  daily   07:00
+#   journey-miner     (UC-11)  daily   08:00
+#   damage-forecaster (UC-06)  weekly  Mon 05:00
+#
+# ---------------------------------------------------------------------------
+# YAML anchors keep the pod spec identical across CronJobs; only the name,
+# schedule, target slug and body ConfigMap differ.
+# ---------------------------------------------------------------------------
+
+# === funnel-anomaly (UC-01) ===============================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nanitics-funnel-anomaly-cron-body
+  namespace: uwv-platform
+data:
+  body.json: |
+    {"task": "Inspect the UC-01 WIA funnel gold marts. Compare the latest period's stage-to-stage conversion against the trailing baseline. If a stage regressed materially, compute a stable fingerprint uc01-funnel:<stage>:<period>, call find_existing_multica_tasks first, and if new file ONE Multica task (area=uc01). Otherwise output 'no issue found: ...'."}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nanitics-funnel-anomaly-cron
+  namespace: uwv-platform
+spec:
+  suspend: true
+  schedule: "0 6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            runAsGroup: 100
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.8.0
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  curl -fsS -H 'Content-Type: application/json' --max-time 540 \
+                    --data @/etc/observer/body.json \
+                    http://nanitics-observatory.uwv-platform.svc.cluster.local/run/funnel-anomaly \
+                    | tee /dev/stderr
+              volumeMounts:
+                - { name: body, mountPath: /etc/observer, readOnly: true }
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits:   { cpu: 100m, memory: 64Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+          volumes:
+            - name: body
+              configMap:
+                name: nanitics-funnel-anomaly-cron-body
+                items: [{ key: body.json, path: body.json }]
+---
+# === dq-sentinel (UC-07) ==================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nanitics-dq-sentinel-cron-body
+  namespace: uwv-platform
+data:
+  body.json: |
+    {"task": "Review OpenMetadata data-quality results and profiler stats for the polisadministratie / UC-07 datasets. Pick the single most consequential failing or newly-degraded check. Fingerprint uc07-dq:<table>:<testName>, dedup with find_existing_multica_tasks, and if new file ONE Multica task (area=uc07). Otherwise output 'no issue found: ...'."}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nanitics-dq-sentinel-cron
+  namespace: uwv-platform
+spec:
+  suspend: true
+  schedule: "0 */6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            runAsGroup: 100
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.8.0
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  curl -fsS -H 'Content-Type: application/json' --max-time 540 \
+                    --data @/etc/observer/body.json \
+                    http://nanitics-observatory.uwv-platform.svc.cluster.local/run/dq-sentinel \
+                    | tee /dev/stderr
+              volumeMounts:
+                - { name: body, mountPath: /etc/observer, readOnly: true }
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits:   { cpu: 100m, memory: 64Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+          volumes:
+            - name: body
+              configMap:
+                name: nanitics-dq-sentinel-cron-body
+                items: [{ key: body.json, path: body.json }]
+---
+# === cost-anomaly (UC-12) =================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nanitics-cost-anomaly-cron-body
+  namespace: uwv-platform
+data:
+  body.json: |
+    {"task": "Inspect the UC-12 FOCUS FinOps marts for the service/resource whose cost regressed most versus its recent trend. Corroborate the cause with query_prometheus. Fingerprint uc12-cost:<service>:<period>, dedup, and if new file ONE Multica task (area=finops) proposing a bounded remediation. Otherwise output 'no issue found: ...'."}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nanitics-cost-anomaly-cron
+  namespace: uwv-platform
+spec:
+  suspend: true
+  schedule: "0 7 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            runAsGroup: 100
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.8.0
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  curl -fsS -H 'Content-Type: application/json' --max-time 540 \
+                    --data @/etc/observer/body.json \
+                    http://nanitics-observatory.uwv-platform.svc.cluster.local/run/cost-anomaly \
+                    | tee /dev/stderr
+              volumeMounts:
+                - { name: body, mountPath: /etc/observer, readOnly: true }
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits:   { cpu: 100m, memory: 64Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+          volumes:
+            - name: body
+              configMap:
+                name: nanitics-cost-anomaly-cron-body
+                items: [{ key: body.json, path: body.json }]
+---
+# === journey-miner (UC-11) ================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nanitics-journey-miner-cron-body
+  namespace: uwv-platform
+data:
+  body.json: |
+    {"task": "Mine the UC-11 klantreis phase marts for the latest window at COHORT level only (no per-client data, no BSN). Surface the single most notable unusual pattern (loop, dead-end, skipped phase, transition-time outlier). Fingerprint uc11-journey:<pattern>:<window>, dedup, and if new file ONE Multica task (area=uc11). Otherwise output 'no issue found: ...'."}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nanitics-journey-miner-cron
+  namespace: uwv-platform
+spec:
+  suspend: true
+  schedule: "0 8 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            runAsGroup: 100
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.8.0
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  curl -fsS -H 'Content-Type: application/json' --max-time 540 \
+                    --data @/etc/observer/body.json \
+                    http://nanitics-observatory.uwv-platform.svc.cluster.local/run/journey-miner \
+                    | tee /dev/stderr
+              volumeMounts:
+                - { name: body, mountPath: /etc/observer, readOnly: true }
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits:   { cpu: 100m, memory: 64Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+          volumes:
+            - name: body
+              configMap:
+                name: nanitics-journey-miner-cron-body
+                items: [{ key: body.json, path: body.json }]
+---
+# === damage-forecaster (UC-06) ============================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nanitics-damage-forecaster-cron-body
+  namespace: uwv-platform
+data:
+  body.json: |
+    {"task": "Review the UC-06 schadelast (FEZ) trend at aggregate level. Form a simple forward expectation (trailing average / linear trend) and compare against the latest actuals. If they diverge materially, fingerprint uc06-schadelast:<segment>:<period>, dedup, and if new file ONE Multica task (area=uc06) proposing a proper forecast mart. Do NOT write data back. Otherwise output 'no issue found: ...'."}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nanitics-damage-forecaster-cron
+  namespace: uwv-platform
+spec:
+  suspend: true
+  schedule: "0 5 * * 1"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            runAsGroup: 100
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.8.0
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  curl -fsS -H 'Content-Type: application/json' --max-time 540 \
+                    --data @/etc/observer/body.json \
+                    http://nanitics-observatory.uwv-platform.svc.cluster.local/run/damage-forecaster \
+                    | tee /dev/stderr
+              volumeMounts:
+                - { name: body, mountPath: /etc/observer, readOnly: true }
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits:   { cpu: 100m, memory: 64Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+          volumes:
+            - name: body
+              configMap:
+                name: nanitics-damage-forecaster-cron-body
+                items: [{ key: body.json, path: body.json }]

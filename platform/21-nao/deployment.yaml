@@ -1,0 +1,159 @@
+# nao chat server — single main container, supervisord-managed:
+#   - Bun TS backend on :5005  (chat UI, tRPC, agent loop)
+#   - Python FastAPI sidecar on 127.0.0.1:8005 (SQL execution via Ibis)
+#
+# Trino auth chain (Trino is OAuth2-only on this cluster):
+#   initContainer  → seeds /app/context, fetches a Keycloak client_credentials
+#                    token for the `nao-trino` service account (principal
+#                    nao-agent → read-only nao_agent OPA role), then runs
+#                    `nao sync` to populate table/column metadata.
+#   refresh sidecar→ re-fetches the token every 30m into /var/run/nao/trino-token.
+#   main container → nao_config.yaml points jwt_token_file at that path; the
+#                    Trino connector re-reads it on every connection, so the
+#                    short-lived token rotates without restarting nao.
+#
+# The image runs Drizzle migrations against nao-postgres on every boot.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nao
+  namespace: uwv-platform
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nao
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nao
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Seed the writable context, mint the first Trino token, and sync
+        # warehouse metadata before the chat server starts. Blocks pod
+        # readiness until `nao sync` completes (first boot can take a couple
+        # minutes while it profiles the gold catalog).
+        - name: init-context-token-sync
+          image: getnao/nao:latest # pinned to karelgo/nao via kustomization images:
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -e
+              echo "Seeding /app/context from /seed ..."
+              cp -L /seed/nao_config.yaml /app/context/nao_config.yaml
+              cp -L /seed/RULES.md        /app/context/RULES.md
+              mkdir -p /app/context/databases
+              echo "Fetching Trino service-account token ..."
+              TOK=$(curl -s -X POST "$KC_TOKEN_URL" \
+                -d grant_type=client_credentials \
+                -d client_id=nao-trino \
+                -d "client_secret=$NAO_TRINO_CLIENT_SECRET" \
+                | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+              if [ -z "$TOK" ]; then echo "ERROR: empty token"; exit 1; fi
+              printf '%s' "$TOK" > /var/run/nao/trino-token
+              echo "Token written ($(wc -c < /var/run/nao/trino-token) bytes). Running nao sync ..."
+              cd /app/context && nao sync || echo "WARN: nao sync reported errors (continuing with partial context)"
+          env:
+            - name: KC_TOKEN_URL
+              value: http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/token
+            - name: NAO_TRINO_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: nao-trino, key: client-secret }
+          volumeMounts:
+            - { name: context, mountPath: /app/context }
+            - { name: trino-token, mountPath: /var/run/nao }
+            - { name: context-seed, mountPath: /seed, readOnly: true }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+      containers:
+        - name: nao
+          image: getnao/nao:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 5005
+          envFrom:
+            - configMapRef:
+                name: nao
+            - secretRef:
+                name: nao
+          livenessProbe:
+            httpGet: { path: /, port: http }
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 5
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits:   { cpu: 2000m, memory: 2Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            # Do NOT drop ALL capabilities — supervisord runs as root and
+            # /var/log/supervisor is owned by the unprivileged `nao` user;
+            # without CAP_DAC_OVERRIDE the first log write crashes (EACCES).
+          volumeMounts:
+            - { name: context, mountPath: /app/context }
+            - { name: trino-token, mountPath: /var/run/nao, readOnly: true }
+        # Rotates the short-lived Trino token. nao re-reads jwt_token_file on
+        # every connection, so this keeps queries authenticated indefinitely.
+        - name: trino-token-refresh
+          image: getnao/nao:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              while true; do
+                sleep 1800
+                TOK=$(curl -s -X POST "$KC_TOKEN_URL" \
+                  -d grant_type=client_credentials \
+                  -d client_id=nao-trino \
+                  -d "client_secret=$NAO_TRINO_CLIENT_SECRET" \
+                  | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])' 2>/dev/null)
+                if [ -n "$TOK" ]; then
+                  printf '%s' "$TOK" > /var/run/nao/trino-token
+                  echo "$(date -u +%FT%TZ) refreshed trino token"
+                else
+                  echo "$(date -u +%FT%TZ) WARN: token refresh failed"
+                fi
+              done
+          env:
+            - name: KC_TOKEN_URL
+              value: http://keycloak.uwv-auth.svc.cluster.local/realms/uwv/protocol/openid-connect/token
+            - name: NAO_TRINO_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: nao-trino, key: client-secret }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits:   { cpu: 100m, memory: 128Mi }
+          volumeMounts:
+            - { name: trino-token, mountPath: /var/run/nao }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+      volumes:
+        # Writable runtime context: init copies the seed in, nao sync writes
+        # databases/ metadata, the agent refreshes profiling on its interval.
+        - name: context
+          emptyDir: {}
+        # Memory-backed: the bearer token never touches disk.
+        - name: trino-token
+          emptyDir: { medium: Memory, sizeLimit: 1Mi }
+        # Read-only seed (nao_config.yaml + RULES.md) from configMapGenerator.
+        # Hash in the name → editing context/ files rolls the Deployment.
+        - name: context-seed
+          configMap:
+            name: nao-context-seed

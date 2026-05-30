@@ -369,6 +369,132 @@ parameter specifically.
 
 ---
 
+## Observer agents (data-plane + governance)
+
+The `watcher` reads *operational* signals (Prometheus / Alertmanager /
+OpenSearch / K8s events). The **observer agents** extend the exact same
+pattern into the **data plane** — they read Trino aggregates and
+OpenMetadata DQ/profiler results and file Multica tasks when a data
+product looks wrong. They are defined in
+[`app/observers.py`](app/observers.py) and registered into the `AGENTS`
+map by iterating `OBSERVERS`, so each gets a `/run/<slug>` endpoint and a
+chat-UI entry automatically.
+
+| Slug | UC | What it watches | Tools | Cron (ships **suspended**) |
+|---|---|---|---|---|
+| `funnel-anomaly` | UC-01 | WIA funnel stage-conversion drops | Trino | daily 06:00 |
+| `dq-sentinel` | UC-07 | OpenMetadata DQ test failures + profiler drift | OpenMetadata, Trino | every 6h |
+| `cost-anomaly` | UC-12 | FOCUS cost regressions | Trino, Prometheus | daily 07:00 |
+| `journey-miner` | UC-11 | Klantreis cohort phase patterns | Trino | daily 08:00 |
+| `damage-forecaster` | UC-06 | Schadelast (FEZ) vs simple expectation | Trino | weekly Mon 05:00 |
+| `access-triage` | — | Routing recommendation for an access request | OpenMetadata | event/manual |
+
+**Same safety model as the watcher** — every observer:
+
+- files **at most one** Multica task per run, **without** the `approved`
+  label (so both human gates remain: approve the task, then merge the PR);
+- is **read-only** — `query_trino` refuses anything that is not
+  `SELECT/SHOW/DESCRIBE/WITH/EXPLAIN`, and the OpenMetadata tools only GET;
+- never extracts row-level data or PII into a task — counts, rates and
+  ranges only;
+- reuses the watcher's `file_multica_task` / `find_existing_multica_tasks`,
+  so tasks carry the identical approval checklist and fingerprint dedup.
+
+### Prerequisites
+
+1. **Trino read-only user.** Create a service user (default
+   `nanitics-observer`, see `configmap.yaml`) and grant it `SELECT` on
+   `silver.*` / `gold.*` via OPA — and **do not** grant
+   `sensitive.*`. Keep the observers blind to art.9 health data. If the user
+   needs a password, provision it as `TRINO_PASSWORD` in a Secret (same
+   out-of-band pattern as the Foundry key).
+2. **OpenMetadata** is reachable at `OPENMETADATA_URL`; supply
+   `OPENMETADATA_JWT_TOKEN` via a Secret only if your OM requires auth.
+3. **Multica** workspace + labels seeded (see
+   [`platform/17-multica/agents/workspace-seed.md`](../17-multica/agents/workspace-seed.md)).
+
+### Run one manually
+
+```sh
+curl -k -X POST https://nanitics.uwv-platform.local:8443/run/dq-sentinel \
+  -H 'Content-Type: application/json' \
+  -d '{"task":"Review OpenMetadata DQ results for UC-07 and file a task if a check is failing."}'
+```
+
+Or trigger a suspended CronJob once without enabling its schedule:
+
+```sh
+kubectl -n uwv-platform create job \
+  --from=cronjob/nanitics-cost-anomaly-cron cost-manual-$(date +%s)
+```
+
+Each run is captured in the Observatory exactly like the demo agents and
+the watcher — open it to inspect every Trino query and the task it filed.
+
+---
+
+## Docs Q&A agent (`doc-rag`)
+
+`doc-rag` answers natural-language questions about the platform —
+architecture, ADRs, use-cases, compliance, runbooks — and **cites the source
+files**. It is read-only and says so when the docs don't cover something (no
+guessing). It complements `nao` (which answers from *data* via Trino):
+doc-rag answers from *documentation*.
+
+- Tools: `search_docs`, `read_doc` — see [`app/docs_tools.py`](app/docs_tools.py),
+  with the index layer in [`app/docs_index.py`](app/docs_index.py).
+- Corpus: the repo's `docs/` tree, staged into the image at `/srv/docs-bundle`
+  by `build-and-load.sh`.
+
+### Backend: pgvector (semantic) with a lexical fallback
+
+`DOCS_BACKEND=pgvector` (default) does **semantic** retrieval — doc chunks are
+embedded and stored in a dedicated pgvector Postgres
+([`postgres-docs.yaml`](postgres-docs.yaml)); a query is embedded and matched
+by cosine distance. Embeddings reuse the **Foundry** endpoint (no new
+credential): set `EMBEDDING_MODEL` to a deployed embedding model and make
+`EMBEDDING_DIM` match it (text-embedding-3-small = 1536).
+
+If pgvector isn't configured (no password / no embedding model) or a query
+errors, `search_docs` **transparently falls back to lexical** keyword search
+over the same corpus — so the agent works even in a key-free dev cluster.
+Force keyword-only with `DOCS_BACKEND=lexical`.
+
+### One-time setup (pgvector path)
+
+```sh
+# 1. Password for the docs Postgres (out-of-band, like the other secrets):
+kubectl -n uwv-platform create secret generic nanitics-docs-postgres \
+  --from-literal=DOCS_PG_PASSWORD="$(openssl rand -hex 24)" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# 2. Deploy pgvector Postgres (already in kustomization.yaml) + the app:
+kubectl apply -k .
+
+# 3. Build the image (bakes docs/ into /srv/docs-bundle), then index:
+./build-and-load.sh
+kubectl -n uwv-platform delete job nanitics-docs-indexer --ignore-not-found
+kubectl -n uwv-platform apply -f job-docs-indexer.yaml
+kubectl -n uwv-platform logs -f job/nanitics-docs-indexer   # -> "indexed N chunks"
+```
+
+Re-run the indexer (step 3, last three lines) whenever the docs change. To
+change embedding dimensions, `DROP TABLE doc_chunks` first — the indexer
+creates it at the configured `EMBEDDING_DIM`.
+
+### Ask it
+
+```sh
+curl -k -X POST https://nanitics.uwv-platform.local:8443/run/doc-rag \
+  -H 'Content-Type: application/json' \
+  -d '{"task":"Where is doelbinding enforced and which ADR chose OPA as the Trino authorizer?"}'
+```
+
+The JSON result tags which backend served it (`"backend":"pgvector"` or
+`"lexical"`), so you can confirm the semantic path is live.
+
+---
+
 ## Switching to a real LLM vs. mock
 
 The pod ships configured for `LLM_PROVIDER=azure-foundry`. To smoke-test

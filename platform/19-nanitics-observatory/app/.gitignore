@@ -1,3 +1,7 @@
 # Populated by build-and-load.sh from the nanitics SDK repo's
 # observatory/dist-embed/ directory. Not version-controlled.
 observatory-ui/
+
+# Staged from the repo's docs/ tree by build-and-load.sh for the doc-rag
+# agent. Not version-controlled.
+docs-bundle/

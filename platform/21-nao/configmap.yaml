@@ -1,0 +1,23 @@
+# Non-secret runtime env voor de nao chat-pod.
+# Sensitive vars (DB_URI, BETTER_AUTH_SECRET, ANTHROPIC_API_KEY) zitten
+# in Secret/nao (zie secrets.template.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nao
+  namespace: uwv-platform
+data:
+  # Better-auth eist een publieke base-URL; gebruikt voor sessie-cookies
+  # en OAuth-callback-paden. Match exact de ingress host.
+  BETTER_AUTH_URL: "https://nao.uwv-platform.local:8443"
+
+  # Context = nao_config.yaml + RULES.md, gemount uit de generated
+  # nao-context ConfigMap (zie kustomization.yaml configMapGenerator).
+  NAO_CONTEXT_SOURCE: "local"
+  NAO_DEFAULT_PROJECT_PATH: "/app/context"
+
+  # Port voor de Python FastAPI sidecar — alleen 127.0.0.1, niet
+  # extern bereikbaar. Default in het image is 8005; expliciet voor
+  # de duidelijkheid.
+  FASTAPI_PORT: "8005"
+  SERVER_PORT: "5005"

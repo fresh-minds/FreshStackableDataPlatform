@@ -254,7 +254,53 @@ fi
 # keycloak.uwv-platform.local resolveerbaar was (CoreDNS-override boven),
 # faalt de eerste OpenID-discovery met "connection refused" en MinIO valt
 # terug op `loginStrategy: form` — geen Keycloak-knop op de console of
-# /go/minio/ portal-redirect. Restart pakt OIDC opnieuw op.
+# /go/minio/ portal-redirect. Hetzelfde gebeurt bij elke Keycloak-restart
+# (zie ook memory: kine-overload incident herstart Keycloak willekeurig).
+#
+# Structurele fix: initContainer die wacht op Keycloak's OIDC discovery
+# voordat MinIO start. De minio/minio v5.3.0 chart heeft geen initContainers-
+# key in values.yaml, dus we patchen de Deployment na helm upgrade. Strategic
+# merge dedupliceert op `name`, dus deze patch is idempotent over deploys.
+#
+# Het bestaande `uwv-ca` ConfigMap-volume (extraVolumes in values.yaml) bevat
+# de UWV self-signed CA — hergebruikt voor TLS-verify naar Keycloak.
+#
+# Bij timeout exit 0 (niet 1): MinIO start dan degraded zonder OIDC i.p.v.
+# CrashLoopBackOff'd te raken. Niet erger dan de oude situatie; de delete-pod
+# hieronder is de backstop voor wanneer dit toch gebeurt.
+log "MinIO: initContainer voor Keycloak-readiness toevoegen"
+kubectl -n uwv-platform patch deployment minio --type=strategic --patch "$(cat <<'EOF'
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: wait-for-keycloak-oidc
+          image: curlimages/curl:8.10.1
+          command: [sh, -c]
+          args:
+            - |
+              for i in $(seq 1 60); do
+                if curl -fsk --cacert /etc/uwv-ca/ca.crt \
+                    https://keycloak.uwv-platform.local:8443/realms/uwv/.well-known/openid-configuration \
+                    > /dev/null; then
+                  echo "[init] Keycloak OIDC reachable"
+                  exit 0
+                fi
+                echo "[init] waiting for Keycloak OIDC ($i/60)..."
+                sleep 5
+              done
+              echo "[init] Keycloak OIDC unreachable after 300s — proceeding (SSO degraded)"
+              exit 0
+          volumeMounts:
+            - name: uwv-ca
+              mountPath: /etc/uwv-ca
+              readOnly: true
+EOF
+)" >/dev/null
+
+# Restart pakt OIDC opnieuw op — ook nodig wanneer de patch hierboven al een
+# no-op was (eerder deploy) maar OIDC inmiddels alsnog stuk is gegaan door een
+# Keycloak-restart in de tussentijd.
 log "MinIO restarten zodat OIDC-discovery via Keycloak slaagt"
 kubectl -n uwv-platform delete pod -l app=minio --ignore-not-found >/dev/null 2>&1 || true
 
