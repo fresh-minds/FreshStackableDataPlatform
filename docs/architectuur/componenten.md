@@ -109,7 +109,7 @@ Streaming + batch jobs die Delta-tabellen op MinIO schrijven.
 
 SQL query-engine over Delta-lakehouse, met OPA-authorisatie.
 
-- **URL:** _geen UI_
+- **URL:** [Live UI ↗](https://trino.uwv-platform.local:8443)
 - **Gebruikt door:** `wia_beoordelaar`, `ww_handhaver`, `wajong_arbeidsdeskundige`, `fez_analist`, `smz_planner`, `proactief_dienstverlener`, `researcher`, `data_steward`, `data_engineer`, `platform_admin`
 
 ### OPA { #opa }
@@ -250,7 +250,7 @@ Logs (Vector) + search-backend voor OpenMetadata.
 
 ## Agents & AI-tooling
 
-_Coördinatie van coding agents (Multica) en gerelateerde dev-loop tooling._
+_Coördinatie van coding agents (Multica) plus de in-cluster agent-runtime (Nanitics Observatory)._
 
 ### Multica { #multica }
 

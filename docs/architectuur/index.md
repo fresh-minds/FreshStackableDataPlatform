@@ -123,7 +123,7 @@ SSO regelt wie wat mag — elk onderdeel checkt het token.
 
 ### Agents & AI-tooling { #agents }
 
-Coördinatie van coding agents (Multica) en gerelateerde dev-loop tooling.
+Coördinatie van coding agents (Multica) plus de in-cluster agent-runtime (Nanitics Observatory).
 
 | Component | Verantwoordelijkheid | Doel |
 |---|---|---|
