@@ -1,5 +1,11 @@
 # Portal redesign — Step 1 inventory
 
+> **Gearchiveerd (2026-05-30).** Dit is een momentopname van de portal **vóór**
+> de redesign; de portal-bronpaden hieronder (`portal/src/...`) zijn sindsdien
+> gerefactord en kloppen grotendeels niet meer. Bewaard voor history; niet in
+> de gepubliceerde documentatiesite. Voor de huidige portal zie
+> [`portal/README.md`](../../portal/README.md).
+
 Audit of the existing UWV Platform Portal in `portal/` against the design
 system in the redesign brief. The aim of this document is to enumerate
 **what exists**, **where styling lives**, and **what behavior must be
