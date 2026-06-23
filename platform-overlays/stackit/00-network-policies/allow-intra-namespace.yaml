@@ -1,0 +1,41 @@
+# Allow pods to talk to other pods in the SAME namespace.
+#
+# Base platform sets `default-deny-all` in every uwv-* namespace and adds an
+# explicit `allow-intra-namespace` for uwv-platform/uwv-monitoring/uwv-meta.
+# uwv-auth and uwv-data lack that policy by oversight — works on k3d/AKS by
+# luck (smoke pods land elsewhere) but on stackit the OIDC smoke pod runs
+# IN uwv-auth and times out talking to the keycloak Service.
+#
+# Patches both:
+#  - uwv-auth (smoke OIDC check, plus future auth-namespace tooling)
+#  - uwv-data (defensive — same reasoning, postgres-reconcile or future jobs)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: uwv-auth
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: uwv-data
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}

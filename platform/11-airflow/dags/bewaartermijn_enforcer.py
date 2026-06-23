@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.empty import EmptyOperator
-from airflow.providers.trino.operators.trino import TrinoOperator
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 
 DEFAULT_ARGS = {
     "owner": "data-steward",
@@ -98,9 +98,12 @@ with DAG(
         task_id = f"retention_{catalog}_{schema}_{table}"
         if dry_run:
             task_id += "__dry_run"
-        op = TrinoOperator(
+        # TrinoOperator is verwijderd in providers-trino v6+. Common SQL
+        # operator werkt met conn_id=trino_default omdat trino een SQL hook
+        # implementeert.
+        op = SQLExecuteQueryOperator(
             task_id=task_id,
-            trino_conn_id="trino_default",
+            conn_id="trino_default",
             sql=sql,
             handler=lambda result: None,  # we hoeven geen XCom-resultaat
         )
