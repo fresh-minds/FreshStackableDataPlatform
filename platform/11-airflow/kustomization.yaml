@@ -15,6 +15,7 @@ resources:
   - airflowcluster.yaml
   - ingress.yaml
   - ingress-auth.yaml
+  - ingress-reset.yaml
   - webserver-config.yaml
   - jobs/dbt-manifest-job.yaml
   - uc11-rbac.yaml

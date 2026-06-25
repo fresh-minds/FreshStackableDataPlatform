@@ -1,0 +1,66 @@
+# Recovery-endpoint voor de Airflow embed-iframe.
+#
+# Probleem: wanneer de Airflow-API JWT verloopt ([api_auth] jwt_expiration_time
+# = 86400) terwijl de FAB Flask-session-cookie nog geldig is, ontstaat een
+# redirect-loop in de iframe:
+#
+#   /airflow/ui/config         → 401  (JWT expired)
+#   /airflow/api/v2/auth/login → 307  /airflow/auth/login/?next=…
+#   /airflow/auth/login/       → 302  /airflow/auth/    (FAB ziet session, slaat OIDC over)
+#   /airflow/auth/             → 302  /airflow
+#   /airflow                   → 307  /airflow/         (SPA herlaadt, JWT nog steeds dood → loop)
+#
+# Chrome breekt af met ERR_TOO_MANY_REDIRECTS en de browser toont in de
+# iframe: "This content is blocked. Contact the site owner to fix the
+# issue." webserver-config.yaml lijnt de FAB-session-TTL gelijk aan de
+# JWT-TTL (24h) en voegt een after_request-hook toe die het `_token`
+# cookie zet na een Keycloak-login — daarmee is dit voor toekomstige
+# sessies opgelost. Bestaande lange-TTL session-cookies (van vóór de
+# fix) blijven de loop echter triggeren tot ze handmatig worden gewist.
+#
+# Het `_token` JWT-cookie is HttpOnly, dus JS in de portal kan het niet
+# wissen. Daarom dit endpoint: één klik → `Clear-Site-Data: "cookies"`
+# nukes ALLE platform-cookies (oauth2-proxy, FAB session, Airflow JWT),
+# daarna 302 terug naar /embed/airflow/. Gebruiker doorloopt opnieuw de
+# volledige Keycloak-SSO-flow en landt op een werkende embed.
+#
+# Veiligheid: dit endpoint *kan* alleen cookies wissen voor het
+# eigen-origin (platform.uwv-platform.local:8443). Een aanvaller die
+# een gebruiker hierheen lokt forceert hoogstens een uitlog — geen
+# data-exfiltratie, geen privilege-escalatie.
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: airflow-reset
+  namespace: uwv-platform
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+    # Pad-specifieke location-snippet. nginx-ingress kiest het meest-
+    # specifieke ingress-path bij overlap, dus /airflow-reset wint van
+    # de root-portal-ingress en stuurt de browser direct door.
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header Clear-Site-Data "\"cookies\"" always;
+      add_header Cache-Control "no-store" always;
+    nginx.ingress.kubernetes.io/permanent-redirect: https://platform.uwv-platform.local:8443/embed/airflow/
+    nginx.ingress.kubernetes.io/permanent-redirect-code: "302"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["platform.uwv-platform.local"]
+      secretName: airflow-platform-tls
+  rules:
+    - host: platform.uwv-platform.local
+      http:
+        paths:
+          - path: /airflow-reset
+            pathType: Exact
+            backend:
+              # Backend is irrelevant — permanent-redirect annotation
+              # short-circuits voordat we de upstream raken. We wijzen
+              # naar de bestaande Airflow-service zodat de Ingress een
+              # geldige backend heeft (nginx-ingress vereist dit).
+              service:
+                name: uwv-airflow-webserver
+                port:
+                  number: 8080

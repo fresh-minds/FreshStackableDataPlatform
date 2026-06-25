@@ -1,0 +1,85 @@
+# oauth2-proxy — SSO-gateway voor de SeaweedFS Filer UI (k3d-mode only).
+#
+# Use-case: SeaweedFS heeft geen MinIO-achtige web-console met Keycloak-SSO.
+# De ingebouwde Filer HTTP UI (port 8888) toont buckets/files maar is
+# ongeauthenticeerd — niet acceptabel om aan een ingress te hangen. Deze
+# oauth2-proxy zit ervoor: Keycloak OIDC redirect, na auth proxied naar
+# de filer.
+#
+# Mode: alleen k3d. In aks/stackit draait MinIO met ingebouwde OIDC-console;
+# daar wordt deze chart niet geïnstalleerd (zie bootstrap.sh).
+#
+# Chart: oauth2-proxy/oauth2-proxy
+# Repo: https://oauth2-proxy.github.io/manifests
+
+# Auth-config via Secret `s3-browser-oidc-client` (zie
+# platform/01-secrets/dev-secrets.yaml). Keys: client-id, client-secret,
+# cookie-secret.
+config:
+  existingSecret: s3-browser-oidc-client
+  # `configFile` is in-line config voor de proxy. Empty hier — alle config
+  # via extraArgs zodat er één bron van waarheid is.
+  configFile: ""
+
+# Provider + upstream config via CLI args. oauth2-proxy 7.x reads these
+# from --flag-name format.
+extraArgs:
+  provider: oidc
+  # OIDC discovery URL — Keycloak realm `uwv`. URL gebruikt in-cluster DNS
+  # zodat de pod direct met Keycloak praat (geen ingress-routing nodig).
+  # De browser ziet `s3-browser.${PLATFORM_DOMAIN}` via de redirect URL.
+  oidc-issuer-url: "https://keycloak.uwv-platform.local:8443/realms/uwv"
+  # Browser redirect-URL (moet matchen met realm-uwv.json s3-browser client).
+  redirect-url: "https://s3-browser.uwv-platform.local:8443/oauth2/callback"
+  # Upstream: SeaweedFS Filer HTTP UI binnen dezelfde namespace.
+  upstream: "http://seaweedfs-filer.uwv-platform.svc.cluster.local:8888"
+  # Cookie-secret komt via env (existingSecret). HTTPS-only cookies.
+  cookie-secure: "true"
+  # Domain-scope voor cookies — exact de browser-host.
+  cookie-domain: "s3-browser.uwv-platform.local"
+  # Accept alle e-mail domains (Keycloak federeert Entra ID later).
+  email-domain: "*"
+  # SSL verify uit voor self-signed Keycloak CA — alternatief is /etc/ssl/certs
+  # mount van uwv-ca-bundle. Voor dev volstaat skip-verify.
+  ssl-insecure-skip-verify: "true"
+  ssl-upstream-insecure-skip-verify: "true"
+  # Skip JWT validation van Keycloak's RS256 access-token signature — we
+  # vertrouwen op de OIDC discovery + cookie auth.
+  skip-jwt-bearer-tokens: "true"
+  # Logging
+  request-logging: "true"
+
+# Service & ingress
+service:
+  type: ClusterIP
+  portNumber: 4180
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: uwv-platform-issuer
+  hosts:
+    - s3-browser.uwv-platform.local
+  tls:
+    - hosts: [s3-browser.uwv-platform.local]
+      secretName: s3-browser-tls
+
+# Resource-budget — tiny gateway, één pod, geen state.
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+# Health-probes (chart defaults gebruiken /ping endpoint).
+livenessProbe:
+  enabled: true
+readinessProbe:
+  enabled: true
+
+# Geen Prometheus metrics-scrape voor nu (chart heeft eigen exposer).
+metrics:
+  enabled: false

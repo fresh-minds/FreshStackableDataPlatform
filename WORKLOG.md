@@ -4,6 +4,62 @@ Per sessie: wat gedaan, wat openstaand, welke beslissingen.
 
 ---
 
+## 2026-05-30 — SeaweedFS vervangt MinIO in k3d-mode
+
+### Gedaan
+- **ADR-0011** geschreven (`docs/adr/0011-seaweedfs-replaces-minio.md`):
+  motivatie (MinIO repo gearchiveerd), topologie (4× single-replica pods),
+  mitigaties, scope (k3d-only deze PR; aks/stackit follow-up).
+- **Helm-values** voor SeaweedFS 4.29.0 in `infrastructure/helm/seaweedfs/`
+  (base + k3d + cloud-stubs). Top-level `s3:` block (niet embedded
+  filer.s3) i.v.m. TLS-support en Trino 469+ requirement.
+- **`scripts/bootstrap.sh`** mode-conditional gemaakt: `IS_LOCAL`-check
+  schakelt tussen SeaweedFS- en MinIO-install (cert-Certificate prep,
+  helm install, endpoint-echo). Cloud-modes ongewijzigd.
+- **`s3-endpoint-config` ConfigMap** geïntroduceerd — één bron van waarheid
+  voor de S3 endpoint URL voor mode-agnostische Jobs.
+- **`platform-overlays/k3d/03-storage/`** kustomize-overlay die `S3Connection
+  s3-minio` patch t (host → seaweedfs-s3, port → 8443). Resource-naam blijft
+  `s3-minio` — geen consumer-YAMLs gewijzigd.
+- **`platform/08-spark/spark-events-prefix-init.yaml`** — `minio/mc` image
+  vervangen door `amazon/aws-cli:2.17.36`; gebruikt `s3-endpoint-config` CM
+  + `minio-ca-bundle` Secret voor mode-agnostische S3-toegang.
+- **oauth2-proxy + Keycloak-client `s3-browser`** toegevoegd om de
+  SeaweedFS Filer UI met SSO te beschermen (`infrastructure/helm/oauth2-proxy/`,
+  `realm-uwv.json`, `dev-secrets.yaml`). Bereikbaar op
+  `s3-browser.uwv-platform.local:8443`.
+- **Offline smoke** (helm template + kubectl apply --dry-run) op alle nieuwe
+  manifests: 8/8 stappen groen.
+
+### Open / volgende sessie
+- **Live smoke**: `make clean && make cluster && make bootstrap deploy-platform MODE=k3d`
+  op de gebruiker's k3d. Verificatiestappen in ADR-0011 §Verificatie.
+- **Follow-up PRs** voor aks/stackit migratie naar SeaweedFS, en rename
+  van `s3-minio` / `minio-ca` / `s3-credentials-minio` naar backend-neutrale
+  namen zodra alle modes over zijn.
+- **`csv_ingest_factory.py` + `configmap-jupyterhub.yaml`** lezen nog steeds
+  de S3-endpoint via literal `https://minio.uwv-platform.svc.cluster.local:9000`.
+  Voor k3d werkt dit niet meer — moet `s3-endpoint-config` CM gaan lezen
+  (gepland in opvolgsessie omdat het buiten de "minimum-blast-radius"
+  scope van deze PR valt).
+
+### Beslissingen
+- **k3d-only deze PR** (gebruiker-keuze in vraagstellings-flow). AKS en
+  StackIT blijven MinIO draaien tot follow-up — beperkt risico-radius en
+  laat de cutover-procedure (data-migratie) los discutabel.
+- **Filer-UI + oauth2-proxy** ipv FileBrowser (geen S3-backend) of
+  Filestash (extra service). Trade-off: Filer-UI is basic (alleen
+  browse/download, geen upload via UI) — geaccepteerd, S3-write blijft via
+  `aws s3` CLI / portal flow.
+- **Top-level `s3:` chart-block** ipv embedded `filer.s3` voor SeaweedFS:
+  TLS-support, dedicated Service, bucket-auto-create. Kostprijs: 1 extra
+  small pod (~50m CPU).
+- **Resource-naam `s3-minio`** blijft staan in deze PR — minimum-blast-
+  radius. Hernoemen naar backend-neutrale naam pas in follow-up als alle
+  modes over zijn.
+
+---
+
 ## 2026-04-30 — Sessie 1: Fase 0 (bootstrap + docs)
 
 ### Gedaan

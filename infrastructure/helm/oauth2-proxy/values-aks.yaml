@@ -1,0 +1,5 @@
+# oauth2-proxy — AKS placeholder.
+#
+# Niet actief: AKS draait MinIO (zie ADR-0011) met zijn eigen OIDC-console;
+# oauth2-proxy wordt niet geïnstalleerd in cloud-modes. bootstrap.sh skipt
+# de install in non-k3d.

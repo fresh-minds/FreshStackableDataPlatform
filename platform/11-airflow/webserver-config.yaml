@@ -41,6 +41,7 @@ data:
         voor de keycloak-provider).
     """
     import os
+    from datetime import timedelta
 
     from airflow.providers.fab.auth_manager.security_manager.override import (
         FabAirflowSecurityManagerOverride,
@@ -49,6 +50,24 @@ data:
 
     basedir = os.path.abspath(os.path.dirname(__file__))
     WTF_CSRF_ENABLED = True
+
+    # FAB session-cookie TTL moet matchen met de Airflow-API JWT-TTL
+    # ([api_auth] jwt_expiration_time = 86400). Anders ontstaat een
+    # redirect-loop in de portal-iframe wanneer de JWT verloopt maar de
+    # FAB-session nog leeft:
+    #
+    #   /airflow/ui/config         → 401 (JWT expired)
+    #   /airflow/api/v2/auth/login → 307 /airflow/auth/login/?next=…
+    #   /airflow/auth/login/       → 302 /airflow/auth/   (FAB ziet geldige session, slaat OIDC over)
+    #   /airflow/auth/             → 302 /airflow
+    #   /airflow                   → 307 /airflow/        (SPA herlaadt, JWT nog steeds expired → loop)
+    #
+    # Chrome breekt de loop met ERR_TOO_MANY_REDIRECTS af, wat in de
+    # embed-iframe als "This content is blocked. Contact the site owner
+    # to fix the issue." rendert. Door beide TTLs gelijk te zetten
+    # verlopen ze samen → FAB heeft geen session meer → /airflow/auth/login/
+    # triggert een schone Keycloak-OIDC-flow.
+    PERMANENT_SESSION_LIFETIME = timedelta(seconds=86400)
 
     AUTH_TYPE = AUTH_OAUTH
     AUTH_USER_REGISTRATION = True
@@ -97,13 +116,124 @@ data:
     ]
 
 
+    # ─── Bridge tussen FAB session-cookie en Airflow 3 API JWT ────────
+    # Achtergrond: Airflow 3 heeft twee auth-systemen die naast elkaar
+    # leven:
+    #   1. Flask-AppBuilder (FAB) session-cookie  → /airflow/auth/* UI
+    #   2. Airflow API JWT cookie `_token`        → /airflow/ui/* + /api/v2/*
+    #
+    # De React-SPA op /airflow/ leest /ui/config, /ui/auth/menus, etc. Die
+    # endpoints zitten op de FastAPI-app en eisen het `_token` JWT-cookie
+    # (via Authorization: Bearer-header — de SPA leest 't cookie via
+    # document.cookie en zet 'm zelf op de header). MAAR: FAB's stock
+    # `oauth_authorized` view (flask_appbuilder/security/views.py:747) doet
+    # enkel `login_user(user); return redirect(next)` — er wordt nooit een
+    # JWT uitgegeven. Resultaat na een geslaagde Keycloak-OIDC-flow:
+    #
+    #   /airflow/auth/oauth-authorized/keycloak → 302  (set Flask session)
+    #   /airflow/                               → 200  (SPA HTML)
+    #   /airflow/ui/config                      → 401  (geen _token!)
+    #   /airflow/api/v2/auth/login              → 307  /airflow/auth/login/
+    #   /airflow/auth/login/                    → 302  /airflow/auth/   (FAB ziet
+    #                                                  geldige session → skipped OIDC)
+    #   /airflow/auth/                          → 302  /airflow
+    #   /airflow                                → 307  /airflow/        (lus)
+    #
+    # Chrome breekt af met ERR_TOO_MANY_REDIRECTS — in de portal-iframe
+    # gerenderd als "This content is blocked. Contact the site owner to
+    # fix the issue." Dit is een upstream Airflow 3 + FAB-OAuth bug; tot
+    # die gefixt is, vullen we het gat zelf met een after_request hook
+    # die het `_token` cookie zet zodra de Flask-session is ingelogd.
+    import sys
+
+    from flask_login import current_user
+    from airflow.api_fastapi.app import get_auth_manager
+    from airflow.api_fastapi.auth.managers.base_auth_manager import (
+        COOKIE_NAME_JWT_TOKEN,
+    )
+
+
+    def _issue_airflow_jwt_cookie(response):
+        """Set `_token` JWT-cookie wanneer Flask-Login een user heeft.
+
+        Vuurt op IEDERE Flask-response (dus alleen op /airflow/auth/* en
+        andere FAB-UI-paden — de FastAPI-routes /ui/* en /api/v2/* gaan
+        niet via Flask).
+
+        Implementatiedetail: we lezen `current_user` uit Flask-Login,
+        NIET `g.user`. FAB zet `g.user = current_user` in een
+        before_request-handler — vóór de view-functie draait. Wanneer
+        `oauth_authorized` daarna `login_user(new_user)` aanroept, wordt
+        `_request_ctx_stack.top.user` ge-update (en daarmee
+        `current_user`) maar `g.user` blijft de PRE-login anonymous user.
+        Een hook die `g.user.is_authenticated` checkt mist daardoor net
+        het login-moment — precies het response waar het _token cookie
+        gezet moet worden. `current_user` reflecteert wel de nieuwe
+        login direct.
+
+        Faalt fail-safe: een uitzondering wordt gelogd maar nooit
+        gepropageerd — we willen nooit een legitiem login-response
+        verzieken door een JWT-generatie-fout.
+        """
+        try:
+            if not current_user or not current_user.is_authenticated:
+                return response
+            user = current_user._get_current_object()
+            # NB: httponly=False is bewust. Airflow 3's React-SPA leest
+            # het `_token` cookie via `document.cookie` en zet 'm vervolgens
+            # als `Authorization: Bearer …`-header op iedere XHR — een
+            # HttpOnly cookie is onzichtbaar voor JS, en /ui/config blijft
+            # dan 401-en. Dit is dezelfde keuze als Airflow's simple-auth
+            # SPA (zie auth/managers/simple/ui/src/login/Login.tsx, dat
+            # `useCookies(["_token"])` van react-cookie gebruikt — eveneens
+            # zonder HttpOnly). De XSS-mitigatie loopt via FAB's
+            # WTF_CSRF_ENABLED + scoped CSP, niet via HttpOnly.
+            #
+            # generate_jwt gebruikt default [api_auth] jwt_expiration_time
+            # = 86400. Cookie-max_age = JWT-TTL, zodat de cookie tegelijk
+            # met de JWT verdwijnt en de FAB-session de volgende keer
+            # OIDC opnieuw triggert i.p.v. te loopen.
+            jwt_token = get_auth_manager().generate_jwt(user=user)
+            response.set_cookie(
+                COOKIE_NAME_JWT_TOKEN,
+                jwt_token,
+                max_age=86400,
+                httponly=False,
+                secure=True,
+                samesite="Lax",
+                path="/",
+            )
+        except Exception as exc:  # noqa: BLE001 — fail-safe
+            print(
+                f"uwv-webserver-config: _token cookie sync failed: {exc!r}",
+                file=sys.stderr,
+                flush=True,
+            )
+        return response
+
+
     class UWVAirflowSecurityManager(FabAirflowSecurityManagerOverride):
         """Leest Keycloak's `roles` userinfo-claim als FAB role_keys.
 
         FAB's default get_oauth_user_info kent voor de keycloak-provider
         géén role-mapping. Zonder deze override blijft role_keys leeg en
         valt elke user terug op AUTH_USER_REGISTRATION_ROLE = Public.
+
+        Daarnaast registreren we hier de _issue_airflow_jwt_cookie
+        after_request-hook (zie comment boven die functie). __init__ is
+        de meest betrouwbare hook-aanhakingsplek: de FabAuthManager
+        instantieert de security-manager met `appbuilder` als arg zodra
+        de Flask-app klaar is, dus appbuilder.app bestaat dan.
         """
+
+        def __init__(self, appbuilder):
+            super().__init__(appbuilder)
+            appbuilder.app.after_request(_issue_airflow_jwt_cookie)
+            print(
+                "uwv-webserver-config: _token JWT cookie sync hook registered",
+                file=sys.stderr,
+                flush=True,
+            )
 
         def get_oauth_user_info(self, provider, resp):
             if provider != "keycloak":
