@@ -13,9 +13,10 @@
 # Chrome breekt af met ERR_TOO_MANY_REDIRECTS en de browser toont in de
 # iframe: "This content is blocked. Contact the site owner to fix the
 # issue." webserver-config.yaml lijnt de FAB-session-TTL gelijk aan de
-# JWT-TTL (24h) zodat dit voor toekomstige sessies niet meer kan ontstaan
-# — maar bestaande lange-TTL session-cookies (van vóór de fix) blijven
-# de loop triggeren tot ze handmatig worden gewist.
+# JWT-TTL (24h) en voegt een after_request-hook toe die het `_token`
+# cookie zet na een Keycloak-login — daarmee is dit voor toekomstige
+# sessies opgelost. Bestaande lange-TTL session-cookies (van vóór de
+# fix) blijven de loop echter triggeren tot ze handmatig worden gewist.
 #
 # Het `_token` JWT-cookie is HttpOnly, dus JS in de portal kan het niet
 # wissen. Daarom dit endpoint: één klik → `Clear-Site-Data: "cookies"`

@@ -1,0 +1,9 @@
+# oauth2-proxy — k3d-specifieke overrides.
+#
+# Voor k3d zijn er momenteel geen mode-specifieke aanpassingen nodig
+# (de base values.yaml hardcodet al `*.uwv-platform.local:8443` URLs die
+# alleen voor k3d-mode bedoeld zijn).
+#
+# Dit bestand bestaat zodat `scripts/lib/mode.sh`'s `chart_value_args
+# oauth2-proxy` helper een mode-overlay file vindt (consistente structuur
+# met andere charts).

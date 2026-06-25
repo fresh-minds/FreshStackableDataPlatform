@@ -20,8 +20,12 @@ platform:
   # toekomstige optie "rest" (Polaris/Nessie/Tabular) blijft open.
   catalog_backend: hive_metastore
 
-  # Object store. Voor on-cluster k3d/k3s draaien we MinIO single-node.
-  object_store: minio
+  # Object store. Per-mode (zie ADR-0011):
+  #   k3d           → SeaweedFS (single-replica AIO)
+  #   aks, stackit  → MinIO (single-node, follow-up: migreer naar SeaweedFS)
+  # Dit veld is informatief; daadwerkelijke selectie gebeurt in scripts/bootstrap.sh
+  # op basis van DEPLOYMENT_MODE / IS_LOCAL.
+  object_store: per-mode
 
   # Regio-tag voor metadata/policy doeleinden (geen cloud-regio).
   region: eu-nl-1

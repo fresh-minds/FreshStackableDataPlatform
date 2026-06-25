@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.models import Variable
 from airflow.operators.empty import EmptyOperator
-from airflow.providers.trino.operators.trino import TrinoOperator
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 
 # Welke tabellen onderhouden? Voor de smoke houden we het bij de bronze-laag.
 # Productie: dynamisch via SHOW TABLES of een meta-tabel die OM voorziet.
@@ -75,9 +75,12 @@ with DAG(
     fmt = Variable.get("uwv_table_format", default_var="delta")
 
     for catalog, schema, table in MAINTAIN_TABLES:
-        op = TrinoOperator(
+        # TrinoOperator is verwijderd in providers-trino v6+. Common SQL
+        # operator werkt met conn_id=trino_default omdat trino een SQL hook
+        # implementeert.
+        op = SQLExecuteQueryOperator(
             task_id=f"maintain_{catalog}_{schema}_{table}",
-            trino_conn_id="trino_default",  # opgezet via Airflow Connection
+            conn_id="trino_default",
             sql=_maintenance_sql(catalog, schema, table, fmt),
         )
         start >> op >> end

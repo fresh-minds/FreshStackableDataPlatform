@@ -896,6 +896,34 @@
         "email"
       ],
       "fullScopeAllowed": true
+    },
+    {
+      "clientId": "s3-browser",
+      "name": "S3 Browser (SeaweedFS Filer UI)",
+      "description": "OIDC-client voor oauth2-proxy dat de SeaweedFS Filer UI beschermt. Alleen actief in k3d-mode (waar SeaweedFS draait). In aks/stackit gebruikt MinIO zijn eigen `minio` client voor de console.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "uwv-dev-only-CHANGE-ME-s3-browser-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://s3-browser.uwv-platform.local:8443/oauth2/callback"
+      ],
+      "webOrigins": [
+        "https://s3-browser.uwv-platform.local:8443"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "https://s3-browser.uwv-platform.local:8443/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "fullScopeAllowed": true
     }
   ],
   "clientScopes": [

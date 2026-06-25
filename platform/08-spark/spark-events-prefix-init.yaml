@@ -5,7 +5,12 @@
 # S3 heeft geen echt directory-concept; Hadoop S3A interpreteert een
 # leeg prefix als "bestaat niet". Eén placeholder-object volstaat.
 #
-# Idempotent: mc cp overschrijft .keep zonder error.
+# Backend-agnostisch: gebruikt amazon/aws-cli (geen mc) zodat de Job
+# werkt tegen zowel MinIO (aks/stackit) als SeaweedFS (k3d). De S3
+# endpoint URL en het CA-bundle komen uit env-vars + de
+# `minio-ca-bundle` Secret die bootstrap.sh per mode populeert.
+#
+# Idempotent: s3api put-object overschrijft .keep zonder error.
 ---
 apiVersion: batch/v1
 kind: Job
@@ -21,27 +26,58 @@ spec:
     spec:
       restartPolicy: OnFailure
       containers:
-        - name: mc
-          image: minio/mc:RELEASE.2025-04-08T15-39-49Z
+        - name: aws-cli
+          image: amazon/aws-cli:2.17.36
           env:
-            - name: ACCESS_KEY
+            - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
                   name: minio-s3-credentials
                   key: accessKey
-            - name: SECRET_KEY
+            - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: minio-s3-credentials
                   key: secretKey
+            - name: AWS_DEFAULT_REGION
+              value: "eu-nl-1"
+            # Endpoint URL is mode-afhankelijk; bootstrap.sh schrijft 'm in
+            # de ConfigMap `s3-endpoint-config` (Phase 2 van ADR-0011) zodat
+            # deze Job en andere consumers één bron van waarheid hebben.
+            # Fallback default = SeaweedFS (k3d) endpoint.
+            - name: AWS_ENDPOINT_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: s3-endpoint-config
+                  key: endpoint
+                  optional: true
+            # CA-bundle voor TLS-verification van de self-signed S3-endpoint.
+            # Stackable secret-operator levert `minio-ca-bundle` als file-mount
+            # niet beschikbaar in een one-shot Job — we mounten 'm direct.
+            - name: AWS_CA_BUNDLE
+              value: /etc/s3-ca/ca.crt
+          volumeMounts:
+            - name: s3-ca
+              mountPath: /etc/s3-ca
+              readOnly: true
           command:
             - sh
             - -c
             - |
               set -e
-              mc alias set local https://minio:9000 "$ACCESS_KEY" "$SECRET_KEY" --insecure
-              # Maak het prefix aan via een placeholder. mc cp van /dev/null
-              # werkt niet — kleine echo-pipe in tmpfile.
+              # Default endpoint als de ConfigMap ontbreekt (k3d-bootstrap-tijd).
+              ENDPOINT="${AWS_ENDPOINT_URL:-https://seaweedfs-s3.uwv-platform.svc.cluster.local:8443}"
+              echo "Using S3 endpoint: ${ENDPOINT}"
               echo "spark-events directory marker (created by spark-events-prefix-init Job)" > /tmp/.keep
-              mc cp --insecure /tmp/.keep local/uwv-checkpoints/spark-events/.keep
+              aws --endpoint-url "${ENDPOINT}" s3api put-object \
+                --bucket uwv-checkpoints \
+                --key spark-events/.keep \
+                --body /tmp/.keep
               echo "OK: spark-events/.keep aanwezig"
+      volumes:
+        - name: s3-ca
+          secret:
+            secretName: minio-ca-bundle
+            items:
+              - key: ca.crt
+                path: ca.crt

@@ -1,0 +1,42 @@
+# k3d overlay for platform/03-storage.
+#
+# In k3d-mode draait SeaweedFS i.p.v. MinIO (zie ADR-0011 en
+# infrastructure/helm/seaweedfs/values.yaml). De S3Connection-naam
+# `s3-minio` blijft bewust ongewijzigd — alle Stackable consumers
+# (Hive, Trino, Spark, NiFi) refereren die naam in hun spec en hoeven
+# niet gemodificeerd. Alleen `host:` + `port:` wijzigen.
+#
+# CA-bundle: blijft via SecretClass `minio-ca` aangeboden — bootstrap.sh
+# vult die per mode met de juiste CA (SeaweedFS in k3d, MinIO in cloud).
+# Stackable consumers zien hetzelfde SecretClass-pickup-mechanisme.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../../platform/03-storage
+
+patches:
+  - target:
+      kind: S3Connection
+      name: s3-minio
+    patch: |-
+      - op: replace
+        path: /spec/host
+        value: seaweedfs-s3.uwv-platform.svc.cluster.local
+      - op: replace
+        path: /spec/port
+        value: 8443
+
+  # minio-tls-internal Certificate is irrelevant in k3d — SeaweedFS heeft
+  # zijn eigen `seaweedfs-s3-tls-internal` Certificate die bootstrap.sh
+  # rechtstreeks aanmaakt. Verwijder de MinIO-cert uit de overlay zodat
+  # cert-manager geen ongebruikt certificaat alloceert.
+  - target:
+      kind: Certificate
+      name: minio-tls-internal
+    patch: |-
+      $patch: delete
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: minio-tls-internal

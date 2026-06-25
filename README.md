@@ -15,7 +15,7 @@ met NORA, AVG, BIO/BIO2, NIS2 en de AI Act.
 
 Een Kubernetes-native lakehouse + analytics-stack:
 
-- **Storage**: MinIO (S3-compatible).
+- **Storage**: S3-compatible object store — **SeaweedFS** in k3d-mode (zie [ADR-0011](docs/adr/0011-seaweedfs-replaces-minio.md)), **MinIO** in aks/stackit (migratie naar SeaweedFS in follow-up).
 - **Tabelformaat**: Delta Lake (default voor deze implementatie — zie [ADR-0006](docs/adr/0006-delta-chosen-for-this-implementation.md)). Iceberg-pad blijft afgedekt via abstractie.
 - **Catalog backend**: Apache Hive Metastore (Postgres-backed).
 - **Ingestion**: file-source → Spark Structured Streaming → Delta op MinIO. NiFi/Kafka-flows zijn als template aanwezig ([`nifi-flows/templates/`](nifi-flows/templates/)) maar de bijbehorende Stackable-operators staan in deze release **uit** — UC-11 leest direct uit de S3 raw-zone.
@@ -129,7 +129,7 @@ Run 'make aks-context'.
 |---|---|
 | `platform-config.yaml` | Centrale configuratie. Wijzig `table_format` hier, niet elders. |
 | `docs/` | Architectuur, ADRs, use-case specs, compliance-mapping, runbook. |
-| `infrastructure/` | k3d-config, externe Helm-values (cert-manager, Keycloak, MinIO, Postgres, OpenMetadata), Stackable release-pinning. |
+| `infrastructure/` | k3d-config, externe Helm-values (cert-manager, Keycloak, SeaweedFS/MinIO, Postgres, OpenMetadata, oauth2-proxy), Stackable release-pinning. |
 | `platform/` | Kubernetes-manifests per laag (00-namespaces … 13-openmetadata-config). |
 | `dbt/` | dbt-project, models (staging/intermediate/marts/uc01..uc10), macros, tests. |
 | `data-generation/` | Synthetische data-generators (Python). |

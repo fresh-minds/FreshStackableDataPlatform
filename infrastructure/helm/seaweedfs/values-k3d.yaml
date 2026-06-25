@@ -1,0 +1,24 @@
+# SeaweedFS — k3d-specific overrides.
+#
+# k3d's enige storage-class is `local-path` (Rancher provisioner, host-bind
+# mount). Sizes zijn bewust ruim onder de 30Gi MinIO-default omdat
+# master/filer metadata maar een paar MB nemen; alleen de volume-server
+# heeft echt ruimte nodig voor de chunks.
+
+master:
+  data:
+    storageClass: "local-path"
+    size: 2Gi
+
+filer:
+  data:
+    storageClass: "local-path"
+    size: 5Gi
+
+volume:
+  dataDirs:
+    - name: data
+      type: "persistentVolumeClaim"
+      storageClass: "local-path"
+      size: 30Gi
+      maxVolumes: 0

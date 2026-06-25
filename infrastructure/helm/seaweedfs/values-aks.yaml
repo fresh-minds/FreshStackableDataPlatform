@@ -1,0 +1,16 @@
+# SeaweedFS — AKS-specific overrides.
+#
+# PLACEHOLDER — niet actief in deze branch.
+#
+# Per ADR-0010 vervangt deze PR MinIO door SeaweedFS *alleen in k3d-mode*.
+# AKS draait nog MinIO (zie infrastructure/helm/minio/values-aks.yaml).
+# Dit bestand bestaat zodat scripts/lib/mode.sh's `chart_value_args seaweedfs`
+# helper niet faalt op een ontbrekend values-aks.yaml als iemand `--mode=aks`
+# probeert met een lokaal-gepatchte bootstrap.sh.
+#
+# De follow-up PR (zie WORKLOG) vult dit in met:
+#   - storageClass: managed-csi (of managed-csi-premium voor hot-pad)
+#   - PVC sizes: 5Gi master / 10Gi filer / 200Gi+ volume
+#   - replicas: 3× volume + replication "010" voor rack-fault-tolerance
+#   - public ingress via infrastructure/azure/public-ingresses.yaml
+#   - CORS-origin: https://platform.eu-sovereigndataplatform.com

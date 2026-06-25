@@ -39,12 +39,14 @@ CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.16.2}"
 INGRESS_NGINX_VERSION="${INGRESS_NGINX_VERSION:-4.11.3}"
 POSTGRES_VERSION="${POSTGRES_VERSION:-16.0.6}"
 MINIO_VERSION="${MINIO_VERSION:-5.3.0}"
+SEAWEEDFS_VERSION="${SEAWEEDFS_VERSION:-4.29.0}"
 KEYCLOAK_VERSION="${KEYCLOAK_VERSION:-22.2.6}"
 PROM_VERSION="${PROM_VERSION:-65.5.1}"
 OPENSEARCH_VERSION="${OPENSEARCH_VERSION:-2.27.1}"
 OPENSEARCH_DASHBOARDS_VERSION="${OPENSEARCH_DASHBOARDS_VERSION:-2.26.0}"
 OPENMETADATA_VERSION="${OPENMETADATA_VERSION:-1.12.8}"
 VECTOR_VERSION="${VECTOR_VERSION:-0.36.1}"
+OAUTH2_PROXY_VERSION="${OAUTH2_PROXY_VERSION:-10.6.0}"
 
 # Voorvereisten check
 command -v helm >/dev/null     || error "helm niet gevonden"
@@ -90,6 +92,8 @@ helm repo add jetstack https://charts.jetstack.io >/dev/null
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null
 helm repo add bitnami https://charts.bitnami.com/bitnami >/dev/null
 helm repo add minio https://charts.min.io/ >/dev/null
+helm repo add seaweedfs https://seaweedfs.github.io/seaweedfs/helm >/dev/null
+helm repo add oauth2-proxy https://oauth2-proxy.github.io/manifests >/dev/null
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null
 helm repo add opensearch https://opensearch-project.github.io/helm-charts/ >/dev/null
 helm repo add open-metadata https://helm.open-metadata.org/ >/dev/null
@@ -234,14 +238,102 @@ helm upgrade --install postgres bitnami/postgresql \
   $(chart_value_args postgresql) \
   --atomic --wait --timeout 10m
 
-# 4b. MinIO TLS-secret voorbereiden (vóór helm install minio).
-# MinIO chart values pinnen `tls.certSecret: minio-tls-internal-fixed`,
-# verwachten keys public.crt + private.key. cert-manager produceert
-# tls.crt/tls.key. Daarom: maak Certificate, wacht op secret, re-key
-# met juiste keynamen.
-log "Prepare MinIO TLS secret via cert-manager"
+# 4b. Object-store TLS-secret voorbereiden (vóór helm install).
+#
+# Mode-conditional: in k3d gebruiken we SeaweedFS, in aks/stackit MinIO.
+# Zie ADR-0011 voor motivatie (MinIO repo gearchiveerd op GitHub) en
+# infrastructure/helm/seaweedfs/values.yaml voor de chart-config.
+#
+# Beide paden produceren:
+#   - in-cluster TLS cert voor de S3-endpoint (cert-manager Certificate)
+#   - Secret `minio-ca-bundle` met label secrets.stackable.tech/class=minio-ca
+#     (Stackable consumers leven via deze SecretClass — onveranderd per mode).
+log "Prepare object-store TLS secret via cert-manager (mode=${DEPLOYMENT_MODE})"
 kubectl create namespace uwv-platform --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-cat <<EOF | kubectl apply -f -
+
+if [[ "${IS_LOCAL}" == "yes" ]]; then
+  # ===== SeaweedFS branch (k3d) =====
+  cat <<EOF | kubectl apply -f -
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: seaweedfs-s3-tls-internal
+  namespace: uwv-platform
+spec:
+  secretName: seaweedfs-s3-tls-internal
+  issuerRef:
+    name: uwv-platform-issuer
+    kind: ClusterIssuer
+  commonName: seaweedfs-s3.uwv-platform.svc.cluster.local
+  dnsNames:
+    - seaweedfs-s3.uwv-platform.svc.cluster.local
+    - seaweedfs-s3.uwv-platform.svc
+    - seaweedfs-s3
+    - s3.${PLATFORM_DOMAIN}
+  duration: 8760h
+EOF
+  # Wacht tot het cert-manager-Secret bestaat. De seaweedfs chart leest
+  # tls.crt + tls.key uit dit Secret rechtstreeks (geen re-key nodig).
+  for i in {1..30}; do
+    kubectl -n uwv-platform get secret seaweedfs-s3-tls-internal >/dev/null 2>&1 && break
+    sleep 2
+  done
+
+  # CA-bundle voor Stackable S3Connection (Trino + Spark server-verify).
+  # SecretClass-naam blijft `minio-ca` (zie platform/03-storage/secretclass-minio-ca.yaml)
+  # zodat de k3d-overlay op s3connection-minio.yaml alleen `host:` + `port:`
+  # hoeft te patchen. Inhoud per mode anders (SeaweedFS CA in k3d, MinIO CA
+  # in aks/stackit) — Stackable consumers zien geen verschil.
+  TMPCA=$(mktemp); TMPCRT=$(mktemp); TMPKEY=$(mktemp)
+  kubectl -n uwv-platform get secret seaweedfs-s3-tls-internal -o jsonpath='{.data.ca\.crt}'  | base64 -d > "$TMPCA"
+  kubectl -n uwv-platform get secret seaweedfs-s3-tls-internal -o jsonpath='{.data.tls\.crt}' | base64 -d > "$TMPCRT"
+  kubectl -n uwv-platform get secret seaweedfs-s3-tls-internal -o jsonpath='{.data.tls\.key}' | base64 -d > "$TMPKEY"
+  kubectl -n uwv-platform create secret generic minio-ca-bundle \
+    --from-file=ca.crt="$TMPCA" \
+    --from-file=tls.crt="$TMPCRT" \
+    --from-file=tls.key="$TMPKEY" \
+    --dry-run=client -o yaml | \
+    sed 's|^metadata:|metadata:\n  labels:\n    secrets.stackable.tech/class: minio-ca|' | \
+    kubectl apply -f -
+
+  # SeaweedFS S3 identity-config. Format: JSON met `identities[].credentials[]`.
+  # We hergebruiken accessKey/secretKey uit `minio-s3-credentials` (zie
+  # platform/01-secrets/dev-secrets.yaml) zodat alle bestaande Stackable
+  # S3Connection-consumers onveranderd blijven werken.
+  log "Render seaweedfs-s3-config Secret from minio-s3-credentials"
+  # dev-secrets.yaml is nog niet toegepast op dit punt (gebeurt pas later in
+  # deze script), dus lees credentials uit het yaml-bestand zelf — niet uit
+  # de cluster.
+  S3_AK="$(awk '/^  accessKey:/ {gsub(/"/,""); print $2; exit}' "${ROOT}/platform/01-secrets/dev-secrets.yaml")"
+  S3_SK="$(awk '/^  secretKey:/ {gsub(/"/,""); print $2; exit}' "${ROOT}/platform/01-secrets/dev-secrets.yaml")"
+  if [[ -z "$S3_AK" || -z "$S3_SK" ]]; then
+    error "Kon accessKey/secretKey niet lezen uit dev-secrets.yaml — controleer minio-s3-credentials block."
+  fi
+  TMPS3=$(mktemp)
+  cat > "$TMPS3" <<EOF
+{
+  "identities": [
+    {
+      "name": "admin",
+      "credentials": [
+        { "accessKey": "${S3_AK}", "secretKey": "${S3_SK}" }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}
+EOF
+  kubectl -n uwv-platform create secret generic seaweedfs-s3-config \
+    --from-file=seaweedfs_s3_config="$TMPS3" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  rm -f "$TMPS3"
+  # $TMPCA / $TMPCRT / $TMPKEY blijven staan — de uwv-ca-bundle stap
+  # hieronder leest $TMPCA en het gemeenschappelijke `rm -f` aan het einde
+  # ruimt op. (Onveranderd t.o.v. MinIO-branch.)
+
+else
+  # ===== MinIO branch (aks/stackit) — onveranderd =====
+  cat <<EOF | kubectl apply -f -
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -260,31 +352,32 @@ spec:
     - minio.${PLATFORM_DOMAIN}
   duration: 8760h
 EOF
-# Wacht tot Secret bestaat
-for i in {1..30}; do
-  kubectl -n uwv-platform get secret minio-tls-internal >/dev/null 2>&1 && break
-  sleep 2
-done
-# Re-key naar de naam + sleutels die MinIO chart verwacht
-TMPCRT=$(mktemp); TMPKEY=$(mktemp); TMPCA=$(mktemp)
-kubectl -n uwv-platform get secret minio-tls-internal -o jsonpath='{.data.tls\.crt}' | base64 -d > "$TMPCRT"
-kubectl -n uwv-platform get secret minio-tls-internal -o jsonpath='{.data.tls\.key}' | base64 -d > "$TMPKEY"
-kubectl -n uwv-platform get secret minio-tls-internal -o jsonpath='{.data.ca\.crt}' | base64 -d > "$TMPCA"
-kubectl -n uwv-platform create secret generic minio-tls-internal-fixed \
-  --from-file=public.crt="$TMPCRT" --from-file=private.key="$TMPKEY" --from-file=ca.crt="$TMPCA" \
-  --dry-run=client -o yaml | kubectl apply -f -
-# CA-bundle voor S3Connection (Stackable Trino + Spark server-verify).
-# tls.crt + tls.key zijn ook nodig: Stackable secret-operator levert deze
-# in format `tls-pkcs12` (Spark eist PKCS12-truststore), wat een complete
-# keypair in de bron-secret vereist — anders faalt PVC-mount op
-# 'missing required file tls.crt'.
-kubectl -n uwv-platform create secret generic minio-ca-bundle \
-  --from-file=ca.crt="$TMPCA" \
-  --from-file=tls.crt="$TMPCRT" \
-  --from-file=tls.key="$TMPKEY" \
-  --dry-run=client -o yaml | \
-  sed 's|^metadata:|metadata:\n  labels:\n    secrets.stackable.tech/class: minio-ca|' | \
-  kubectl apply -f -
+  # Wacht tot Secret bestaat
+  for i in {1..30}; do
+    kubectl -n uwv-platform get secret minio-tls-internal >/dev/null 2>&1 && break
+    sleep 2
+  done
+  # Re-key naar de naam + sleutels die MinIO chart verwacht
+  TMPCRT=$(mktemp); TMPKEY=$(mktemp); TMPCA=$(mktemp)
+  kubectl -n uwv-platform get secret minio-tls-internal -o jsonpath='{.data.tls\.crt}' | base64 -d > "$TMPCRT"
+  kubectl -n uwv-platform get secret minio-tls-internal -o jsonpath='{.data.tls\.key}' | base64 -d > "$TMPKEY"
+  kubectl -n uwv-platform get secret minio-tls-internal -o jsonpath='{.data.ca\.crt}' | base64 -d > "$TMPCA"
+  kubectl -n uwv-platform create secret generic minio-tls-internal-fixed \
+    --from-file=public.crt="$TMPCRT" --from-file=private.key="$TMPKEY" --from-file=ca.crt="$TMPCA" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  # CA-bundle voor S3Connection (Stackable Trino + Spark server-verify).
+  # tls.crt + tls.key zijn ook nodig: Stackable secret-operator levert deze
+  # in format `tls-pkcs12` (Spark eist PKCS12-truststore), wat een complete
+  # keypair in de bron-secret vereist — anders faalt PVC-mount op
+  # 'missing required file tls.crt'.
+  kubectl -n uwv-platform create secret generic minio-ca-bundle \
+    --from-file=ca.crt="$TMPCA" \
+    --from-file=tls.crt="$TMPCRT" \
+    --from-file=tls.key="$TMPKEY" \
+    --dry-run=client -o yaml | \
+    sed 's|^metadata:|metadata:\n  labels:\n    secrets.stackable.tech/class: minio-ca|' | \
+    kubectl apply -f -
+fi
 # uwv-ca-bundle: initial bundle = UWV self-signed CA + public roots (Mozilla
 # bundle from curl.se/cacert.pem). Public roots are required so workloads
 # that point REQUESTS_CA_BUNDLE/SSL_CERT_FILE at /etc/uwv-ca/ca.crt (Airflow,
@@ -306,14 +399,38 @@ kubectl -n uwv-platform create configmap uwv-ca-bundle \
   --from-file=ca.crt="$TMPCOMBINED" >/dev/null
 rm -f "$TMPCRT" "$TMPKEY" "$TMPCA" "$TMPPUB" "$TMPCOMBINED"
 
-# 5. MinIO
-log "Install MinIO ${MINIO_VERSION}"
+# 5. Object-store install — SeaweedFS (k3d) of MinIO (aks/stackit).
 kubectl create namespace uwv-platform --dry-run=client -o yaml | kubectl apply -f -
-helm upgrade --install minio minio/minio \
-  --namespace uwv-platform \
-  --version "${MINIO_VERSION}" \
-  $(chart_value_args minio) \
-  --atomic --wait --timeout 10m
+if [[ "${IS_LOCAL}" == "yes" ]]; then
+  log "Install SeaweedFS ${SEAWEEDFS_VERSION}"
+  helm upgrade --install seaweedfs seaweedfs/seaweedfs \
+    --namespace uwv-platform \
+    --version "${SEAWEEDFS_VERSION}" \
+    $(chart_value_args seaweedfs) \
+    --wait --timeout 10m
+  # NB: niet --atomic. SeaweedFS chart's post-install bucket-hook draait pas
+  # NÁ de Helm-release "Succeeded"-state. --atomic zou bij rollback de hook
+  # killen voor bucket-creatie. Zonder --atomic: bij failure handmatige
+  # `helm uninstall seaweedfs` nodig — acceptabel voor k3d dev.
+  S3_ENDPOINT_URL="https://seaweedfs-s3.uwv-platform.svc.cluster.local:8443"
+else
+  log "Install MinIO ${MINIO_VERSION}"
+  helm upgrade --install minio minio/minio \
+    --namespace uwv-platform \
+    --version "${MINIO_VERSION}" \
+    $(chart_value_args minio) \
+    --atomic --wait --timeout 10m
+  S3_ENDPOINT_URL="https://minio.uwv-platform.svc.cluster.local:9000"
+fi
+
+# 5a. Mode-agnostic S3-endpoint ConfigMap. Consumed by spark-events-prefix-init
+# Job en (future) andere mode-onafhankelijke Jobs die direct tegen de S3-API
+# praten. Stackable consumers (Hive/Trino/Spark/etc.) lezen NIET hieruit —
+# die gaan via de S3Connection CR.
+log "Apply s3-endpoint-config ConfigMap (${S3_ENDPOINT_URL})"
+kubectl -n uwv-platform create configmap s3-endpoint-config \
+  --from-literal=endpoint="${S3_ENDPOINT_URL}" \
+  --dry-run=client -o yaml | kubectl apply -f -
 
 # 6. Prometheus + Grafana — moet vóór Keycloak, want Keycloak's chart
 # enabled=true op metrics.serviceMonitor referenceert de
@@ -671,6 +788,20 @@ else
   warn "Postgres-password niet gevonden in uwv-data — init-job kan ingestion-bot niet tot admin promoten"
 fi
 
+# 10b. oauth2-proxy voor de SeaweedFS Filer-UI (alleen k3d).
+# Beschermt http://seaweedfs-filer:8888 met Keycloak-SSO via de
+# `s3-browser` OIDC-client. Vereist dat het `s3-browser-oidc-client`
+# Secret bestaat (apply step 10 doet `kubectl apply -f dev-secrets.yaml`).
+if [[ "${IS_LOCAL}" == "yes" ]]; then
+  log "Install oauth2-proxy ${OAUTH2_PROXY_VERSION} (s3-browser front voor SeaweedFS Filer UI)"
+  helm upgrade --install s3-browser oauth2-proxy/oauth2-proxy \
+    --namespace uwv-platform \
+    --version "${OAUTH2_PROXY_VERSION}" \
+    $(chart_value_args oauth2-proxy) \
+    --wait --timeout 5m \
+    || warn "oauth2-proxy install faalde — s3-browser UI niet bereikbaar; SeaweedFS S3-API zelf is wel up."
+fi
+
 # 11. Vector (logs collector → OpenSearch)
 log "Install Vector ${VECTOR_VERSION} (Agent-mode op alle nodes)"
 helm upgrade --install vector vector/vector \
@@ -690,7 +821,12 @@ else
   port_suffix=""
 fi
 echo "  https://keycloak.${PLATFORM_DOMAIN}${port_suffix}      (kcadmin / dev-only-pw)"
-echo "  https://minio-console.${PLATFORM_DOMAIN}${port_suffix} (uwvadmin / dev-only-pw)"
+if [[ "${IS_LOCAL}" == "yes" ]]; then
+  echo "  https://s3.${PLATFORM_DOMAIN}${port_suffix}          (SeaweedFS S3 API; SigV4 met uwvadmin/dev-pw)"
+  echo "  https://s3-browser.${PLATFORM_DOMAIN}${port_suffix}  (filer-UI via oauth2-proxy/Keycloak)"
+else
+  echo "  https://minio-console.${PLATFORM_DOMAIN}${port_suffix} (uwvadmin / dev-only-pw)"
+fi
 echo "  https://grafana.${PLATFORM_DOMAIN}${port_suffix}       (admin / dev-only-pw)"
 echo "  https://openmetadata.${PLATFORM_DOMAIN}${port_suffix}  (admin / dev-only-pw)"
 echo

@@ -1,0 +1,219 @@
+# SeaweedFS — S3-compatible object store (vervangt MinIO in k3d-mode).
+#
+# Topologie: single-replica per component (mirror van huidige MinIO footprint).
+#   - master  (metadata, 1×)
+#   - filer   (POSIX-laag + leveldb metadata, 1×)
+#   - volume  (data-chunks, 1×)
+#   - s3      (dedicated S3-gateway pod, 1×) — NIET embedded in filer
+#
+# WAAROM dedicated s3-pod ipv filer.s3.enabled:
+#   - filer.s3 ondersteunt geen TLS aan de S3-endpoint (alleen HTTP).
+#   - filer.s3 publiceert poort 8333 niet op de filer Service (alleen
+#     containerPort op de pod) — vereist handmatige Service-patch.
+#   - top-level s3: heeft `tlsSecret`, eigen Service, eigen ingress,
+#     bucket-create hook, en `existingConfigSecret` voor SigV4-credentials.
+# Kostprijs: één extra pod (~50m CPU, 128Mi mem). Acceptabel.
+#
+# Trino 469+ vereist TLS voor S3 connections (zie minio/values.yaml regel 104),
+# dus HTTP-only valt af.
+#
+# Storage-class + PVC-size worden per-mode geoverride in
+# values-{k3d,aks,stackit}.yaml. Voor deze branch wordt SeaweedFS *alleen*
+# in k3d geïnstalleerd (zie ADR-0010); values-aks/stackit zijn placeholders
+# voor de follow-up PR die de cloud-modes migreert.
+#
+# Buckets worden door de chart aangemaakt via `s3.createBuckets` (post-install
+# Hook Job draait `weed shell` met `s3.bucket.create` calls). Geen aparte
+# Job nodig.
+#
+# Chart: seaweedfs/seaweedfs 4.29.0
+# Repo: https://seaweedfs.github.io/seaweedfs/helm
+
+# -------- Global --------
+global:
+  # Vereist voor s3.tlsSecret (chart's eigen guard). Genereert ook
+  # self-signed gRPC-certs voor master↔filer↔volume in-cluster comms.
+  # Cert-files worden in /etc/sw/security gemount.
+  enableSecurity: true
+  monitoring:
+    enabled: false   # ServiceMonitor pas aan na prometheus-stack health-check
+  imagePullPolicy: IfNotPresent
+  imageName: chrislusf/seaweedfs
+  # imageTag pinnen we niet hier; chart's appVersion stuurt 'm.
+
+# -------- Master --------
+# Coördineert volume-allocaties + filer-registratie. Géén bulk data —
+# alleen een kleine PVC voor topology-state.
+master:
+  enabled: true
+  replicas: 1
+  port: 9333
+  grpcPort: 19333
+
+  data:
+    type: "persistentVolumeClaim"
+    # storageClass + size: per-mode override (zie values-k3d.yaml).
+  logs:
+    type: "emptyDir"   # stdout → Vector picks up
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi
+
+# -------- Volume --------
+# Data-storage layer. Single-replica = geen replication ("000").
+# Voor cloud-modes (follow-up PR): replicas: 3 + replication: "010" overwegen.
+volume:
+  enabled: true
+  replicas: 1
+  port: 8080
+  grpcPort: 18080
+
+  # dataDirs: lijst van PVCs voor chunk-storage. Eén dir.
+  dataDirs:
+    - name: data
+      type: "persistentVolumeClaim"
+      # storageClass + size: per-mode override
+      maxVolumes: 0
+
+  # SeaweedFS notatie: <datacenter><rack><replicas>. "000" = geen replica.
+  replication: "000"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# -------- Filer --------
+# POSIX-laag bovenop volume. Bewaart filer-metadata in een embedded leveldb
+# (chart default — WEED_LEVELDB2_ENABLED=true). De ingebedde S3-gateway
+# (`filer.s3`) blijft UIT — we draaien S3 als losse Deployment hieronder
+# i.v.m. TLS-support (zie top-level header).
+filer:
+  enabled: true
+  replicas: 1
+  port: 8888
+  grpcPort: 18888
+
+  data:
+    type: "persistentVolumeClaim"
+    # storageClass + size: per-mode override
+  enablePVC: true
+
+  logs:
+    type: "emptyDir"
+
+  # Bucket-mapping folder in de filer FS. Default; expliciet maken voor
+  # leesbaarheid.
+  extraEnvironmentVars:
+    WEED_FILER_BUCKETS_FOLDER: "/buckets"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+  # Embedded S3 — UIT (we gebruiken top-level s3 voor TLS).
+  s3:
+    enabled: false
+
+# -------- S3 gateway (dedicated pod) --------
+# Standalone S3-API endpoint met TLS, ingress, en bucket-auto-create.
+# Praat over gRPC met de filer voor object-storage; auth via een
+# `seaweedfs_s3_config`-JSON in een vooraf-aangemaakte Secret.
+s3:
+  enabled: true
+  replicas: 1
+  port: 8333
+  httpsPort: 8443
+  metricsPort: 9327
+
+  # TLS aan de S3-endpoint. Secret moet keys `tls.crt` + `tls.key` bevatten
+  # (standaard cert-manager output). bootstrap.sh maakt de Certificate
+  # `seaweedfs-s3-tls-internal` met DNS-names:
+  #   - s3.uwv-platform.svc.cluster.local
+  #   - s3.uwv-platform.svc
+  #   - s3
+  #   - s3.${PLATFORM_DOMAIN}
+  # Zie Phase 2 van het migratie-plan.
+  tlsSecret: "seaweedfs-s3-tls-internal"
+
+  # === Auth ===
+  # SeaweedFS S3 gebruikt SigV4 met statische access/secret-keys (geen OIDC;
+  # dat is MinIO-specifiek voor het web-console). Identiteiten komen uit
+  # een JSON-config in een Secret met key `seaweedfs_s3_config`.
+  # bootstrap.sh bouwt deze Secret (`seaweedfs-s3-config`) op uit
+  # `minio-s3-credentials.{accessKey,secretKey}` zodat ALLE bestaande
+  # Stackable S3Connection-consumers (Trino/Hive/Spark/etc.) onveranderd
+  # blijven werken — alleen het S3Connection.host: veld wijzigt per mode.
+  enableAuth: true
+  existingConfigSecret: "seaweedfs-s3-config"
+
+  # === Buckets ===
+  # Chart's post-install Hook Job (`weed shell` met s3.bucket.create) draait
+  # deze lijst af. Idempotent — bestaande buckets worden gerespecteerd.
+  # Namen identiek aan MinIO buckets (zie infrastructure/helm/minio/values.yaml).
+  createBuckets:
+    - name: uwv-raw
+    - name: uwv-bronze
+    - name: uwv-silver
+    - name: uwv-gold
+    - name: uwv-sensitive
+    - name: uwv-staging
+    - name: uwv-checkpoints
+    - name: uwv-meta
+
+  # === Service ===
+  service:
+    type: ClusterIP
+
+  # === Ingress ===
+  # Browser/portal-access naar de S3-API via https://s3.${PLATFORM_DOMAIN}.
+  #
+  # TLS-model:
+  #   - browser ⇄ ingress: HTTPS met cert-manager cert (uwv-platform-issuer)
+  #   - ingress ⇄ s3-pod : HTTP op 8333 (chart hardcodet backend-port hierop)
+  #   - in-cluster consumers (Trino/Hive/Spark) gaan NIET via ingress — die
+  #     hitten direct `seaweedfs-s3.uwv-platform.svc:8443` met TLS via
+  #     s3.tlsSecret (zie hierboven).
+  #
+  # Dus GEEN backend-protocol: HTTPS annotation — die zou nginx een TLS-
+  # handshake op de HTTP-port (8333) doen forceren = connection-reset.
+  # Voor end-to-end TLS via ingress: aparte handgeschreven Ingress die
+  # poort 8443 target (overweegt voor cloud-modes follow-up).
+  ingress:
+    enabled: true
+    className: "nginx"
+    host: "s3.uwv-platform.local"
+    path: "/"
+    pathType: Prefix
+    annotations:
+      cert-manager.io/cluster-issuer: uwv-platform-issuer
+      # S3 PUTs zijn potentieel groot (CSV-uploads, parquet-files); bump
+      # nginx body-size ruim boven de portal's 100 MiB upload-cap.
+      nginx.ingress.kubernetes.io/proxy-body-size: "500m"
+    tls:
+      - hosts: [s3.uwv-platform.local]
+        secretName: seaweedfs-s3-ingress-tls
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi
+
+  # Logs naar stdout (geen losse PVC).
+  logs:
+    type: "emptyDir"

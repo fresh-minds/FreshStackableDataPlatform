@@ -35,3 +35,4 @@ resources:
   - allow-dns-egress-coredns-8053.yaml
   - allow-acme-solver.yaml
   - allow-from-ingress-nginx.yaml
+  - allow-intra-namespace.yaml

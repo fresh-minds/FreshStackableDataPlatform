@@ -1136,6 +1136,10 @@ title: Security Policy
 _(SECURITY.md niet gevonden in repo-root — voeg toe en regenereer.)_
 """
     body = security_path.read_text(encoding="utf-8")
+    # SECURITY.md leeft in de repo-root en linkt naar `docs/<x>.md` (correct voor
+    # GitHub-browse). In de gegenereerde docs/security.md zou dat docs/docs/<x>.md
+    # worden — herschrijf `](docs/` → `](` zodat de links binnen de site kloppen.
+    body = body.replace("](docs/", "](")
     return f"""---
 title: Security Policy
 description: Hoe kwetsbaarheden te rapporteren — NIS2-compliant disclosure flow.

@@ -106,8 +106,8 @@ We crediten de melder in de advisory tenzij anders gevraagd.
 ## Bekende beperkingen (intentioneel)
 
 Deze repo is een **dev-referentie**, niet productie-klaar. Items in
-[`docs/runbook.md` § 11](docs/runbook.md) en
-[`docs/improvements.md`](docs/improvements.md) zijn bekende gaps en geen
+[`docs/runbook.md` § 11](runbook.md) en
+[`docs/improvements.md`](improvements.md) zijn bekende gaps en geen
 nieuwe vulnerabilities:
 
 - Plaintext dev-secrets in `dev-secrets.yaml` (banner aanwezig)
@@ -128,6 +128,6 @@ Deze policy ondersteunt:
 - **R-BIO-15** Vulnerability management
 - **R-BIO-17** Secure SDLC
 
-Zie [`docs/compliance-mapping.md`](docs/compliance-mapping.md) voor de
+Zie [`docs/compliance-mapping.md`](compliance-mapping.md) voor de
 volledige mapping.
 

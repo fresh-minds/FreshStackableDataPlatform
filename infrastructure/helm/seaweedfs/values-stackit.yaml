@@ -1,0 +1,15 @@
+# SeaweedFS — StackIT SKE-specific overrides.
+#
+# PLACEHOLDER — niet actief in deze branch.
+#
+# Per ADR-0010 vervangt deze PR MinIO door SeaweedFS *alleen in k3d-mode*.
+# StackIT draait nog MinIO (zie infrastructure/helm/minio/values-stackit.yaml).
+# Dit bestand bestaat zodat scripts/lib/mode.sh's `chart_value_args seaweedfs`
+# helper niet faalt op een ontbrekend values-stackit.yaml.
+#
+# De follow-up PR vult dit in met:
+#   - storageClass: premium-perf6-stackit (perf-tier matchend met MinIO-vandaag)
+#   - PVC sizes: 5Gi master / 10Gi filer / 200Gi+ volume
+#   - replicas: 3× volume + replication "010"
+#   - public ingress via infrastructure/stackit/public-ingresses.yaml
+#   - CORS-origin: https://platform.freshstackable.com

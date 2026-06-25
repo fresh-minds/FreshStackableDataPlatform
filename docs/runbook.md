@@ -22,7 +22,7 @@ Zie [`README.md`](../README.md) voor de happy-path commands.
 ```bash
 # Lokaal (k3d):
 make cluster MODE=k3d       # k3d cluster create + kubeconfig
-make bootstrap MODE=k3d     # cert-manager, MinIO, Postgres, Keycloak, Stackable operators
+make bootstrap MODE=k3d     # cert-manager, SeaweedFS (k3d) / MinIO (cloud), Postgres, Keycloak, Stackable operators
 make deploy-platform MODE=k3d
 
 # Azure (aks):
@@ -232,19 +232,28 @@ kubectl -n uwv-auth exec sts/keycloak -- /opt/keycloak/bin/kc.sh \
   import --file /tmp/uwv-realm-20260520.json
 ```
 
-### 5.3 MinIO (lakehouse objects)
+### 5.3 Object store (lakehouse objects)
 
-MinIO holds de echte data (Delta-tables, raw JSONL, dbt-artefacts).
-Voor k3d / single-node MinIO is er **geen ingebouwde snapshot** — dump
+De object-store houdt de echte data (Delta-tables, raw JSONL, dbt-artefacts).
+**Per mode anders** (zie [ADR-0011](adr/0011-seaweedfs-replaces-minio.md)):
+- **k3d**    → SeaweedFS (single-replica master+filer+volume+s3)
+- **aks/stackit** → MinIO (single-node — follow-up: migreer naar SeaweedFS)
+
+Voor single-node deployments is er **geen ingebouwde snapshot** — dump
 strategieën:
 
-- **`mc mirror`** naar een externe S3-bucket (cron of CronJob, dagelijks):
+- **`aws s3 sync` of `rclone`** naar een externe S3-bucket (cron/CronJob).
+  Werkt tegen beide backends:
   ```bash
-  mc mirror --remove --watch local/uwv-bronze backup/uwv-bronze
+  # Beide nemen ENDPOINT + access/secret. SeaweedFS:
+  aws --endpoint-url https://s3.uwv-platform.local:8443 s3 sync \
+      s3://uwv-bronze /backup/uwv-bronze
+  # MinIO (cloud-modes): zelfde commando, andere endpoint.
   ```
 - **Velero + restic** voor volledige cluster-volume backup (zie §5.4).
-- **Productie**: switch MinIO naar distributed mode (`replicas: 4`,
-  erasure coding) en pas Object Lock toe voor immutable retention —
+- **Productie**: switch naar distributed mode (`volume.replicas: 3` +
+  `replication: "010"` voor SeaweedFS, of MinIO distributed `replicas: 4`
+  met EC). Beide kunnen Object Lock toepassen voor immutable retention —
   dat lost backup ÉN audit-onveranderbaarheid op (R-AVG-15).
 
 ### 5.4 Cluster-state (kubernetes objects)
