@@ -1,0 +1,318 @@
+# =============================================================================
+# Example data contract — the "RLO of the future" for FreshStackableDataPlatform
+# -----------------------------------------------------------------------------
+# Format : Open Data Contract Standard (ODCS) v3.1.0  — Bitol / LF AI & Data
+# Source : polisadm  (Polisadministratie — IKV per persoon)
+# Dataset: silver.polisadm.stg_polisadm_ikv
+#
+# This ONE file replaces the manual Dutch RLO Excel. It is the single authoritative
+# declaration of the dataset. Every downstream artifact in the platform is GENERATED
+# from it (see generated-from-contract.md):
+#   - platform/11-airflow/sources/polisadm.yml   (Airflow SourceSpec)
+#   - Spark bronze read/validate schema
+#   - dbt _sources.yml + _stg_polisadm.yml + stg_polisadm_ikv.sql (contract:enforced)
+#   - OpenMetadata classifications / glossary links / DQ
+#   - OPA column-masks + sensitive_columns + resource_purposes  (Trino enforcement)
+#   - retention / bewaartermijn config
+#
+# Mapping of the OLD RLO Excel columns -> ODCS is called out per property with
+# `# RLO:` comments. UWV-specific governance (doelbinding, legal_basis, BIO,
+# bewaartermijn) and GDPR anonymisation strategy live in `customProperties`,
+# which is exactly what ODCS reserves them for.
+# =============================================================================
+
+apiVersion: v3.1.0
+kind: DataContract
+id: urn:uwv:datacontract:polisadm:ikv
+name: Polisadministratie - IKV
+version: 1.0.0
+status: active
+
+# --- Ownership & placement (medallion + domain) ------------------------------
+domain: polisadm
+dataProduct: polisadm-ikv
+tenant: uwv
+
+description:
+  purpose: >
+    Inkomstenverhoudingen (IKV) per persoon uit de Polisadministratie — de
+    kerneenheid die dienstverbanden, werkgever en bruto jaarloon vastlegt.
+    Anchor-afhankelijk van de persoon-BSN-set.
+  usage: >
+    Primair proces (uitkeringsvaststelling WW/WIA/ZW) en kwaliteitscontrole.
+    Consumers lezen de SILVER-vorm; bronze is de ruwe JSON-envelope en is niet
+    voor direct gebruik.
+  limitations: >
+    Uitsluitend synthetische data. Bevat BSN en loonheffingennummer (PII).
+    Toegang is doelgebonden (zie roles + customProperties.doelbinding).
+
+# --- Physical servers (where the contract's data lives) ----------------------
+servers:
+  - server: silver-trino
+    type: trino
+    catalog: silver
+    schema: polisadm
+    description: Conformed/pseudonymised silver zone, queried via Trino (v477).
+  - server: bronze-delta
+    type: delta
+    catalog: bronze
+    schema: uwv
+    description: Raw JSON envelope landed by Spark Structured Streaming (PII in clear).
+
+# =============================================================================
+# SCHEMA — the conformed SILVER shape consumers depend on.
+# This is the heart of the old RLO: one row per attribute, now machine-checkable.
+# =============================================================================
+schema:
+  - name: stg_polisadm_ikv
+    physicalName: stg_polisadm_ikv
+    physicalType: view
+    logicalType: object
+    description: IKV's per persoon — kerneenheid polisadministratie.
+    # bronze counterpart carries the raw envelope; silver is the contract surface.
+    dataGranularityDescription: Eén rij per inkomstenverhouding (IKV) per persoon.
+
+    properties:
+      # ---------------------------------------------------------------------
+      - name: ikv_id
+        # RLO: "Attribuut (technisch)" = ikv_id | "PK" = 1 | "Verplicht" = ja
+        logicalType: string
+        physicalType: VARCHAR
+        description: Unieke IKV-id (synthetisch).
+        required: true
+        unique: true
+        primaryKey: true
+        primaryKeyPosition: 1
+        criticalDataElement: true
+        classification: internal
+        quality:
+          - rule: not_null
+          - rule: unique
+
+      # ---------------------------------------------------------------------
+      - name: bsn
+        # RLO: "PII" = ja | "Vereiste maskering" = BSN-masker | FK -> persona.bsn
+        logicalType: string
+        physicalType: VARCHAR
+        description: BSN van werknemer (FK naar stg_persona.bsn).
+        required: true
+        classification: pii            # ODCS classification -> OM PII.* tag + OPA mask
+        criticalDataElement: true
+        logicalTypeOptions:
+          minLength: 9
+          maxLength: 9
+          pattern: '^[0-9]{9}$'
+        tags: [pii, bsn, identifier]
+        # --- UWV / GDPR extensions (drive OPA + OpenMetadata + pseudonymize) ---
+        customProperties:
+          - property: piiCategory          # -> OpenMetadata PII.Sensitive
+            value: direct_identifier
+          - property: dataSubject           # GoCardless-style subject mapping
+            value: werknemer
+          - property: maskingStrategy        # -> OPA columnMask expression
+            value: partial_last3            # concat('XXXXXX', substr(bsn,7,3))
+          - property: anonymizationStrategy  # -> dbt pseudonymize() into sensitive.*
+            value: sha256_salted_pseudonym
+          - property: sensitiveColumn        # -> uwv_role_mappings.sensitive_columns
+            value: true
+          - property: capabilityRequired     # OPA capability to see cleartext
+            value: can_see_pii
+        quality:
+          - rule: not_null
+          - rule: bsn_valid                 # custom dbt test test_bsn_valid.sql (elfproef)
+          - rule: relationships
+            description: FK naar stg_persona.bsn
+            properties: [bsn]
+            # to: ref('stg_persona'); field: bsn
+
+      # ---------------------------------------------------------------------
+      - name: lh_nummer
+        # RLO: "PII" = ja | length 12 | "Vereiste maskering" = pseudonimiseer
+        logicalType: string
+        physicalType: VARCHAR
+        description: Loonheffingennummer (9 cijfers + L + 2 cijfers).
+        required: true
+        classification: pii
+        criticalDataElement: true
+        logicalTypeOptions:
+          minLength: 12
+          maxLength: 12
+          pattern: '^[0-9]{9}L[0-9]{2}$'
+        tags: [pii, identifier]
+        customProperties:
+          - property: piiCategory
+            value: indirect_identifier
+          - property: dataSubject
+            value: werkgever
+          - property: maskingStrategy
+            value: 'null'                   # non-authorised roles see NULL
+          - property: anonymizationStrategy
+            value: sha256_salted_pseudonym
+          - property: sensitiveColumn
+            value: true
+          - property: capabilityRequired
+            value: can_see_pii
+        quality:
+          - rule: not_null
+          - rule: lh_nummer_valid           # custom dbt test test_lh_nummer_valid.sql
+
+      # ---------------------------------------------------------------------
+      - name: werkgever_naam
+        # RLO: "Omschrijving" = Werkgever | not PII (organisatie, geen persoon)
+        logicalType: string
+        physicalType: VARCHAR
+        description: Werkgever (Faker).
+        required: false
+        classification: confidential
+        logicalTypeOptions:
+          maxLength: 200
+
+      # ---------------------------------------------------------------------
+      - name: aanvang_dienstverband
+        logicalType: date
+        physicalType: DATE
+        description: Aanvangsdatum dienstverband.
+        required: true
+        classification: internal
+        quality:
+          - rule: not_null
+
+      # ---------------------------------------------------------------------
+      - name: einde_dienstverband
+        logicalType: date
+        physicalType: DATE
+        description: Einddatum dienstverband (NULL = lopend).
+        required: false
+        classification: internal
+
+      # ---------------------------------------------------------------------
+      - name: loon_bruto_jaar
+        # RLO: length/precision lived only in the SQL cast before — now declared
+        logicalType: integer
+        physicalType: INTEGER
+        description: Bruto jaarloon in EUR.
+        required: true
+        classification: confidential
+        logicalTypeOptions:
+          minimum: 0
+          maximum: 500000
+        tags: [financieel]
+        quality:
+          - rule: not_null
+          - rule: accepted_range            # dbt_utils.accepted_range 0..500000
+            properties: [loon_bruto_jaar]
+
+      # ---------------------------------------------------------------------
+      - name: is_lopend
+        logicalType: boolean
+        physicalType: BOOLEAN
+        description: True als einde_dienstverband NULL is (afgeleid).
+        required: true
+        classification: internal
+        customProperties:
+          - property: derivation
+            value: "einde_dienstverband IS NULL"
+
+      # ---------------------------------------------------------------------
+      - name: ingestion_source_ts
+        logicalType: date
+        physicalType: TIMESTAMP
+        description: Bron-timestamp op moment van ingestie (lineage/audit).
+        required: true
+        classification: internal
+
+      # ---------------------------------------------------------------------
+      - name: event_date
+        logicalType: date
+        physicalType: DATE
+        description: Partitiekolom (bronze partition_by).
+        required: true
+        classification: internal
+        partitioned: true
+
+# =============================================================================
+# QUALITY — dataset-level expectations (SLA-adjacent, checked post-ingest)
+# =============================================================================
+quality:
+  - rule: row_count
+    description: Verwacht > 0 rijen per dagpartitie.
+    mustBeGreaterThan: 0
+  - rule: freshness
+    description: max_acceptable_lag conform SLA.
+    property: ingestion_source_ts
+
+# =============================================================================
+# SLA — bron-typering (mirrors the SourceSpec `sla:` block)
+# =============================================================================
+slaProperties:
+  - property: mode
+    value: streaming
+  - property: expected_event_freq
+    value: continuous
+  - property: max_acceptable_lag_seconds
+    value: 120
+  - property: alert_threshold_seconds
+    value: 300
+
+# =============================================================================
+# ROLES — who may access, under which purpose (doelbinding) — drives OPA
+# =============================================================================
+roles:
+  - role: data_steward_polisadm
+    access: read-write
+    description: Eigenaar/steward; DQ + lineage. Ziet PII voor controle.
+  - role: uitkeringsspecialist
+    access: read
+    description: Primair proces; doelbinding = primair_proces.
+    customProperties:
+      - property: doelbinding
+        value: primair_proces
+  - role: nanitics_observer
+    access: read
+    description: Alleen aggregaten; geen PII/medisch (column-masks actief).
+
+team:
+  - username: data_steward_polisadm
+    role: owner
+  - username: data_office_uwv
+    role: governance
+
+support:
+  - channel: '#data-polisadm'
+    tool: slack
+    scope: interactive
+
+# =============================================================================
+# CUSTOM PROPERTIES — UWV governance block (the SourceSpec `governance:` block,
+# now the authoritative copy). Drives dbt meta:, OpenMetadata tags, OPA purposes,
+# and retention. This is the single place these values are declared.
+# =============================================================================
+customProperties:
+  - property: schema_version
+    value: 1
+  - property: legal_basis
+    value: Wet_SUWI+Wfsv          # -> LegalBasis.* tag in OpenMetadata
+  - property: doelbinding
+    value: [primair_proces, kwaliteitscontrole]   # -> Doelbinding.* -> OPA resource_purposes
+  - property: bio_classificatie
+    value: vertrouwelijk          # -> BIO.* tag; drives confidentiality
+  - property: bewaartermijn_jaren
+    value: 30                     # -> retention / RTBF policy
+  - property: eigenaar
+    value: data_steward_polisadm
+  - property: risk_tier
+    value: laag
+  - property: anchor
+    value: false
+  - property: used_by_use_cases
+    value: [uc04, uc05, uc10]
+  - property: cgm_entiteiten       # canonical model linkage (glossary-cgm.yaml)
+    value: [Polisadministratie, Inkomstenverhouding]
+
+# --- Provenance --------------------------------------------------------------
+# authoritativeDefinitions point back to the human-readable sources of truth.
+authoritativeDefinitions:
+  - url: https://wetten.overheid.nl/BWBR0013060   # Wet SUWI
+    type: businessDefinition
+  - url: platform/13-openmetadata-config/glossary-cgm.yaml
+    type: businessDefinition
