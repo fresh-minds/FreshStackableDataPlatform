@@ -157,3 +157,57 @@ test_uc11_event_label_visible_for_wia_beoordelaar if {
 		},
 	}
 }
+
+# --- H3: naam/adres-PII gemaskeerd voor rollen zonder can_see_pii -------
+
+# crm_medewerker (can_see_pii=false) → voornaam NULL (was cleartext leak).
+test_voornaam_masked_for_crm_medewerker if {
+	mask := columnMask with input as {
+		"context": {"identity": {"user": "crm.medewerker", "groups": ["crm_medewerker"]}},
+		"action": {"operation": "SelectFromColumns", "resource": {"column": {
+			"catalogName": "gold", "schemaName": "uc05_client_360",
+			"tableName": "mart_uc05_client_360", "columnName": "voornaam",
+		}}},
+	}
+	mask.expression == "NULL"
+}
+
+# wia_beoordelaar (can_see_pii=true) → voornaam cleartext.
+test_voornaam_unmasked_for_wia_beoordelaar if {
+	columnMask == {} with input as {
+		"context": {"identity": {"user": "wia.beoordelaar", "groups": ["wia_beoordelaar"]}},
+		"action": {"operation": "SelectFromColumns", "resource": {"column": {
+			"catalogName": "silver", "schemaName": "wia",
+			"tableName": "aanvraag", "columnName": "voornaam",
+		}}},
+	}
+}
+
+# --- C3: batchColumnMasks (Trino 477+ pad) -----------------------------
+
+# Masks worden per kolom-index toegepast; niet-gevoelige kolommen krijgen
+# geen entry (worden overgeslagen).
+test_batch_column_masks_applied if {
+	result := batchColumnMasks with input as {
+		"context": {"identity": {"user": "crm.medewerker", "groups": ["crm_medewerker"]}},
+		"action": {
+			"operation": "FilterColumns",
+			"filterResources": [
+				{"column": {"catalogName": "gold", "schemaName": "uc05_client_360", "tableName": "mart_uc05_client_360", "columnName": "bsn"}},
+				{"column": {"catalogName": "gold", "schemaName": "uc05_client_360", "tableName": "mart_uc05_client_360", "columnName": "iban"}},
+				{"column": {"catalogName": "gold", "schemaName": "uc05_client_360", "tableName": "mart_uc05_client_360", "columnName": "regio_code"}},
+			],
+		},
+	}
+	count(result) == 2
+	{"index": 0, "viewExpression": {"expression": "concat('XXXXX', substr(bsn, 6, 4))"}} in result
+	{"index": 1, "viewExpression": {"expression": "'NLxx XXXX XXXX XXXX'"}} in result
+}
+
+# Lege input → lege array (geen regressie t.o.v. de oude default).
+test_batch_column_masks_empty_without_resources if {
+	batchColumnMasks == [] with input as {
+		"context": {"identity": {"user": "crm.medewerker", "groups": ["crm_medewerker"]}},
+		"action": {"operation": "SelectFromColumns"},
+	}
+}
