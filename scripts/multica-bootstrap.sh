@@ -41,6 +41,19 @@ DEPLOY_NAME="${DEPLOY_NAME:-nanitics-observatory}"
 TOKEN=""
 SKIP_ROLLOUT="${SKIP_ROLLOUT:-0}"
 
+# TLS verification (secure by default).
+#   CA_BUNDLE=/path/to/ca.crt   -> verify against a custom CA (self-signed dev cert)
+#   INSECURE=1                  -> explicit opt-in to skip verification (NOT default)
+CA_BUNDLE="${CA_BUNDLE:-}"
+INSECURE="${INSECURE:-0}"
+CURL_TLS_OPTS=()
+if [[ -n "$CA_BUNDLE" ]]; then
+  CURL_TLS_OPTS+=(--cacert "$CA_BUNDLE")
+fi
+if [[ "$INSECURE" == "1" ]]; then
+  CURL_TLS_OPTS+=(--insecure)
+fi
+
 usage() {
   cat <<EOF
 Usage: $(basename "$0") [--workspace SLUG] [--token mul_…] [--skip-rollout] [--help]
@@ -86,7 +99,7 @@ fi
 [[ -z "$TOKEN" ]] && fail "could not obtain a Multica PAT. Provide one via --token, MULTICA_API_TOKEN env, or by provisioning Secret 'nanitics-multica-token' in $NAMESPACE."
 
 # Quick auth sanity-check.
-auth_status=$(curl -ksS -o /dev/null -w "%{http_code}" "$MULTICA_URL/api/runtimes?workspace_slug=__nope__" -H "Authorization: Bearer $TOKEN" 2>/dev/null || echo 000)
+auth_status=$(curl -sS ${CURL_TLS_OPTS[@]+"${CURL_TLS_OPTS[@]}"} -o /dev/null -w "%{http_code}" "$MULTICA_URL/api/runtimes?workspace_slug=__nope__" -H "Authorization: Bearer $TOKEN" 2>/dev/null || echo 000)
 case "$auth_status" in
   401|403) fail "Multica rejected the PAT (HTTP $auth_status). Mint a fresh token in Settings → API Tokens." ;;
   000)     fail "Multica unreachable at $MULTICA_URL. Check ingress + /etc/hosts." ;;
@@ -95,7 +108,7 @@ ok "PAT accepted by Multica (probe returned HTTP $auth_status)."
 
 # ---- 2. ensure workspace ----------------------------------------------
 log "ensuring workspace '$WORKSPACE_SLUG' exists"
-ws_list=$(curl -ksS "$MULTICA_URL/api/workspaces" -H "Authorization: Bearer $TOKEN")
+ws_list=$(curl -sS ${CURL_TLS_OPTS[@]+"${CURL_TLS_OPTS[@]}"} "$MULTICA_URL/api/workspaces" -H "Authorization: Bearer $TOKEN")
 ws_id=$(printf '%s' "$ws_list" | python3 -c "
 import json, sys
 slug = sys.argv[1]
@@ -110,7 +123,7 @@ if [[ -n "$ws_id" ]]; then
 else
   log "creating workspace '$WORKSPACE_SLUG'"
   payload=$(python3 -c "import json,sys; print(json.dumps({'name':sys.argv[1],'slug':sys.argv[2],'description':'Platform-watcher issue queue. Issues filed automatically by the in-cluster watcher; humans approve, the daemon claims, codex executes.'}))" "$WORKSPACE_NAME" "$WORKSPACE_SLUG")
-  ws_id=$(curl -ksS -X POST "$MULTICA_URL/api/workspaces" \
+  ws_id=$(curl -sS ${CURL_TLS_OPTS[@]+"${CURL_TLS_OPTS[@]}"} -X POST "$MULTICA_URL/api/workspaces" \
            -H "Authorization: Bearer $TOKEN" \
            -H 'Content-Type: application/json' \
            --data-binary "$payload" \
@@ -121,7 +134,7 @@ fi
 
 # ---- 3. seed labels ---------------------------------------------------
 log "seeding standard label set in '$WORKSPACE_SLUG'"
-existing=$(curl -ksS "$MULTICA_URL/api/labels?workspace_id=$ws_id" \
+existing=$(curl -sS ${CURL_TLS_OPTS[@]+"${CURL_TLS_OPTS[@]}"} "$MULTICA_URL/api/labels?workspace_id=$ws_id" \
               -H "Authorization: Bearer $TOKEN" \
             | python3 -c "import json,sys; d=json.load(sys.stdin); print('\n'.join(l['name'] for l in d.get('labels',[])))" 2>/dev/null || echo "")
 
@@ -150,7 +163,7 @@ for pair in "${LABEL_PAIRS[@]}"; do
     continue
   fi
   payload=$(python3 -c "import json,sys; print(json.dumps({'name':sys.argv[1],'color':sys.argv[2]}))" "$name" "$color")
-  resp=$(curl -ksS -X POST "$MULTICA_URL/api/labels?workspace_slug=$WORKSPACE_SLUG" \
+  resp=$(curl -sS ${CURL_TLS_OPTS[@]+"${CURL_TLS_OPTS[@]}"} -X POST "$MULTICA_URL/api/labels?workspace_slug=$WORKSPACE_SLUG" \
            -H "Authorization: Bearer $TOKEN" \
            -H 'Content-Type: application/json' \
            --data-binary "$payload")

@@ -28,6 +28,8 @@ KC_REALM="${KC_REALM:-uwv}"
 KC_ADMIN_USER="${KC_ADMIN_USER:-kcadmin}"
 KC_ADMIN_PW_SECRET="${KC_ADMIN_PW_SECRET:-keycloak}"
 KC_SVC="${KC_SVC:-keycloak}"
+# Dev default keeps k3d working; override via MULTICA_KC_SECRET for cloud.
+CLIENT_SECRET="${MULTICA_KC_SECRET:-uwv-dev-only-CHANGE-ME-multica-secret}"
 
 # Fetch admin password
 ADMIN_PW=$(kubectl -n "$KC_NAMESPACE" get secret "$KC_ADMIN_PW_SECRET" \
@@ -69,7 +71,7 @@ if echo "$EXISTING" | grep -q '"clientId":"multica"'; then
 fi
 
 # Build the client payload (mirror of realm-uwv.json entry)
-PAYLOAD=$(cat <<'JSON'
+PAYLOAD=$(cat <<JSON
 {
   "clientId": "multica",
   "name": "UWV Platform — Multica",
@@ -77,7 +79,7 @@ PAYLOAD=$(cat <<'JSON'
   "enabled": true,
   "protocol": "openid-connect",
   "publicClient": false,
-  "secret": "uwv-dev-only-CHANGE-ME-multica-secret",
+  "secret": "${CLIENT_SECRET}",
   "standardFlowEnabled": true,
   "directAccessGrantsEnabled": false,
   "serviceAccountsEnabled": false,

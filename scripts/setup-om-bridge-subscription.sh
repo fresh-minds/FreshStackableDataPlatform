@@ -21,7 +21,16 @@ pass() { printf '\033[1;32mOK\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
 
 PF_PID=
-cleanup() { [ -n "$PF_PID" ] && kill $PF_PID 2>/dev/null || true; }
+# Tighten perms + use unpredictable temp files (sub-body holds the webhook
+# HMAC secret). mktemp creates them 0600; trap removes them on exit.
+umask 077
+SUB_JSON="$(mktemp)"
+SUB_BODY="$(mktemp)"
+SUB_RESP="$(mktemp)"
+cleanup() {
+  [ -n "$PF_PID" ] && kill $PF_PID 2>/dev/null || true
+  rm -f "$SUB_JSON" "$SUB_BODY" "$SUB_RESP"
+}
 trap cleanup EXIT
 
 log "Port-forward openmetadata → 127.0.0.1:${PF_PORT}"
@@ -41,14 +50,14 @@ OM="http://127.0.0.1:${PF_PORT}"
 A="Authorization: Bearer $TOKEN"
 
 log "EventSubscription ${SUB_NAME} aanwezig?"
-EXISTS=$(curl -sS -o /tmp/sub.json -w '%{http_code}' -H "$A" "$OM/api/v1/events/subscriptions/name/${SUB_NAME}" || echo "000")
+EXISTS=$(curl -sS -o "$SUB_JSON" -w '%{http_code}' -H "$A" "$OM/api/v1/events/subscriptions/name/${SUB_NAME}" || echo "000")
 if [ "$EXISTS" = "200" ]; then
   pass "subscription al aanwezig — geen wijziging"
   exit 0
 fi
 
 log "POST nieuwe subscription"
-cat > /tmp/sub-body.json <<EOF
+cat > "$SUB_BODY" <<EOF
 {
   "name": "${SUB_NAME}",
   "displayName": "OM Access Bridge (ADR-0008)",
@@ -68,7 +77,7 @@ cat > /tmp/sub-body.json <<EOF
 }
 EOF
 
-STATUS=$(curl -sS -o /tmp/sub-resp.json -w '%{http_code}' -X POST -H "$A" -H 'Content-Type: application/json' \
-  "$OM/api/v1/events/subscriptions" -d @/tmp/sub-body.json)
-[ "$STATUS" = "201" ] || fail "subscription POST=$STATUS body=$(cat /tmp/sub-resp.json | head -c 300)"
+STATUS=$(curl -sS -o "$SUB_RESP" -w '%{http_code}' -X POST -H "$A" -H 'Content-Type: application/json' \
+  "$OM/api/v1/events/subscriptions" -d @"$SUB_BODY")
+[ "$STATUS" = "201" ] || fail "subscription POST=$STATUS body=$(head -c 300 "$SUB_RESP")"
 pass "subscription aangemaakt en enabled"

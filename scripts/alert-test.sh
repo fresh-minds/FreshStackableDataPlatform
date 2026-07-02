@@ -85,7 +85,8 @@ log "Verstuur synthetische alert (severity=${SEV}, action=${ACTION}) naar ${AM_S
 # extra install). Op CI / locals werkt port-forward + curl.
 PF_PORT=19093
 PF_PID=""
-trap '[[ -n "${PF_PID}" ]] && kill "${PF_PID}" 2>/dev/null || true' EXIT
+RESP_FILE="$(mktemp)"
+trap '[[ -n "${PF_PID}" ]] && kill "${PF_PID}" 2>/dev/null; rm -f "${RESP_FILE}"; true' EXIT
 
 kubectl -n "${NS}" port-forward "svc/${AM_SVC}" ${PF_PORT}:${AM_PORT} \
   >/dev/null 2>&1 &
@@ -107,12 +108,12 @@ RESP="$(curl -sS -X POST \
   -H 'Content-Type: application/json' \
   -d "${PAYLOAD}" \
   "http://127.0.0.1:${PF_PORT}/api/v2/alerts" \
-  -o /tmp/alert-test-response.json \
+  -o "${RESP_FILE}" \
   -w '%{http_code}')" || true
 
 if [[ "${RESP}" != "200" && "${RESP}" != "202" ]]; then
   warn "Alertmanager-respons: HTTP ${RESP}"
-  cat /tmp/alert-test-response.json
+  cat "${RESP_FILE}"
   exit 1
 fi
 

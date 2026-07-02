@@ -139,18 +139,21 @@ done
 if [[ -z "$KC_SVC_IP" || "$KC_SVC_IP" == "None" ]]; then
   warn "keycloak-external Service nog niet beschikbaar; CoreDNS-patch overgeslagen"
 else
-  kubectl -n kube-system get cm coredns -o yaml > /tmp/coredns.yaml
-  KCSVC="$KC_SVC_IP" DOMAIN="$PLATFORM_DOMAIN" python3 <<'EOF'
+  COREDNS_YAML="$(mktemp)"
+  trap 'rm -f "$COREDNS_YAML"' EXIT
+  kubectl -n kube-system get cm coredns -o yaml > "$COREDNS_YAML"
+  KCSVC="$KC_SVC_IP" DOMAIN="$PLATFORM_DOMAIN" COREDNS_YAML="$COREDNS_YAML" python3 <<'EOF'
 import os, yaml
-d = yaml.safe_load(open('/tmp/coredns.yaml'))
+f = os.environ['COREDNS_YAML']
+d = yaml.safe_load(open(f))
 hosts = d.get('data', {}).get('NodeHosts', '') or ''
 fqdn = f"keycloak.{os.environ['DOMAIN']}"
 lines = [l for l in hosts.splitlines() if fqdn not in l and l.strip()]
 lines.append(f"{os.environ['KCSVC']} {fqdn}")
 d['data']['NodeHosts'] = '\n'.join(lines) + '\n'
-yaml.safe_dump(d, open('/tmp/coredns.yaml', 'w'))
+yaml.safe_dump(d, open(f, 'w'))
 EOF
-  kubectl apply -f /tmp/coredns.yaml >/dev/null
+  kubectl apply -f "$COREDNS_YAML" >/dev/null
   kubectl -n kube-system rollout restart deploy coredns >/dev/null
   kubectl -n kube-system rollout status deploy coredns --timeout=60s >/dev/null || true
   ok "CoreDNS NodeHosts gepatched (keycloak → $KC_SVC_IP)"
@@ -253,8 +256,10 @@ fi
 #    \\\"policy\\\" custom attribute silently genegeerd wordt.
 PROFILE_CFG=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/users/profile\" 2>/dev/null)
 if ! echo \"\$PROFILE_CFG\" | grep -q '\"unmanagedAttributePolicy\":\"ADMIN_EDIT\"'; then
-  echo \"\$PROFILE_CFG\" | sed -e 's/}\$/,\"unmanagedAttributePolicy\":\"ADMIN_EDIT\"}/' > /tmp/up.json
-  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/profile\" --data @/tmp/up.json -o /dev/null
+  UP=\$(mktemp)
+  echo \"\$PROFILE_CFG\" | sed -e 's/}\$/,\"unmanagedAttributePolicy\":\"ADMIN_EDIT\"}/' > \"\$UP\"
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/profile\" --data @\"\$UP\" -o /dev/null
+  rm -f \"\$UP\"
 fi
 
 # 5. policy attribute voor MinIO consoleAdmin op demo-admins. NB: PUT
