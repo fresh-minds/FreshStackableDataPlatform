@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -60,6 +61,20 @@ TRINO_USER = os.environ["TRINO_USER"]
 TRINO_PASSWORD = os.environ.get("TRINO_PASSWORD") or None
 TRINO_HTTP_SCHEME = os.environ.get("TRINO_HTTP_SCHEME", "https")
 TRINO_VERIFY = os.environ.get("TRINO_VERIFY", "/etc/uwv-ca/ca.crt")
+
+# SQL-injection-hardening: catalog/schema/table komen uit de source-YAML
+# (config) maar worden ongequote in Trino DDL geïnterpoleerd. Zelfde allowlist
+# als convert_to_delta.py.
+IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
+
+
+def _require_identifier(value: str, kind: str) -> str:
+    if not IDENTIFIER_RE.match(value or ""):
+        sys.exit(
+            f"ERROR: ongeldige {kind} identifier {value!r} — moet matchen "
+            f"{IDENTIFIER_RE.pattern}"
+        )
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +281,9 @@ def write_to_bronze(table: pa.Table, bronze_table: str, partition_col: str) -> t
 def ensure_trino_table(spec: dict, location: str) -> None:
     """Eerste run: registreer Delta-tabel in HMS via Trino. Daarna no-op."""
     bronze = spec["bronze"]
+    _require_identifier(bronze["catalog"], "catalog")
+    _require_identifier(bronze["schema"], "schema")
+    _require_identifier(bronze["table"], "table")
     fqn = f"{bronze['catalog']}.{bronze['schema']}.{bronze['table']}"
     log(f"register tabel in Trino: {fqn}")
 

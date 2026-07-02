@@ -754,12 +754,24 @@ async def webhook_om(
 
 
 @app.post("/replay/{task_id}")
-async def replay_task(task_id: str, event: dict[str, Any]) -> dict[str, str]:
+async def replay_task(
+    task_id: str,
+    request: Request,
+    x_om_signature: str = Header(default=""),
+    x_om_timestamp: str = Header(default=""),
+) -> dict[str, str]:
     """Manueel her-toepassen wanneer een webhook gemist is.
 
-    Geen HMAC-check (vereist binnen-cluster reach via service-account RBAC);
-    re-uses dezelfde grant-logica.
+    Vereist dezelfde HMAC-signature als /webhooks/om. Dit endpoint kende
+    voorheen GEEN auth-check en verleent Keycloak data_access-rollen — een
+    ongeauthenticeerde caller kon zo een willekeurige gebruiker toegang tot
+    een willekeurige catalog/schema geven. Naast deze HMAC-check wordt het
+    endpoint ook niet meer door de ingress geëxposeerd (zie ingress.yaml).
     """
+    raw = await request.body()
+    _verify_signature(raw, x_om_signature, x_om_timestamp)
+    event = await request.json()
+
     _processed_events.discard(task_id)  # forceer re-process
     if (event.get("task") or {}).get("id") != task_id:
         raise HTTPException(status_code=400, detail="Body task.id mismatcht pad-parameter")

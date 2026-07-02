@@ -53,19 +53,32 @@ warn() { printf '\033[1;33m!!\033[0m  %s\n' "$*"; }
 die()  { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
 
 # --- arg parsing ------------------------------------------------------
-APP_CLIENT_ID=""
-CLIENT_SECRET=""
+APP_CLIENT_ID="${APP_CLIENT_ID:-}"
+# Prefer passing the client secret WITHOUT putting it in argv (visible in `ps`):
+#   - env var:  CLIENT_SECRET=... bash scripts/azure/setup-acs-email-test.sh ...
+#   - file:     --client-secret-file /path/to/secret
+# The legacy --client-secret flag still works for backward compatibility, but
+# the env var / file paths are recommended.
+CLIENT_SECRET="${CLIENT_SECRET:-}"
+CLIENT_SECRET_FILE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --app-client-id)  APP_CLIENT_ID="$2"; shift 2 ;;
     --app-client-id=*) APP_CLIENT_ID="${1#*=}"; shift ;;
     --client-secret)  CLIENT_SECRET="$2"; shift 2 ;;
     --client-secret=*) CLIENT_SECRET="${1#*=}"; shift ;;
+    --client-secret-file)  CLIENT_SECRET_FILE="$2"; shift 2 ;;
+    --client-secret-file=*) CLIENT_SECRET_FILE="${1#*=}"; shift ;;
     -h|--help)
       sed -n '2,40p' "$0" | sed 's/^# \?//'; exit 0 ;;
     *) die "Onbekende flag: $1 (zie --help)" ;;
   esac
 done
+
+if [[ -n "$CLIENT_SECRET_FILE" ]]; then
+  [[ -f "$CLIENT_SECRET_FILE" ]] || die "--client-secret-file niet gevonden: $CLIENT_SECRET_FILE"
+  CLIENT_SECRET="$(<"$CLIENT_SECRET_FILE")"
+fi
 
 # Detect mode: portal-modus als BEIDE flags gegeven zijn.
 PORTAL_MODE="no"

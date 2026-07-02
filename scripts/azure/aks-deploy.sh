@@ -185,8 +185,10 @@ fi
 #    (PUT geeft 204 maar er wordt niets opgeslagen).
 PROFILE_CFG=\$(curl -fsS -H \"\$A\" \"\$KC/admin/realms/uwv/users/profile\" 2>/dev/null)
 if ! echo \"\$PROFILE_CFG\" | grep -q '\"unmanagedAttributePolicy\":\"ADMIN_EDIT\"'; then
-  echo \"\$PROFILE_CFG\" | sed -e 's/}\$/,\"unmanagedAttributePolicy\":\"ADMIN_EDIT\"}/' > /tmp/up.json
-  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/profile\" --data @/tmp/up.json -o /dev/null
+  UP=\$(mktemp)
+  echo \"\$PROFILE_CFG\" | sed -e 's/}\$/,\"unmanagedAttributePolicy\":\"ADMIN_EDIT\"}/' > \"\$UP\"
+  curl -sS -X PUT -H \"\$A\" -H 'Content-Type: application/json' \"\$KC/admin/realms/uwv/users/profile\" --data @\"\$UP\" -o /dev/null
+  rm -f \"\$UP\"
 fi
 
 # 4. policy attribute voor MinIO consoleAdmin op demo-admins. NB: PUT

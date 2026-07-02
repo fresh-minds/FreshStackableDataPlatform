@@ -27,10 +27,15 @@ fi
 # Pull cluster CA from the multica-tls Secret. We use SUDO_USER's kubectl
 # context so kubectl works (kubectl config typically lives under $HOME).
 KUBE_USER="${SUDO_USER:-$USER}"
-KUBE_HOME=$(eval echo "~$KUBE_USER")
+# Non-eval home lookup (avoids evaluating a derived username via `eval echo ~`).
+KUBE_HOME=$(getent passwd "$KUBE_USER" | cut -d: -f6)
 export KUBECONFIG="${KUBECONFIG:-$KUBE_HOME/.kube/config}"
 
-CA_FILE=/tmp/uwv-platform-ca.crt
+# Write the CA to a private temp file (not a predictable /tmp path that root
+# then trusts as a system root CA — that is a TOCTOU / symlink attack vector).
+CA_FILE="$(mktemp)"
+chmod 600 "$CA_FILE"
+trap 'rm -f "$CA_FILE"' EXIT
 sudo -u "$KUBE_USER" kubectl -n uwv-platform get secret multica-tls \
   -o jsonpath='{.data.ca\.crt}' 2>/dev/null \
   | base64 -d > "$CA_FILE"
@@ -52,5 +57,4 @@ else
   echo "Cluster CA added to System keychain (root trust)."
 fi
 
-rm -f "$CA_FILE"
 echo "Done. multica.uwv-platform.local is now reachable with valid TLS."

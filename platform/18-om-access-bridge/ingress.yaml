@@ -1,13 +1,21 @@
 # Exposes de access-request-API onder hetzelfde origin als de portal
 # (https://platform.uwv-platform.local) zodat browser-form-POSTs same-origin
-# zijn (geen CORS-preflight nodig). Webhook + replay-endpoints blijven
-# *intern* — alleen /api/request wordt extern bereikbaar.
+# zijn (geen CORS-preflight nodig).
+#
+# BELANGRIJK (security): alleen /api/request en /health worden extern
+# geëxposeerd. De grant-verlenende endpoints /webhooks/om en /replay/*
+# worden hier BEWUST NIET geroute — anders is de bridge (die Keycloak
+# data_access-rollen toekent) van buiten bereikbaar. Voorheen matchte één
+# catch-all regel `(/|$)(.*)` álle sub-paths, waardoor /replay (zonder
+# HMAC) extern een privilege-escalatie was. De paden hieronder zijn een
+# expliciete allowlist; /webhooks/om blijft cluster-intern (OM roept het
+# aan via de Service).
 #
 # Pad-design:
 #   /access-request-api/api/request → bridge /api/request
 #   /access-request-api/health      → bridge /health
 #
-# Rewrite knippt de prefix er af en stuurt de rest naar de bridge.
+# Rewrite ($2 = het tweede capture-groep-segment) stuurt het pad naar de bridge.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -23,7 +31,16 @@ spec:
     - host: platform.uwv-platform.local
       http:
         paths:
-          - path: /access-request-api(/|$)(.*)
+          # Allowlist: alleen /api/request en /health. Group 2 ($2) is het
+          # doelpad op de bridge; group 1 ($1) is de scheidings-slash.
+          - path: /access-request-api(/)(api/request)$
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: om-access-bridge
+                port:
+                  number: 80
+          - path: /access-request-api(/)(health)$
             pathType: ImplementationSpecific
             backend:
               service:

@@ -459,11 +459,19 @@ if [[ "${IS_CLOUD:-no}" == "yes" ]]; then
 
   log "Reconcile postgres superuser password + uwvplatform role (idempotent)"
   PG_PW=$(kubectl -n uwv-data get secret postgres-postgresql -o jsonpath='{.data.postgres-password}' | base64 -d)
-  kubectl -n uwv-data exec postgres-postgresql-0 -- env PGPASSWORD="${PG_PW}" \
-    psql -U postgres -c "ALTER USER postgres WITH PASSWORD '${PG_PW}';" >/dev/null
-  kubectl -n uwv-data exec postgres-postgresql-0 -- env PGPASSWORD="${PG_PW}" bash -c \
-    "psql -U postgres -tAc \"SELECT 1 FROM pg_roles WHERE rolname='uwvplatform'\" | grep -q 1 || \
-     psql -U postgres -c \"CREATE USER uwvplatform WITH PASSWORD '${PG_PW}' CREATEDB;\""
+  # Pipe the SQL (which embeds the password) via stdin so it isn't visible in
+  # the process list / argv on the node. psql reads statements from stdin.
+  kubectl -n uwv-data exec -i postgres-postgresql-0 -- env PGPASSWORD="${PG_PW}" \
+    psql -U postgres -q >/dev/null <<SQL
+ALTER USER postgres WITH PASSWORD '${PG_PW}';
+SQL
+  if ! kubectl -n uwv-data exec postgres-postgresql-0 -- env PGPASSWORD="${PG_PW}" \
+        psql -U postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='uwvplatform'" | grep -q 1; then
+    kubectl -n uwv-data exec -i postgres-postgresql-0 -- env PGPASSWORD="${PG_PW}" \
+      psql -U postgres -q >/dev/null <<SQL
+CREATE USER uwvplatform WITH PASSWORD '${PG_PW}' CREATEDB;
+SQL
+  fi
 
   log "Apply postgres-create-databases Job (creates keycloak/superset/airflow/openmetadata/platform DBs)"
   kubectl apply -f "$ROOT/infrastructure/azure/postgres-create-databases.yaml"

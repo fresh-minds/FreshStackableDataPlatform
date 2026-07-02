@@ -21,7 +21,9 @@ import rego.v1
 
 default allow := false
 
-default rowFilters := []
+# rowFilters is een accumulerende (partial set) regel in trino-row-filters.rego:
+# elke toepasselijke filter voegt een element toe en Trino AND-combineert ze.
+# Een lege set serialiseert naar `[]` voor Trino, dus geen default nodig.
 
 default columnMask := {}
 
@@ -111,7 +113,10 @@ is_meta_op if input.action.operation == "ExecuteQuery"
 
 is_meta_op if input.action.operation == "AccessCatalog"
 
-is_meta_op if input.action.operation == "ImpersonateUser"
+# NB: ImpersonateUser is BEWUST geen meta-op meer. Impersonation wordt apart
+# afgehandeld (zie de scoped allow-regel hieronder) zodat niet elke
+# geauthenticeerde user zich als een ander (hoger-geprivilegeerd) principal
+# kan voordoen.
 
 is_meta_op if input.action.operation == "ReadSystemInformation"
 
@@ -173,13 +178,27 @@ allow if {
 	purpose_allows_resource
 }
 
-# Write-operations — alleen voor data_engineer + platform_admin + smoketest.
-# smoketest is technische dbt-runner, krijgt write op bronze/silver/gold.
+# Write-operations — alleen voor data_engineer + platform_admin + smoketest,
+# ÉN alleen binnen de catalogs/schemas die de rol mag benaderen
+# (role_allows_resource). Zonder die check kon een bronze-only rol schrijven
+# (DROP/DELETE/INSERT) in élke catalog, incl. de sensitive (art. 9) catalog.
+# Doelbinding (purpose) wordt op writes NIET geëist — technische dbt-runs
+# sturen geen purpose mee; de catalog/schema-scope is de begrenzing.
 allow if {
 	authenticated
 	is_write_op
+	role_allows_resource
 	some r in user_roles
 	r in {"data_engineer", "platform_admin", "smoketest"}
+}
+
+# Impersonation — uitsluitend platform_admin (break-glass). Elke andere rol
+# mag NIET impersoneren; anders erft een low-priv user de rollen/capabilities
+# van het doel-principal.
+allow if {
+	authenticated
+	input.action.operation == "ImpersonateUser"
+	"platform_admin" in user_roles
 }
 
 # --- batch (voor SHOW TABLES / FilterColumns op een lijst) ------------

@@ -209,8 +209,8 @@ def main() -> None:
     )
     ap.add_argument(
         "--access-key",
-        default=os.environ.get("MINIO_ACCESS_KEY", "uwvadmin"),
-        help="MinIO access key (default: env MINIO_ACCESS_KEY of 'uwvadmin')",
+        default=os.environ.get("MINIO_ACCESS_KEY", ""),
+        help="MinIO access key (default: env MINIO_ACCESS_KEY)",
     )
     ap.add_argument(
         "--secret-key",
@@ -249,7 +249,7 @@ def main() -> None:
     results.append(("TLS publiek vertrouwd", tls_ok))
 
     s3_ok = False
-    if tcp_ok and args.secret_key:
+    if tcp_ok and args.access_key and args.secret_key:
         s3_ok = step4_s3(
             args.endpoint,
             args.access_key,
@@ -257,11 +257,11 @@ def main() -> None:
             tuple(args.buckets.split(",")),
             verify_tls=not args.insecure,
         )
-    elif not args.secret_key:
+    elif not (args.access_key and args.secret_key):
         print(
             f"\n[4/4] S3 API + bucket toegang  — \n"
-            f"  {WARN} geen MINIO_SECRET_KEY — overgeslagen. "
-            "Zet `export MINIO_SECRET_KEY=...` om dit te testen."
+            f"  {WARN} geen MINIO_ACCESS_KEY/MINIO_SECRET_KEY — overgeslagen. "
+            "Zet `export MINIO_ACCESS_KEY=... MINIO_SECRET_KEY=...` om dit te testen."
         )
     results.append(("S3 API", s3_ok))
 

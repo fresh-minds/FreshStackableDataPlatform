@@ -17,15 +17,24 @@ error() { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
 
 # 1. Build PFX (cert + key + chain) for Windows cert store import.
 PFX="$CERT_DIR/uwv-platform-vpn-client.pfx"
-PFX_PW="${PFX_PW:-uwv}"
-log "Bundling client.crt + client.key + root.crt into $PFX (password: $PFX_PW)"
+# Use a strong random export password by default (never a weak hard-coded one).
+# Supply your own with PFX_PW=... if you need a specific value.
+if [[ -n "${PFX_PW:-}" ]]; then
+  PFX_PW_SOURCE="supplied via PFX_PW env var"
+else
+  PFX_PW="$(openssl rand -base64 18)"
+  PFX_PW_SOURCE="auto-generated (random)"
+fi
+export PFX_PW
+log "Bundling client.crt + client.key + root.crt into $PFX (password: $PFX_PW_SOURCE)"
+# Pass the password via env (-passout env:PFX_PW) so it never appears in argv/ps.
 openssl pkcs12 -export \
   -out "$PFX" \
   -inkey "$CERT_DIR/client.key" \
   -in "$CERT_DIR/client.crt" \
   -certfile "$CERT_DIR/root.crt" \
   -name "UWV Platform VPN Client" \
-  -passout "pass:$PFX_PW" \
+  -passout env:PFX_PW \
   >/dev/null 2>&1
 chmod 600 "$PFX"
 
@@ -63,7 +72,7 @@ cat <<EOF
 
    2. On Windows, double-click the .pfx — Certificate Import Wizard:
         Store Location: Current User
-        Password:       $PFX_PW
+        Password:       $PFX_PW      ($PFX_PW_SOURCE — save it now, it is not stored)
         Place all certs in: Personal
 
    3. Unzip azure-vpn-profile.zip and run WindowsAmd64\\VpnClientSetupAmd64.exe.

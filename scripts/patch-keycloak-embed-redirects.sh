@@ -49,12 +49,15 @@ if [[ -z "$KC_HOST" ]]; then
 fi
 
 step "log in als $KC_ADMIN_USER"
+# Pass the admin password via curl's stdin (--data-urlencode @/dev/stdin) so it
+# never appears in argv / `ps` output. printf %s avoids a trailing newline.
 TOKEN=$(curl -fsS \
   -d "client_id=admin-cli" \
   -d "username=$KC_ADMIN_USER" \
-  -d "password=$KC_ADMIN_PASS" \
+  --data-urlencode "password@/dev/stdin" \
   -d "grant_type=password" \
   "${KC_HOST}/realms/master/protocol/openid-connect/token" \
+  < <(printf %s "$KC_ADMIN_PASS") \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 [[ -z "$TOKEN" ]] && { warn "geen token — admin-credentials kloppen niet?"; exit 1; }
 ok "ingelogd"

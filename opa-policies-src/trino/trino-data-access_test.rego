@@ -114,9 +114,7 @@ test_empty_resource_does_not_bypass if {
 			"user": "alice.researcher",
 			"groups": ["researcher", "data_access:."],
 		}},
-		"action": {
-			"operation": "ExecuteQuery",
-		},
+		"action": {"operation": "ExecuteQuery"},
 	}
 }
 

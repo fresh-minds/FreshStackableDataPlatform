@@ -1,5 +1,7 @@
 package trino
 
+import rego.v1
+
 # Tests for the nao analytics-agent read-only service identity.
 #
 # Binding lives in trino-base.rego (service-account user `nao-agent` → role

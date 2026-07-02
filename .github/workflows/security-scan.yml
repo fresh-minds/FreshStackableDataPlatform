@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Trivy config-scan (kustomize/helm) — SARIF upload
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'config'
           format: 'sarif'
@@ -41,7 +41,7 @@ jobs:
           category: trivy-config
 
       - name: Trivy config-scan (kustomize/helm) — summary
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'config'
           format: 'table'
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Trivy filesystem-scan (Python deps)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -73,12 +73,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
       - name: Verify Stackable images (sample)
+        # Advisory (non-blocking) by design: this is a reference/out-of-band
+        # check, so a verification failure must not fail the pipeline. We use
+        # `continue-on-error` instead of `|| echo` so that a real failure is
+        # actually surfaced (the step is marked failed/annotated) rather than
+        # silently swallowed by masking cosign's non-zero exit.
+        continue-on-error: true
         run: |
           # Stackable signs all production images. Verify a sample.
           cosign verify \
             --certificate-identity-regexp 'https://github.com/stackabletech/.*' \
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-            docker.stackable.tech/stackable/trino:470-stackable26.3.0 \
-          || echo "(cosign-verify: out-of-band; geen blocking — referentie-only)"
+            docker.stackable.tech/stackable/trino:470-stackable26.3.0

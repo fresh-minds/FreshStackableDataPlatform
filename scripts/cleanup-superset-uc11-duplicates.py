@@ -5,9 +5,8 @@ Keeps the highest-ID chart for each unique slice_name (= most recently
 created with current configs), deletes the rest, and ensures the dashboard
 references exactly the 12 kept charts with the proper position_json layout.
 """
-import json, sys, os, urllib3
+import json, sys, os
 import requests
-urllib3.disable_warnings()
 
 URL = "http://localhost:8088"
 USER = os.environ["SS_USER"]
@@ -35,13 +34,13 @@ DASHBOARD_SLUG = "uc11-klantreis"
 
 def login():
     s = requests.Session()
-    s.verify = False
     r = s.post(f"{URL}/api/v1/security/login",
                json={"username": USER, "password": PASS,
-                     "provider": "db", "refresh": True})
+                     "provider": "db", "refresh": True},
+               timeout=30)
     r.raise_for_status()
     s.headers["Authorization"] = f"Bearer {r.json()['access_token']}"
-    r = s.get(f"{URL}/api/v1/security/csrf_token/")
+    r = s.get(f"{URL}/api/v1/security/csrf_token/", timeout=30)
     r.raise_for_status()
     s.headers["X-CSRFToken"] = r.json()["result"]
     s.headers["Referer"] = URL
@@ -53,7 +52,8 @@ def list_all_charts(s):
     page = 0
     while True:
         r = s.get(f"{URL}/api/v1/chart/",
-                  params={"q": f"(page:{page},page_size:100)"})
+                  params={"q": f"(page:{page},page_size:100)"},
+                  timeout=30)
         r.raise_for_status()
         data = r.json().get("result", [])
         if not data:
@@ -92,7 +92,7 @@ def main():
     # Bulk-delete via the bulk endpoint (more reliable than per-id DELETE)
     if delete_ids:
         ids_param = "!(" + ",".join(str(i) for i in delete_ids) + ")"
-        r = s.delete(f"{URL}/api/v1/chart/?q={ids_param}")
+        r = s.delete(f"{URL}/api/v1/chart/?q={ids_param}", timeout=30)
         print(f"\nbulk-delete → {r.status_code}: {r.text[:200]}")
 
     # Verify
@@ -104,7 +104,8 @@ def main():
 
     # Find dashboard
     r = s.get(f"{URL}/api/v1/dashboard/",
-              params={"q": f"(filters:!((col:slug,opr:eq,value:{DASHBOARD_SLUG})))"})
+              params={"q": f"(filters:!((col:slug,opr:eq,value:{DASHBOARD_SLUG})))"},
+              timeout=30)
     r.raise_for_status()
     dash = r.json()["result"][0]
     did = dash["id"]
@@ -113,7 +114,8 @@ def main():
     # Re-attach each kept chart to dashboard (chart PUT with dashboards=[did])
     # This is idempotent — sets the M2M to just [did].
     for cid in keep_ids:
-        r = s.put(f"{URL}/api/v1/chart/{cid}", json={"dashboards": [did]})
+        r = s.put(f"{URL}/api/v1/chart/{cid}", json={"dashboards": [did]},
+                  timeout=30)
         if r.status_code != 200:
             print(f"  ! chart {cid} → dashboard {did}: {r.status_code} {r.text[:200]}")
 
@@ -150,14 +152,15 @@ def main():
         current_row_used += w
 
     r = s.put(f"{URL}/api/v1/dashboard/{did}",
-              json={"position_json": json.dumps(layout)})
+              json={"position_json": json.dumps(layout)},
+              timeout=30)
     if r.status_code != 200:
         print(f"  ! dashboard layout PUT: {r.status_code} {r.text[:300]}")
     else:
         print(f"\n✓ dashboard layout updated — {len(keep_ids)} charts in 5 rows")
 
     # Final dashboard chart-count
-    r = s.get(f"{URL}/api/v1/dashboard/{did}/charts")
+    r = s.get(f"{URL}/api/v1/dashboard/{did}/charts", timeout=30)
     dash_charts = r.json().get("result", [])
     print(f"\ndashboard '{DASHBOARD_SLUG}' now has {len(dash_charts)} chart references")
 

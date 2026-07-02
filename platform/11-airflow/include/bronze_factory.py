@@ -15,6 +15,7 @@ nieuwe rijen heeft (max_event_ts > prev_max_event_ts), en dan publiceert.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 
 from airflow import DAG
@@ -35,8 +36,24 @@ DEFAULT_ARGS = {
 }
 
 
+# SQL-injection-hardening: catalog/schema/table komen uit de source-YAML
+# (config) maar worden ongequote in de freshness-query geïnterpoleerd. Zelfde
+# allowlist als convert_to_delta.py.
+IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
+
+
 def _check_bronze_freshness_callable(source: SourceSpec):
     """Closure: returnt een task-functie die deze bron controleert."""
+    for kind, value in (
+        ("catalog", source.bronze.catalog),
+        ("schema", source.bronze.schema),
+        ("table", source.bronze.table),
+    ):
+        if not IDENTIFIER_RE.match(value or ""):
+            raise ValueError(
+                f"ongeldige bronze {kind} identifier {value!r} voor bron "
+                f"{source.name!r} — moet matchen {IDENTIFIER_RE.pattern}"
+            )
     sql = (
         f"SELECT count(*) AS n, max(source_ts) AS max_ts "
         f"FROM {source.bronze.fqn} "

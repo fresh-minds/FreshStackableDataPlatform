@@ -24,7 +24,15 @@ pass() { printf '\033[1;32mOK\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31mFAIL\033[0m %s\n' "$*" >&2; exit 1; }
 
 PF_PID=
-cleanup() { [ -n "$PF_PID" ] && kill $PF_PID 2>/dev/null || true; }
+# Unpredictable temp files (0600 via mktemp), removed on exit.
+umask 077
+C_JSON="$(mktemp)"
+R_JSON="$(mktemp)"
+M_JSON="$(mktemp)"
+cleanup() {
+  [ -n "$PF_PID" ] && kill $PF_PID 2>/dev/null || true
+  rm -f "$C_JSON" "$R_JSON" "$M_JSON"
+}
 trap cleanup EXIT
 
 log "Port-forward keycloak → 127.0.0.1:${PF_PORT}"
@@ -48,7 +56,7 @@ log "Client ${CLIENT_ID} aanwezig?"
 CLIENT_UUID=$(curl -fsS -H "$A" "$KC/admin/realms/uwv/clients?clientId=${CLIENT_ID}" | grep -oE '"id":"[^"]+"' | head -1 | cut -d'"' -f4)
 if [ -z "$CLIENT_UUID" ]; then
   log "  client ontbreekt — POST /admin/realms/uwv/clients"
-  STATUS=$(curl -sS -o /tmp/c.json -w '%{http_code}' -X POST -H "$A" -H 'Content-Type: application/json' \
+  STATUS=$(curl -sS -o "$C_JSON" -w '%{http_code}' -X POST -H "$A" -H 'Content-Type: application/json' \
     "$KC/admin/realms/uwv/clients" -d "{
       \"clientId\":\"${CLIENT_ID}\",
       \"name\":\"OpenMetadata Access Bridge (service account)\",
@@ -66,7 +74,7 @@ if [ -z "$CLIENT_UUID" ]; then
       \"fullScopeAllowed\":true,
       \"attributes\":{\"use.refresh.tokens\":\"false\"}
     }")
-  [ "$STATUS" = "201" ] || fail "client POST=$STATUS body=$(cat /tmp/c.json)"
+  [ "$STATUS" = "201" ] || fail "client POST=$STATUS body=$(cat "$C_JSON")"
   CLIENT_UUID=$(curl -fsS -H "$A" "$KC/admin/realms/uwv/clients?clientId=${CLIENT_ID}" | grep -oE '"id":"[^"]+"' | head -1 | cut -d'"' -f4)
   pass "client aangemaakt (uuid=$CLIENT_UUID)"
 else
@@ -105,9 +113,9 @@ done
 ROLES_JSON="${ROLES_JSON}]"
 
 if [ "$NEED" -gt 0 ]; then
-  STATUS=$(curl -sS -o /tmp/r.json -w '%{http_code}' -X POST -H "$A" -H 'Content-Type: application/json' \
+  STATUS=$(curl -sS -o "$R_JSON" -w '%{http_code}' -X POST -H "$A" -H 'Content-Type: application/json' \
     "$KC/admin/realms/uwv/users/$SA_USER_ID/role-mappings/clients/$RM_UUID" -d "$ROLES_JSON")
-  [ "$STATUS" = "204" ] || fail "role-assign HTTP=$STATUS body=$(cat /tmp/r.json)"
+  [ "$STATUS" = "204" ] || fail "role-assign HTTP=$STATUS body=$(cat "$R_JSON")"
   pass "$NEED role(s) toegekend aan service-account"
 else
   pass "alle ${#REQUIRED_ROLES[@]} service-account roles al toegekend"
@@ -135,7 +143,7 @@ HAVE_MAPPER=$(curl -fsS -H "$A" "$KC/admin/realms/uwv/clients/$CLIENT_UUID/proto
   | { grep -oE "\"name\":\"${MAPPER_NAME}\"" || true; } | head -1)
 if [ -z "$HAVE_MAPPER" ]; then
   log "Add client-roles protocol-mapper voor realm-management op ${CLIENT_ID}"
-  STATUS=$(curl -sS -o /tmp/m.json -w '%{http_code}' -X POST -H "$A" -H 'Content-Type: application/json' \
+  STATUS=$(curl -sS -o "$M_JSON" -w '%{http_code}' -X POST -H "$A" -H 'Content-Type: application/json' \
     "$KC/admin/realms/uwv/clients/$CLIENT_UUID/protocol-mappers/models" -d "{
       \"name\":\"${MAPPER_NAME}\",
       \"protocol\":\"openid-connect\",
@@ -150,7 +158,7 @@ if [ -z "$HAVE_MAPPER" ]; then
         \"usermodel.clientRoleMapping.clientId\":\"realm-management\"
       }
     }")
-  [ "$STATUS" = "201" ] || fail "mapper POST=$STATUS body=$(cat /tmp/m.json)"
+  [ "$STATUS" = "201" ] || fail "mapper POST=$STATUS body=$(cat "$M_JSON")"
   pass "mapper aangemaakt"
 else
   pass "mapper ${MAPPER_NAME} al aanwezig"

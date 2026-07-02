@@ -29,9 +29,13 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "create", "update", "patch"]
+  # Scoped tot uitsluitend de MinIO-credentials die deze Job gebruikt (was:
+  # 'get' op ÁLLE secrets in de namespace — incl. OIDC-client-secrets en
+  # Postgres-creds). resourceNames is compatibel met 'get'.
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get"]
+    resourceNames: ["minio-s3-credentials"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
