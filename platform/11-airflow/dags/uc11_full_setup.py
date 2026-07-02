@@ -238,8 +238,10 @@ print("seed nog niet gedraaid — run `make seed` eerst, of zet "
 
 
 WAIT_FOR_BRONZE_SCRIPT = """
-import json, ssl, time, urllib.request
-ctx = ssl._create_unverified_context()
+import json, os, ssl, time, urllib.request
+# TLS verify tegen de in-cluster CA (mounted op /etc/uwv-ca/ca.crt via ca_mount()).
+# TRINO_VERIFY env-var overschrijft het pad; default is de mounted CA (secure).
+ctx = ssl.create_default_context(cafile=os.environ.get("TRINO_VERIFY", "/etc/uwv-ca/ca.crt"))
 url = "https://uwv-trino-coordinator.uwv-platform.svc.cluster.local:8443/v1/statement"
 
 def trino(sql):
@@ -299,13 +301,14 @@ for k in ("invocation_started_at","run_started_at","quoting","send_anonymous_usa
 m.pop("functions", None)
 data = json.dumps(m).encode()
 # Upload via boto3 (zit in OM-ingest-image). MinIO endpoint via cluster-DNS.
-import boto3, urllib3
-urllib3.disable_warnings()
+import boto3
+# TLS verify tegen de in-cluster CA (mounted op /etc/uwv-ca/ca.crt). REQUESTS_CA_BUNDLE
+# wordt door de pod gezet; default naar het mounted CA-pad (secure).
 s3 = boto3.client("s3",
     endpoint_url="https://minio.uwv-platform.svc.cluster.local:9000",
     aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
     aws_secret_access_key=os.environ["MINIO_SECRET_KEY"],
-    verify=False)
+    verify=os.environ.get("REQUESTS_CA_BUNDLE", "/etc/uwv-ca/ca.crt"))
 s3.put_object(Bucket="uwv-meta", Key="dbt/latest/manifest.json", Body=data)
 print(f"manifest uploaded: {len(data)} bytes", flush=True)
 """
@@ -338,13 +341,14 @@ for k in ("invocation_started_at","run_started_at","quoting","send_anonymous_usa
     m.get("metadata", {}).pop(k, None)
 m.pop("functions", None)
 data = json.dumps(m).encode()
-import boto3, urllib3
-urllib3.disable_warnings()
+import boto3
+# TLS verify tegen de in-cluster CA (mounted op /etc/uwv-ca/ca.crt). REQUESTS_CA_BUNDLE
+# wordt door de pod gezet; default naar het mounted CA-pad (secure).
 s3 = boto3.client("s3",
     endpoint_url="https://minio.uwv-platform.svc.cluster.local:9000",
     aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
     aws_secret_access_key=os.environ["MINIO_SECRET_KEY"],
-    verify=False)
+    verify=os.environ.get("REQUESTS_CA_BUNDLE", "/etc/uwv-ca/ca.crt"))
 s3.put_object(Bucket="uwv-meta", Key="dbt/latest/manifest.json", Body=data)
 print(f"manifest uploaded: {len(data)} bytes")
 PY

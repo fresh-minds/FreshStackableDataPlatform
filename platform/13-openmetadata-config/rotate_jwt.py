@@ -118,7 +118,7 @@ def main() -> int:
     encrypted = fetch_encrypted_token()
     log(f"  encrypted len={len(encrypted)}")
     jwt = decrypt(encrypted)
-    log(f"  gedecrypte JWT len={len(jwt)} (prefix={jwt[:20]}...)")
+    log(f"  gedecrypte JWT len={len(jwt)}")
     patch_secret(SECRET_NS, jwt)
     if MIRROR_NS and MIRROR_NS != SECRET_NS:
         try:

@@ -42,6 +42,11 @@ TRIGGER_SECONDS = int(os.getenv("TRIGGER_SECONDS", "20"))
 # bv. uwv/persona/created/dt=...  → stream 'uwv.persona.created'.
 _STREAM_PATH_RE = re.compile(r"/uwv-raw/(?P<path>.+?)/dt=")
 
+# SQL-injection-hardening: alleen allowlisted identifiers (zelfde patroon als
+# convert_to_delta.py) mogen als domain/entity in DROP/CREATE TABLE en het
+# S3-pad terechtkomen. Streams met afwijkende identifiers worden geskipt.
+IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
+
 
 def stream_to_table(stream: str) -> str | None:
     """`uwv.persona.created` → `uwv.persona_created` (Hive db=uwv, table=…).
@@ -54,6 +59,10 @@ def stream_to_table(stream: str) -> str | None:
         return None
     domain, *entity_parts = parts[1:]
     entity = "_".join(entity_parts)
+    # Weiger identifiers die niet aan de allowlist voldoen — deze worden
+    # ongequote in spark.sql() DROP/CREATE TABLE en het S3-pad geïnterpoleerd.
+    if not IDENTIFIER_RE.match(domain) or not IDENTIFIER_RE.match(entity):
+        return None
     return f"uwv.{domain}_{entity}"
 
 

@@ -165,17 +165,29 @@ def main(
             raise click.UsageError(
                 "Vereist S3_ACCESS_KEY/S3_SECRET_KEY (of AWS_*) env vars voor non-dry-run."
             )
-        if insecure or endpoint.startswith("https://"):
+        # Alleen warnings onderdrukken wanneer --insecure daadwerkelijk is
+        # gezet; bij een geverifieerde HTTPS-verbinding willen we ze houden.
+        if insecure:
             import urllib3
 
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            verify: object = False
+        else:
+            # Verifieer tegen de gemounte interne CA wanneer die via env wordt
+            # aangereikt (bv. /etc/uwv-ca/ca.crt); anders de system trust store.
+            verify = (
+                os.environ.get("S3_CA_BUNDLE")
+                or os.environ.get("AWS_CA_BUNDLE")
+                or os.environ.get("REQUESTS_CA_BUNDLE")
+                or True
+            )
         s3 = boto3.client(
             "s3",
             endpoint_url=endpoint,
             region_name=region,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
-            verify=not insecure,
+            verify=verify,
             config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
         )
         writer = _S3Writer(s3, bucket, batch_id)
