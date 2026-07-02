@@ -4,6 +4,9 @@ name: dbt-parse
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   dbt-parse:
     runs-on: ubuntu-24.04

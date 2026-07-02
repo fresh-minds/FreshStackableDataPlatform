@@ -4,6 +4,9 @@ name: data-generation-tests
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   pytest:
     runs-on: ubuntu-24.04

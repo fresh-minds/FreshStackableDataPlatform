@@ -5,6 +5,9 @@ name: opa-test
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   opa-test:
     runs-on: ubuntu-24.04

@@ -135,6 +135,34 @@ for layer in "${LAYERS[@]}"; do
   fi
 done
 
+# --- Security: rotate publieke oauth2-proxy cookie-secrets op cloud --------
+# De portal/multica/nao oauth2-proxy Secrets bevatten een `cookie-secret` die
+# in git staat (dev-placeholder). Die sleutel tekent/versleutelt de
+# sessiecookie — een publiek bekende waarde laat een aanvaller een geldige
+# sessie vervalsen en zo de Keycloak-SSO omzeilen. Op k3d (lokaal) is dat een
+# geaccepteerd dev-risico; op de publiek bereikbare cloud-omgevingen NIET.
+# Daarom vervangen we op aks/stackit de cookie-secret post-apply door een
+# willekeurige 32-byte waarde en herstarten we de proxy's. Alles hier is
+# fail-safe (`|| true`): als een stap faalt blijft het platform draaien met de
+# bestaande secret. De client-secret blijft ongemoeid (die moet matchen met de
+# Keycloak-realm; die vervangt de operator samen met de realm).
+if [[ "${DEPLOYMENT_MODE:-k3d}" != "k3d" ]]; then
+  rotate_cookie_secret() {
+    local secret="$1" workload="$2"
+    kubectl -n uwv-platform get secret "$secret" >/dev/null 2>&1 || return 0
+    local new; new="$(openssl rand -base64 24)"
+    kubectl -n uwv-platform patch secret "$secret" --type merge \
+      -p "{\"stringData\":{\"cookie-secret\":\"${new}\"}}" >/dev/null 2>&1 \
+      && kubectl -n uwv-platform rollout restart "deploy/${workload}" >/dev/null 2>&1 \
+      && ok "${secret}: cookie-secret geroteerd naar willekeurige waarde (cloud)" \
+      || warn "${secret}: cookie-secret-rotatie overgeslagen (platform draait door met bestaande waarde)"
+  }
+  log "Cloud-mode: publieke oauth2-proxy cookie-secrets roteren"
+  rotate_cookie_secret portal-oauth2-proxy  portal
+  rotate_cookie_secret multica-oauth2-proxy multica-oauth2-proxy
+  rotate_cookie_secret nao-oauth2-proxy     nao-oauth2-proxy
+fi
+
 # openmetadata-uwv-config wordt door kustomize in `uwv-meta` aangemaakt
 # (zie platform/13-openmetadata-config/kustomization.yaml: configMapGenerator
 # heeft `namespace: uwv-meta`). De governance_om_ingest DAG en de KPO-tasks
